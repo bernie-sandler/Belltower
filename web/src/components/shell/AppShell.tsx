@@ -1,5 +1,6 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router';
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { useShortcut } from '../../lib/keyboard';
 import { useConfig } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { backgroundOf } from '../../lib/navigation';
@@ -13,6 +14,9 @@ import { UpdateBanner } from './UpdateBanner';
 // Code-split: the board loads eagerly; everything opened on demand is its own chunk.
 const CardRoute = lazy(() => import('../card/CardRoute'));
 const CardListPage = lazy(() => import('../lists/CardListPage').then((m) => ({ default: m.CardListPage })));
+const CalendarPage = lazy(() => import('../calendar/CalendarPage').then((m) => ({ default: m.CalendarPage })));
+const SearchPage = lazy(() => import('../search/SearchPage').then((m) => ({ default: m.SearchPage })));
+const TemplatesPage = lazy(() => import('../templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })));
 const LabelsManager = lazy(() => import('../labels/LabelsManager').then((m) => ({ default: m.LabelsManager })));
 const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
 
@@ -67,8 +71,15 @@ export function AppShell() {
  * underneath (state.background) and the card renders on top. A deep link to /cards/:id has no
  * background, so the board renders behind it.
  */
+function Lazy({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
+}
+
 function AppRoutes() {
   const location = useLocation();
+  const navigate = useNavigate();
+  // '/' anywhere (not while typing) → search.
+  useShortcut('/', () => void navigate('/search'));
   const background = backgroundOf(location);
 
   return (
@@ -84,6 +95,9 @@ function AppRoutes() {
             </Suspense>
           }
         />
+        <Route path="/calendar" element={<Lazy><CalendarPage /></Lazy>} />
+        <Route path="/search" element={<Lazy><SearchPage /></Lazy>} />
+        <Route path="/templates" element={<Lazy><TemplatesPage /></Lazy>} />
         <Route
           path="/trash"
           element={

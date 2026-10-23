@@ -11,4 +11,7 @@ export const qk = {
   cardLists: ['cardList'] as const,
   cardList: (status: string, q: string) => ['cardList', status, q] as const,
   textPreview: (id: number, mode: string) => ['textPreview', id, mode] as const,
+  search: (qs: string) => ['search', qs] as const,
+  calendar: (from: string, to: string) => ['calendar', from, to] as const,
+  templates: ['templates'] as const,
 };

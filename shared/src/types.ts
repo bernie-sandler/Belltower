@@ -207,3 +207,76 @@ export interface ActivityEntry {
   /** Number of earlier versions kept for an edited work-log entry. */
   revisionCount: number;
 }
+
+// ---- Phase 3: search, calendar, recurring templates ----
+
+export type SearchField = 'title' | 'description' | 'checklists' | 'worklogs' | 'history';
+
+export interface SearchMatch {
+  field: SearchField;
+  /** Plain text with \u0002 … \u0003 around each hit; the client turns those into <mark>. */
+  snippet: string;
+}
+
+export interface SearchResult {
+  id: number;
+  title: string;
+  columnId: number;
+  columnName: string;
+  labelIds: number[];
+  priority: Priority | null;
+  severity: Severity | null;
+  completedAt: IsoTimestamp | null;
+  archivedAt: IsoTimestamp | null;
+  updatedAt: IsoTimestamp;
+  matches: SearchMatch[];
+}
+
+export type CalendarItemKind = 'due' | 'completed' | 'worklog';
+
+export interface CalendarItem {
+  kind: CalendarItemKind;
+  /** Local day in the app time zone. */
+  date: LocalDateString;
+  /** Local 'HH:MM' (due time, completion time, or the work-log's effective time). */
+  time: string | null;
+  cardId: number;
+  title: string;
+  priority: Priority | null;
+  severity: Severity | null;
+  columnName: string;
+  completed: boolean;
+  archived: boolean;
+  /** Work-log entries only. */
+  activityId?: number;
+  bodyMd?: string;
+}
+
+export interface TemplateChecklist {
+  title: string;
+  items: string[];
+}
+
+export interface RecurringTemplate {
+  id: number;
+  title: string;
+  description: string;
+  priority: Priority | null;
+  labelIds: number[];
+  checklists: TemplateChecklist[];
+  intervalUnit: 'day' | 'week' | 'month';
+  intervalCount: number;
+  startDate: LocalDateString;
+  /** When the scheduler will next consider creating a card. */
+  nextRunDate: LocalDateString;
+  /** Generated cards are due this many days after their occurrence date (null = no due date). */
+  dueInDays: number | null;
+  enabled: boolean;
+  /** The open card this template created, if any (no new card is made while it's open). */
+  openCardId: number | null;
+  lastRun: { at: IsoTimestamp; outcome: 'created' | 'skipped_open' | 'manual'; cardId: number | null } | null;
+  /** The next few occurrence dates. */
+  upcoming: LocalDateString[];
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+}

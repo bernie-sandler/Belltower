@@ -3,7 +3,7 @@
 //    themselves (inline editors, composers) call preventDefault, which leaves it to them.
 //  - Letter shortcuts ('n' = new card in Triage) only fire on the bare board: never while
 //    typing, with Ctrl/Meta/Alt held, during IME composition, while dragging, or with a layer open.
-//  - '/' is reserved for search (Phase 3) and does nothing yet.
+//  - '/' opens Search.
 
 import { useEffect, useRef } from 'react';
 import { isDragging } from './dragging';

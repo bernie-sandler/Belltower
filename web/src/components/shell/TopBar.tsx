@@ -1,4 +1,5 @@
-import { Archive, Columns3, LogOut, Menu as MenuIcon, Settings, Tag, Trash2 } from 'lucide-react';
+import { Archive, CalendarDays, Columns3, KanbanSquare, LogOut, Menu as MenuIcon, Repeat, Search, Settings, Tag, Trash2 } from 'lucide-react';
+import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
 import { useState } from 'react';
@@ -7,6 +8,13 @@ import { BrandMark } from '../common/BrandMark';
 import { Menu } from '../common/Menu';
 import { useShell } from './ShellContext';
 
+const NAV = [
+  { to: '/', label: 'Board', icon: KanbanSquare },
+  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
+  { to: '/search', label: 'Search', icon: Search },
+  { to: '/templates', label: 'Recurring', icon: Repeat },
+] as const;
+
 export function TopBar() {
   const shell = useShell();
   const logout = useLogout();
@@ -14,7 +22,6 @@ export function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const page = (backgroundOf(location) ?? location).pathname;
-  const pageName = page === '/archive' ? 'Archive' : page === '/trash' ? 'Trash' : 'Board';
 
   return (
     <header className="topbar">
@@ -22,21 +29,20 @@ export function TopBar() {
         <BrandMark size={24} />
         <span className="topbar-name">Tower Tracker</span>
       </div>
-      {/* Main navigation. Calendar, Search and Templates join "Board" here in later phases. */}
       <nav className="topnav" aria-label="Main">
-        {pageName === 'Board' ? (
-          <h1 className="topnav-item is-current" aria-current="page">
-            Board
-          </h1>
-        ) : (
-          <>
-            <Link className="topnav-item" to="/">
-              Board
+        {NAV.map(({ to, label, icon: Icon }) => {
+          const current = to === '/' ? page === '/' || page.startsWith('/cards') : page.startsWith(to);
+          return (
+            <Link key={to} to={to} className={cls('topnav-item', current && 'is-current')} aria-current={current ? 'page' : undefined}>
+              <Icon size={16} aria-hidden />
+              <span className="topnav-label">{label}</span>
             </Link>
-            <h1 className="topnav-item is-current" aria-current="page">
-              {pageName}
-            </h1>
-          </>
+          );
+        })}
+        {(page === '/archive' || page === '/trash') && (
+          <span className="topnav-item is-current" aria-current="page">
+            {page === '/archive' ? 'Archive' : 'Trash'}
+          </span>
         )}
       </nav>
       <div className="topbar-spacer" />
