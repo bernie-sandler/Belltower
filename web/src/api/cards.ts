@@ -311,6 +311,7 @@ export function useDeleteCard() {
       setBoard(qc, (b) => removeTile(b, id));
       qc.setQueryData<CardDetail>(qk.card(id), (c) => (c ? { ...c, deletedAt: new Date().toISOString() } : c));
       void qc.invalidateQueries({ queryKey: qk.card(id) }); // the server's deletedAt
+      void qc.invalidateQueries({ queryKey: qk.cardLists });
       invalidateActivity(qc, id);
     },
     onError: (err, id) => {
@@ -331,6 +332,7 @@ export function useRestoreCard(kind: 'undelete' | 'restore') {
     onSuccess: (card) => {
       applyCardDetail(qc, card);
       invalidateActivity(qc, card.id);
+      void qc.invalidateQueries({ queryKey: qk.cardLists });
     },
     onError: (_err, id) => {
       // e.g. 409 card_deleted when restoring from the archive: show the card's real state.

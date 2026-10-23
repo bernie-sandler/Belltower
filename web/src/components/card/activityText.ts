@@ -2,7 +2,7 @@
 // names are copied into each entry, so history reads correctly after renames and deletes.
 // Everything is read defensively: unknown or future shapes fall back to a generic line.
 
-import { PRIORITY_LABELS, type ActivityEntry, type Priority } from '@tt/shared';
+import { PRIORITY_LABELS, SEVERITY_LABELS, type ActivityEntry, type Priority, type Severity } from '@tt/shared';
 import { formatClock, formatDateTime, formatLocalDate } from '../../lib/time';
 
 type Data = Record<string, unknown>;
@@ -90,6 +90,10 @@ export function activityText(entry: ActivityEntry): string {
       const to = priorityName(d.to);
       return to ? `Priority set to ${to}` : 'Priority cleared';
     }
+    case 'severity_changed': {
+      const to = typeof d.to === 'string' && d.to in SEVERITY_LABELS ? SEVERITY_LABELS[d.to as Severity] : null;
+      return to ? `Severity set to ${to}` : 'Severity cleared';
+    }
     case 'due_changed': {
       const from = dueText(d.from);
       const to = dueText(d.to);
@@ -109,13 +113,17 @@ export function activityText(entry: ActivityEntry): string {
     case 'checklist_item_unchecked':
       return `Unchecked ${quoted(str(d.text) ?? str(d.title))}`;
     case 'attachment_added':
-      return `Attached ${quoted(str(d.filename) ?? str(d.name))}`;
+      return `Attached ${quoted(str(d.name) ?? str(d.filename))}`;
     case 'attachment_removed':
-      return `Removed attachment ${quoted(str(d.filename) ?? str(d.name))}`;
+      return `Removed attachment ${quoted(str(d.name) ?? str(d.filename))}`;
     case 'linked':
-      return `Linked to ${quoted(str(d.title) ?? str(obj(d.card)?.title))}`;
-    case 'unlinked':
-      return `Unlinked from ${quoted(str(d.title) ?? str(obj(d.card)?.title))}`;
+    case 'unlinked': {
+      const other = quoted(str(d.otherTitle) ?? str(d.title) ?? str(obj(d.card)?.title));
+      const verb = entry.type === 'linked' ? 'Linked' : 'Unlinked';
+      if (d.direction === 'blocks') return `${verb}: this card blocks ${other}`;
+      if (d.direction === 'blocked_by') return `${verb}: this card is blocked by ${other}`;
+      return entry.type === 'linked' ? `Linked as related to ${other}` : `Unlinked from ${other}`;
+    }
     case 'archived':
       return 'Archived';
     case 'restored':

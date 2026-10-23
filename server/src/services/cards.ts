@@ -5,10 +5,13 @@ import type {
   CardTile,
   MoveCardResponse,
   Priority,
+  Severity,
 } from '@tt/shared';
+import { PRIORITIES, SEVERITIES } from '@tt/shared';
 import { stmt } from '../db/connection';
 import { badRequest, conflict, notFound } from '../errors';
 import { columnRef, labelRef, recordEvent } from './activity';
+import { listAttachments, listChecklists, listLinks } from './cardParts';
 import { getColumnRow, getRoleColumn, listColumns, type ColumnRow } from './columns';
 import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
@@ -20,6 +23,7 @@ export interface CardRow {
   title: string;
   description_md: string;
   priority: Priority | null;
+  severity: Severity | null;
   due_date: string | null;
   due_time: string | null;
   position: number;
@@ -66,6 +70,7 @@ function toTile(r: TileRow): CardTile {
     title: r.title,
     position: r.position,
     priority: r.priority,
+    severity: r.severity,
     dueDate: r.due_date,
     dueTime: r.due_time,
     completedAt: r.completed_at,
@@ -78,7 +83,7 @@ function toTile(r: TileRow): CardTile {
   };
 }
 
-function toDetail(r: TileRow): CardDetail {
+function toDetail(ctx: Ctx, r: TileRow): CardDetail {
   return {
     ...toTile(r),
     description: r.description_md,
@@ -87,6 +92,9 @@ function toDetail(r: TileRow): CardDetail {
     source: r.source,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    checklists: listChecklists(ctx, r.id),
+    attachments: listAttachments(ctx, r.id),
+    links: listLinks(ctx, r.id),
   };
 }
 
@@ -103,7 +111,19 @@ export function getCardRow(ctx: Ctx, id: number): CardRow {
 }
 
 export function getCard(ctx: Ctx, id: number): CardDetail {
-  return toDetail(tileRow(ctx, id));
+  return toDetail(ctx, tileRow(ctx, id));
+}
+
+/** Marks a card as changed (updated_at) for edits that live in other tables. */
+export function touchCard(ctx: Ctx, id: number): void {
+  stmt(ctx.db, 'UPDATE cards SET updated_at = ? WHERE id = ?').run(nowIso(ctx), id);
+}
+
+/** Cards in the Trash are read-only until restored. */
+export function getEditableCard(ctx: Ctx, id: number): CardRow {
+  const card = getCardRow(ctx, id);
+  if (card.deleted_at) throw conflict('card_deleted', 'This card is in the Trash; restore it before editing');
+  return card;
 }
 
 export function getCardTile(ctx: Ctx, id: number): CardTile {
@@ -155,6 +175,9 @@ function labelsOf(ctx: Ctx, cardId: number): LabelRow[] {
 // Creation — the single entry point for every card source (UI, recurring templates, v2 API).
 // ---------------------------------------------------------------------------------------------
 
+/** Allowed clock skew for "not in the future" checks (phone clocks drift). */
+export const FUTURE_SLACK_MS = 5 * 60 * 1000;
+
 export interface CreateCardInput {
   title: string;
   description?: string;
@@ -164,6 +187,7 @@ export interface CreateCardInput {
   /** Resolved case-insensitively; missing labels are created. */
   labelNames?: string[];
   priority?: Priority | null;
+  severity?: Severity | null;
   dueDate?: string | null;
   dueTime?: string | null;
   position?: 'top' | 'bottom';
@@ -197,14 +221,15 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
 
     const info = stmt(
       ctx.db,
-      `INSERT INTO cards (column_id, title, description_md, priority, due_date, due_time, position,
+      `INSERT INTO cards (column_id, title, description_md, priority, severity, due_date, due_time, position,
                           completed_at, source, source_ref, template_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       column.id,
       title,
       input.description ?? '',
       input.priority ?? null,
+      input.severity ?? null,
       input.dueDate ?? null,
       input.dueDate ? (input.dueTime ?? null) : null,
       position,
@@ -257,8 +282,10 @@ export interface UpdateCardInput {
   description?: string;
   labelIds?: number[];
   priority?: Priority | null;
+  severity?: Severity | null;
   dueDate?: string | null;
   dueTime?: string | null;
+  completedAt?: string;
 }
 
 function assertEditable(card: CardRow): void {
@@ -303,6 +330,12 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       recordEvent(ctx, id, 'priority_changed', { from: card.priority, to: patch.priority });
     }
 
+    if (patch.severity !== undefined && patch.severity !== card.severity) {
+      sets.push('severity = ?');
+      params.push(patch.severity);
+      recordEvent(ctx, id, 'severity_changed', { from: card.severity, to: patch.severity });
+    }
+
     if (patch.dueDate !== undefined || patch.dueTime !== undefined) {
       const date = patch.dueDate !== undefined ? patch.dueDate : card.due_date;
       let time = patch.dueTime !== undefined ? patch.dueTime : card.due_time;
@@ -333,6 +366,18 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
         recordEvent(ctx, id, 'labels_changed', { added: added.map(labelRef), removed: removed.map(labelRef) });
         changed = true;
       }
+    }
+
+    if (patch.completedAt !== undefined && patch.completedAt !== card.completed_at) {
+      if (!card.completed_at) {
+        throw conflict('not_done', 'Only a completed card (in the Done column) has a completion date');
+      }
+      if (Date.parse(patch.completedAt) > ctx.clock.now().getTime() + FUTURE_SLACK_MS) {
+        throw badRequest('validation', "The completion date can't be in the future");
+      }
+      sets.push('completed_at = ?');
+      params.push(patch.completedAt);
+      recordEvent(ctx, id, 'completion_changed', { from: card.completed_at, to: patch.completedAt });
     }
 
     if (sets.length || changed) {
@@ -468,3 +513,40 @@ export function restoreCard(ctx: Ctx, id: number): CardDetail {
   });
 }
 
+
+/** Archives every card in the Done column ("Archive all in Done"). Returns how many. */
+export function archiveAllDone(ctx: Ctx): number {
+  return tx(ctx, () => {
+    const done = getRoleColumn(ctx, 'done');
+    const ids = visibleIdsInColumn(ctx, done.id);
+    for (const id of ids) archiveCard(ctx, id);
+    return ids.length;
+  });
+}
+
+const rank = <T extends string>(order: readonly T[], v: T | null) => (v === null ? order.length : order.indexOf(v));
+
+/**
+ * One-off "Sort by priority" for a column: P0 → P3, then S1 → S4 within a priority; cards with
+ * neither go last. Ties keep their current order. A reorder, so nothing is logged.
+ */
+export function sortColumnByPriority(ctx: Ctx, columnId: number): Record<string, number[]> {
+  return tx(ctx, () => {
+    getColumnRow(ctx, columnId);
+    const rows = stmt(
+      ctx.db,
+      `SELECT id, priority, severity FROM cards WHERE column_id = ? AND ${VISIBLE} ORDER BY position, id`,
+    ).all(columnId) as { id: number; priority: Priority | null; severity: Severity | null }[];
+    const sorted = rows
+      .map((r, i) => ({ ...r, i }))
+      .sort(
+        (a, b) =>
+          rank(PRIORITIES, a.priority) - rank(PRIORITIES, b.priority) ||
+          rank(SEVERITIES, a.severity) - rank(SEVERITIES, b.severity) ||
+          a.i - b.i,
+      )
+      .map((r) => r.id);
+    writePositions(ctx, sorted);
+    return { [String(columnId)]: sorted };
+  });
+}

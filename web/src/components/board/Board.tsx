@@ -11,10 +11,11 @@ import {
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { BoardResponse, CardTile } from '@tt/shared';
-import { ArrowRightLeft, ExternalLink, Trash2 } from 'lucide-react';
+import { Archive, ArrowRightLeft, ExternalLink, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { sortedColumns, useBoard } from '../../api/board';
+import { useArchiveCard } from '../../api/cardParts';
 import { useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
 import { cls } from '../../lib/cls';
@@ -69,6 +70,8 @@ function BoardView({ board }: { board: BoardResponse }) {
   const moveCard = useMoveCard();
   const deleteCard = useDeleteCard();
   const undelete = useRestoreCard('undelete');
+  const archive = useArchiveCard();
+  const unarchive = useRestoreCard('restore');
 
   const columns = useMemo(() => sortedColumns(board.columns), [board.columns]);
   const tilesById = useMemo(() => new Map(board.cards.map((c) => [c.id, c] as const)), [board.cards]);
@@ -234,6 +237,7 @@ function BoardView({ board }: { board: BoardResponse }) {
     (c) => (dnd.items.get(c.id)?.length ?? 0) + (pendingByColumn.get(c.id)?.length ?? 0),
   );
   const menuTile = tileMenu ? tilesById.get(tileMenu.cardId) : undefined;
+  const menuTileDone = menuTile ? columns.find((c) => c.id === menuTile.columnId)?.role === 'done' : false;
   const deleteTile = deleteTarget !== null ? tilesById.get(deleteTarget) : undefined;
 
   return (
@@ -305,6 +309,22 @@ function BoardView({ board }: { board: BoardResponse }) {
           items={[
             { key: 'open', label: 'Open', icon: <ExternalLink size={16} />, onSelect: () => openCard(menuTile.id) },
             { key: 'move', label: 'Move to…', icon: <ArrowRightLeft size={16} />, onSelect: () => setMoveTarget(menuTile.id) },
+            ...(menuTileDone
+              ? [
+                  {
+                    key: 'archive',
+                    label: 'Archive',
+                    icon: <Archive size={16} />,
+                    onSelect: () => {
+                      const id = menuTile.id;
+                      archive.mutate(id, {
+                        onSuccess: () =>
+                          toast('Card archived', { kind: 'success', action: { label: 'Undo', onClick: () => unarchive.mutate(id) } }),
+                      });
+                    },
+                  },
+                ]
+              : []),
             'separator',
             { key: 'delete', label: 'Delete…', icon: <Trash2 size={16} />, danger: true, onSelect: () => setDeleteTarget(menuTile.id) },
           ]}

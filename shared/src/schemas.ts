@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES } from './constants';
+import { LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, SEVERITIES } from './constants';
 
 const id = z.number().int().positive();
 
@@ -24,6 +24,12 @@ const NUL_MESSAGE = 'Contains an invalid (NUL) character';
 
 export const Title = z.string().trim().min(1).max(LIMITS.cardTitle).refine(noNul, NUL_MESSAGE);
 export const Description = z.string().max(LIMITS.description);
+
+/** A UTC instant as produced by Date#toISOString(). */
+export const IsoInstant = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'Expected an ISO timestamp')
+  .refine((s) => !Number.isNaN(Date.parse(s)), 'Not a real timestamp');
 
 // ---- auth ----
 export const LoginBody = z.object({
@@ -80,6 +86,7 @@ export const CreateCardBody = z.object({
   columnId: id.optional(),
   labelIds: z.array(id).max(50).optional(),
   priority: z.enum(PRIORITIES).nullable().optional(),
+  severity: z.enum(SEVERITIES).nullable().optional(),
   dueDate: LocalDate.nullable().optional(),
   dueTime: LocalTime.nullable().optional(),
   /** Where in the column the card goes. Default 'bottom'. */
@@ -94,8 +101,11 @@ export const UpdateCardBody = z.object({
   description: Description.optional(),
   labelIds: z.array(id).max(50).optional(),
   priority: z.enum(PRIORITIES).nullable().optional(),
+  severity: z.enum(SEVERITIES).nullable().optional(),
   dueDate: LocalDate.nullable().optional(),
   dueTime: LocalTime.nullable().optional(),
+  /** Backdate (or correct) when a card in Done was completed. Not allowed in the future. */
+  completedAt: IsoInstant.optional(),
 });
 export type UpdateCardBody = z.infer<typeof UpdateCardBody>;
 
@@ -105,3 +115,55 @@ export const MoveCardBody = z.object({
   afterCardId: id.nullable(),
 });
 export type MoveCardBody = z.infer<typeof MoveCardBody>;
+
+// ---- checklists ----
+const ChecklistTitle = z.string().trim().min(1).max(LIMITS.checklistTitle).refine(noNul, NUL_MESSAGE);
+const ItemText = z.string().trim().min(1).max(LIMITS.checklistItem).refine(noNul, NUL_MESSAGE);
+
+export const ChecklistBody = z.object({ title: ChecklistTitle });
+export type ChecklistBody = z.infer<typeof ChecklistBody>;
+
+export const ChecklistItemBody = z.object({ text: ItemText });
+export type ChecklistItemBody = z.infer<typeof ChecklistItemBody>;
+
+export const UpdateChecklistItemBody = z.object({
+  text: ItemText.optional(),
+  checked: z.boolean().optional(),
+});
+export type UpdateChecklistItemBody = z.infer<typeof UpdateChecklistItemBody>;
+
+// ---- links ----
+export const CreateLinkBody = z.object({
+  otherCardId: id,
+  /** From this card's point of view. */
+  direction: z.enum(['relates', 'blocks', 'blocked_by']),
+});
+export type CreateLinkBody = z.infer<typeof CreateLinkBody>;
+
+/** GET /api/cards: card lists for the link picker, Archive and Trash. */
+export const CardListQuery = z.object({
+  status: z.enum(['board', 'archived', 'trashed', 'live']).default('live'),
+  q: z.string().trim().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+export type CardListQuery = z.infer<typeof CardListQuery>;
+
+// ---- work log ----
+export const WorklogBody = z.object({
+  bodyMd: z.string().trim().min(1).max(LIMITS.worklog).refine(noNul, NUL_MESSAGE),
+  /** When the work happened; defaults to now. Can't be in the future. */
+  occurredAt: IsoInstant.optional(),
+});
+export type WorklogBody = z.infer<typeof WorklogBody>;
+
+export const UpdateWorklogBody = z.object({
+  bodyMd: z.string().trim().min(1).max(LIMITS.worklog).refine(noNul, NUL_MESSAGE).optional(),
+  occurredAt: IsoInstant.optional(),
+  retracted: z.boolean().optional(),
+});
+export type UpdateWorklogBody = z.infer<typeof UpdateWorklogBody>;
+
+export const TextPreviewQuery = z.object({
+  mode: z.enum(['head', 'tail', 'full']).default('head'),
+});
+export type TextPreviewQuery = z.infer<typeof TextPreviewQuery>;

@@ -2,7 +2,7 @@ import type { ActivityEntry, ActivityEventType, ColumnRef, LabelRef } from '@tt/
 import { stmt } from '../db/connection';
 import { nowIso, type Ctx } from './context';
 
-interface ActivityRow {
+export interface ActivityRow {
   id: number;
   card_id: number;
   kind: 'event' | 'worklog';
@@ -13,6 +13,7 @@ interface ActivityRow {
   created_at: string;
   edited_at: string | null;
   retracted_at: string | null;
+  revision_count?: number;
 }
 
 /**
@@ -41,6 +42,7 @@ export function toActivityEntry(row: ActivityRow): ActivityEntry {
     createdAt: row.created_at,
     editedAt: row.edited_at,
     retractedAt: row.retracted_at,
+    revisionCount: row.revision_count ?? 0,
   };
 }
 
@@ -48,7 +50,8 @@ export function toActivityEntry(row: ActivityRow): ActivityEntry {
 export function listActivity(ctx: Ctx, cardId: number): ActivityEntry[] {
   const rows = stmt(
     ctx.db,
-    'SELECT * FROM activity WHERE card_id = ? ORDER BY occurred_at DESC, id DESC',
+    `SELECT a.*, (SELECT count(*) FROM activity_revisions r WHERE r.activity_id = a.id) AS revision_count
+       FROM activity a WHERE a.card_id = ? ORDER BY a.occurred_at DESC, a.id DESC`,
   ).all(cardId) as ActivityRow[];
   return rows.map(toActivityEntry);
 }

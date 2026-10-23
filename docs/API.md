@@ -16,7 +16,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
   | 401 | `unauthenticated` (no or expired session → show the login page), `invalid_password` |
   | 403 | `csrf`, `invalid_setup_code` |
   | 404 | `not_found`, `setup_not_available` |
-  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed` |
+  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed` |
   | 413 | `too_large` |
   | 429 | `rate_limited` (body also has `retryAfterSec`), `busy` |
   | 500 | `internal` |
@@ -77,6 +77,36 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 | `POST /api/cards/:id/archive` | — | `CardDetail` | Only allowed for cards in the Done column (`409 not_done`). |
 | `POST /api/cards/:id/restore` | — | `CardDetail` | Un-archives the card to the bottom of its column. |
 | `GET /api/cards/:id/activity` | — | `ActivityEntry[]` | Newest first. |
+
+## Card parts (Phase 2)
+
+Every route below that changes a card returns the updated `CardDetail`, which now also carries
+`checklists`, `attachments` and `links`.
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/cards?status=&q=&limit=` | — | `CardSummary[]` | `status`: `live` (default), `board`, `archived` or `trashed`. `q` matches titles, or `#id`. Used by the link picker, Archive and Trash. |
+| `POST /api/cards/archive-done` | — | `{archived}` | Archives every card in the Done column. |
+| `POST /api/cards/:id/checklists` | `ChecklistBody {title}` | `CardDetail` | Logs `checklist_added`. |
+| `PUT /api/cards/:id/checklists/order` | `ReorderBody` | `CardDetail` | |
+| `PATCH /api/checklists/:id` | `ChecklistBody` | `CardDetail` | Rename. |
+| `DELETE /api/checklists/:id` | — | `CardDetail` | Logs `checklist_removed`. |
+| `POST /api/checklists/:id/items` | `ChecklistItemBody {text}` | `CardDetail` | |
+| `PUT /api/checklists/:id/items/order` | `ReorderBody` | `CardDetail` | |
+| `PATCH /api/checklist-items/:id` | `UpdateChecklistItemBody {text?, checked?}` | `CardDetail` | Checking or unchecking logs an event; text edits don't. |
+| `DELETE /api/checklist-items/:id` | — | `CardDetail` | |
+| `POST /api/cards/:id/links` | `CreateLinkBody {otherCardId, direction}` | `CardDetail` | `direction` from this card's view: `relates`, `blocks` or `blocked_by`. `409 duplicate_link`. Logged on both cards. |
+| `DELETE /api/cards/:id/links/:linkId` | — | `CardDetail` | Logged on both cards. |
+| `POST /api/cards/:id/worklog` | `WorklogBody {bodyMd, occurredAt?}` | `201 ActivityEntry` | `occurredAt` backdates the entry; it can't be in the future. |
+| `PATCH /api/activity/:id` | `UpdateWorklogBody {bodyMd?, occurredAt?, retracted?}` | `ActivityEntry` | Work-log entries only (`409 not_worklog`). The previous text and time are kept as a revision. |
+| `GET /api/activity/:id/revisions` | — | `ActivityRevision[]` | Oldest first; the first one is the original text. |
+| `POST /api/cards/:id/attachments` | multipart, one or more `file` fields | `CardDetail` | Up to `MAX_UPLOAD_MB` per file and 10 files per request (`413 too_large`). The kind is detected from the content. |
+| `GET /api/attachments/:id` | — | file | Images and text files are served inline, everything else as a download; `?download=1` always downloads. Sent with a sandboxing CSP. |
+| `GET /api/attachments/:id/text?mode=head\|tail\|full` | — | `TextPreview` | Text files only (`415 not_text`). Previews 256 KB; `full` is limited to 5 MB. |
+| `DELETE /api/attachments/:id` | — | `CardDetail` | Deletes the file; the history keeps its name. |
+
+`PATCH /api/cards/:id` also accepts `completedAt` (an ISO instant) to backdate when a card in Done was completed
+(`409 not_done` otherwise; it can't be in the future).
 
 ## Health
 

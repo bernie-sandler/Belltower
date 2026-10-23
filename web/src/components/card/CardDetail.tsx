@@ -1,18 +1,34 @@
 // Card detail, shown at /cards/:id over the board: a modal on desktop, a full-screen sheet on
-// phones (same markup, CSS decides). Phase 1 content: title, labels, description, column +
-// Move to…, delete, and a read-only activity list.
+// phones (same markup, CSS decides). Title, labels, priority/due/completion, Markdown description,
+// checklists, attachments (picker, drop, paste), linked cards, and the activity + work log.
 
-import { PRIORITY_LABELS, type CardDetail as CardDetailType, type Label } from '@tt/shared';
-import { ArchiveRestore, ArrowRightLeft, CircleCheck, Clock, Flag, Plus, Tag, Trash2, Undo2, X } from 'lucide-react';
+import type { CardDetail as CardDetailType, Label } from '@tt/shared';
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowRightLeft,
+  CircleCheck,
+  Link2,
+  ListChecks,
+  NotebookPen,
+  Paperclip,
+  Plus,
+  Tag,
+  Trash2,
+  Undo2,
+  Upload,
+  X,
+} from 'lucide-react';
 import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { sortedColumns, useBoard } from '../../api/board';
+import { useArchiveCard } from '../../api/cardParts';
 import { useCard, useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
 import { isApiError } from '../../api/client';
 import { errorMessage } from '../../api/errors';
 import { sortedLabels } from '../../api/labels';
 import { cls } from '../../lib/cls';
 import { clearDraft } from '../../lib/drafts';
-import { dueStatus, formatDateTime, formatDue, useNow } from '../../lib/time';
+import { formatDateTime, useNow } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Modal } from '../common/Modal';
@@ -20,6 +36,10 @@ import { Spinner } from '../common/Status';
 import { LabelChip } from '../labels/LabelChip';
 import { useShell } from '../shell/ShellContext';
 import { ActivityList } from './ActivityList';
+import { Attachments, useAttachmentUploader, useFileDrop, usePasteToAttach } from './Attachments';
+import { CardFields } from './CardFields';
+import { Checklists } from './Checklists';
+import { Links } from './Links';
 import { DescriptionEditor, descriptionDraftKey } from './DescriptionEditor';
 import { LabelPicker } from './LabelPicker';
 import { MoveToSheet } from './MoveToSheet';
@@ -159,17 +179,24 @@ function CardDetailBody({
   const deleteCard = useDeleteCard();
   const undelete = useRestoreCard('undelete');
   const unarchive = useRestoreCard('restore');
+  const archive = useArchiveCard();
   const [labelAnchor, setLabelAnchor] = useState<HTMLElement | null>(null);
   const [moving, setMoving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Bumped by the sidebar buttons to open the matching section's "add" UI.
+  const [checklistRequest, setChecklistRequest] = useState(0);
+  const [linkRequest, setLinkRequest] = useState(0);
+  const [logRequest, setLogRequest] = useState(0);
 
   const allLabels = useMemo(() => sortedLabels(labels), [labels]);
   const cardLabels = allLabels.filter((l) => card.labelIds.includes(l.id));
   const deleted = card.deletedAt !== null;
   const archived = card.archivedAt !== null;
   const onBoard = !deleted && !archived;
-  const due = dueStatus(card, now);
   const doneColumn = board ? sortedColumns(board.columns).find((c) => c.role === 'done') : undefined;
+  const uploader = useAttachmentUploader(card.id, !deleted);
+  usePasteToAttach(uploader.upload, !deleted);
+  const drop = useFileDrop(uploader.upload, !deleted);
 
   function doDelete() {
     deleteCard.mutate(card.id, {
@@ -185,7 +212,13 @@ function CardDetailBody({
   }
 
   return (
-    <div className="card-detail">
+    <div className={cls('card-detail', drop.over && 'is-drop-target')} {...drop.props}>
+      {drop.over && (
+        <div className="drop-overlay" aria-hidden>
+          <Upload size={28} /> Drop files to attach
+        </div>
+      )}
+      {uploader.input}
       <header className="card-header">
         <div className="card-header-main">
           <TitleEditor card={card} titleId={titleId} readOnly={deleted} onDirtyChange={onTitleDirty} />
@@ -205,6 +238,11 @@ function CardDetailBody({
             )}
           </p>
         </div>
+        {!deleted && (
+          <button type="button" className="btn btn-sm card-log-btn" onClick={() => setLogRequest((n) => n + 1)}>
+            <NotebookPen size={16} aria-hidden /> <span className="card-log-label">Log work</span>
+          </button>
+        )}
         <CloseButton onClick={requestClose} />
       </header>
 
@@ -250,28 +288,13 @@ function CardDetailBody({
             </div>
           </section>
 
-          {(card.priority || card.dueDate || card.completedAt) && (
-            <div className="card-meta">
-              {card.priority && (
-                <span className={cls('meta-item', `prio-text-${card.priority}`)}>
-                  <Flag size={14} aria-hidden /> {PRIORITY_LABELS[card.priority]} priority
-                </span>
-              )}
-              {card.dueDate && (
-                <span className={cls('meta-item', due && `due-text-${due}`)}>
-                  <Clock size={14} aria-hidden /> Due {formatDue(card.dueDate, card.dueTime, { relative: true, now })}
-                </span>
-              )}
-              {card.completedAt && (
-                <span className="meta-item">
-                  <CircleCheck size={14} aria-hidden /> Completed {formatDateTime(card.completedAt, now)}
-                </span>
-              )}
-            </div>
-          )}
+          <CardFields card={card} readOnly={deleted} />
 
           <DescriptionEditor card={card} readOnly={deleted} onDirtyChange={onDescriptionDirty} />
-          <ActivityList cardId={card.id} />
+          <Checklists card={card} readOnly={deleted} addRequest={checklistRequest} />
+          <Attachments card={card} readOnly={deleted} uploader={uploader} />
+          <Links card={card} readOnly={deleted} addRequest={linkRequest} />
+          <ActivityList cardId={card.id} readOnly={deleted} composeRequest={logRequest} />
           <p className="card-footnote muted">
             Created {formatDateTime(card.createdAt, now)}
             {card.updatedAt !== card.createdAt && <> · Updated {formatDateTime(card.updatedAt, now)}</>}
@@ -279,12 +302,48 @@ function CardDetailBody({
         </div>
 
         <aside className="card-sidebar" aria-label="Card actions">
+          {!deleted && (
+            <>
+              <p className="card-sidebar-title">Add to card</p>
+              <button type="button" className="btn btn-block card-action" onClick={() => setLogRequest((n) => n + 1)}>
+                <NotebookPen size={16} aria-hidden /> Log work
+              </button>
+              <button type="button" className="btn btn-block card-action" onClick={() => setChecklistRequest((n) => n + 1)}>
+                <ListChecks size={16} aria-hidden /> Checklist
+              </button>
+              <button type="button" className="btn btn-block card-action" onClick={uploader.pick}>
+                <Paperclip size={16} aria-hidden /> Attachment
+              </button>
+              <button type="button" className="btn btn-block card-action" onClick={() => setLinkRequest((n) => n + 1)}>
+                <Link2 size={16} aria-hidden /> Link card
+              </button>
+              <p className="card-sidebar-title">Actions</p>
+            </>
+          )}
           {onBoard && (
             <>
               <button type="button" className="btn btn-block card-action" onClick={() => setMoving(true)}>
                 <ArrowRightLeft size={16} aria-hidden /> Move to…
               </button>
               {doneColumn && card.columnId !== doneColumn.id && <MarkDoneButton cardId={card.id} />}
+              {doneColumn && card.columnId === doneColumn.id && (
+                <button
+                  type="button"
+                  className="btn btn-block card-action"
+                  disabled={archive.isPending}
+                  onClick={() =>
+                    archive.mutate(card.id, {
+                      onSuccess: () => {
+                        onClose();
+                        const id = card.id;
+                        toast('Card archived', { kind: 'success', action: { label: 'Undo', onClick: () => unarchive.mutate(id) } });
+                      },
+                    })
+                  }
+                >
+                  <Archive size={16} aria-hidden /> Archive
+                </button>
+              )}
             </>
           )}
           {!deleted && (

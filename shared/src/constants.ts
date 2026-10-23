@@ -1,11 +1,44 @@
+/** Highest first. Stored values stay descriptive; the UI shows P0–P3. */
 export const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
+export const PRIORITY_CODES: Record<Priority, string> = { critical: 'P0', high: 'P1', medium: 'P2', low: 'P3' };
+
 export const PRIORITY_LABELS: Record<Priority, string> = {
-  critical: 'Critical',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
+  critical: 'P0 Critical',
+  high: 'P1 High',
+  medium: 'P2 Medium',
+  low: 'P3 Low',
+};
+
+/** Severity: how bad the impact is. Worst first. */
+export const SEVERITIES = ['blocker', 'major', 'minor', 'trivial'] as const;
+export type Severity = (typeof SEVERITIES)[number];
+
+export const SEVERITY_CODES: Record<Severity, string> = { blocker: 'S1', major: 'S2', minor: 'S3', trivial: 'S4' };
+
+export const SEVERITY_LABELS: Record<Severity, string> = {
+  blocker: 'S1 Blocker',
+  major: 'S2 Major',
+  minor: 'S3 Minor',
+  trivial: 'S4 Trivial',
+};
+
+export const SEVERITY_DESCRIPTIONS: Record<Severity, string> = {
+  blocker: 'Crash, data loss, or the system is unusable',
+  major: 'A core function is broken',
+  minor: 'Partial breakage or an inconvenience',
+  trivial: 'Visual or text issues',
+};
+
+export const LEVELS = ['high', 'medium', 'low'] as const;
+export type Level = (typeof LEVELS)[number];
+
+/** Priority from impact × urgency: PRIORITY_MATRIX[impact][urgency]. */
+export const PRIORITY_MATRIX: Record<Level, Record<Level, Priority>> = {
+  high: { high: 'critical', medium: 'high', low: 'medium' },
+  medium: { high: 'high', medium: 'medium', low: 'low' },
+  low: { high: 'medium', medium: 'low', low: 'low' },
 };
 
 export const COLUMN_ROLES = ['triage', 'done'] as const;
@@ -40,7 +73,19 @@ export const LIMITS = {
   labelName: 40,
   cardTitle: 300,
   description: 100_000,
+  checklistTitle: 200,
+  checklistItem: 1000,
+  worklog: 50_000,
+  /** Text attachments preview this much (head or tail) before "Load full". */
+  textPreviewBytes: 256 * 1024,
+  /** "Load full" is refused above this size; download instead. */
+  textFullMaxBytes: 5 * 1024 * 1024,
 } as const;
+
+/** Extensions shown in the inline text viewer. */
+export const TEXT_EXTENSIONS = [
+  'log', 'txt', 'conf', 'cfg', 'ini', 'yml', 'yaml', 'json', 'md', 'xml', 'csv', 'toml', 'sh', 'env',
+] as const;
 
 export const ACTIVITY_EVENT_TYPES = [
   'created',
@@ -49,6 +94,7 @@ export const ACTIVITY_EVENT_TYPES = [
   'description_changed',
   'labels_changed',
   'priority_changed',
+  'severity_changed',
   'due_changed',
   'checklist_added',
   'checklist_removed',

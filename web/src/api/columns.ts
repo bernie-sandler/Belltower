@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BoardResponse, Column } from '@tt/shared';
-import { setBoard } from './board';
+import { applyOrders, setBoard } from './board';
 import { api, isApiError } from './client';
 import { qk } from './keys';
 
@@ -97,6 +97,17 @@ export function useDeleteColumn() {
     },
     // 404 (already deleted elsewhere) / 400 invalid_target (the target was): the dialog shows the
     // message; the refetch shows the current columns.
+    onError: (err) => refetchIfStale(qc, err),
+  });
+}
+
+/** One-off sort of a column: P0 → P3, then S1 → S4. */
+export function useSortColumnByPriority() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (columnId: number) =>
+      api.post<{ orders: Record<string, number[]> }>(`/api/columns/${columnId}/sort-by-priority`),
+    onSuccess: (res) => setBoard(qc, (b) => applyOrders(b, res.orders).board),
     onError: (err) => refetchIfStale(qc, err),
   });
 }

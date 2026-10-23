@@ -3,9 +3,14 @@
 A self-hosted, single-user, Trello-style issue tracker for a homelab. One Docker container with SQLite.
 Everything it stores lives under `/data`.
 
-> **Status: Phase 1 of 4.** Working now: login, the board, columns, cards, labels, drag and drop, and "Move to…".
-> Coming next: the card detail view with Markdown, checklists, attachments, links and the work log (Phase 2);
-> the calendar, search and recurring maintenance (Phase 3); backup/restore and the full guide (Phase 4).
+> **Status: Phase 2 of 4.** Working now:
+> - login, the board, columns, cards, labels, drag and drop, and "Move to…"
+> - cards: Markdown descriptions, priority, due dates, completion dates, checklists, attachments (picker, drag-drop,
+>   pasted screenshots) and linked cards
+> - the activity log and work log
+> - Archive and Trash
+>
+> Coming next: the calendar, search and recurring maintenance (Phase 3); backup/restore and the full guide (Phase 4).
 > The design is in [docs/DESIGN.md](docs/DESIGN.md) and the API in [docs/API.md](docs/API.md).
 
 ## Run it on Unraid (Docker Compose Manager)
@@ -50,7 +55,7 @@ Compose recreates the container with the new settings; your data is untouched. D
 | `DATA_PATH` | `/mnt/cache/appdata/tower-tracker` | Host folder for the database and attachments. |
 | `TZ` | `America/Chicago` | All dates and times are shown in this zone. |
 | `APP_PASSWORD` | — | Optional. When set, this is the password, and changing it in the app is disabled. Single-quote it if it contains `$`. |
-| `MAX_UPLOAD_MB` | `25` | Per-attachment limit (attachments arrive in Phase 2). |
+| `MAX_UPLOAD_MB` | `25` | Largest allowed attachment. If Nginx Proxy Manager proxies the app, raise its `client_max_body_size` to match. |
 | `PUID` / `PGID` | `99` / `100` | Ownership of files in `DATA_PATH`. |
 | `TRUST_PROXY` | — | Only if Nginx Proxy Manager proxies the app: the NPM VM's LAN IP. |
 
