@@ -15,7 +15,7 @@ export interface PopoverProps {
   anchor: HTMLElement;
   onClose: () => void;
   children: ReactNode;
-  placement?: 'bottom-start' | 'bottom-end';
+  placement?: 'bottom-start' | 'bottom-end' | 'bottom-center';
   className?: string;
   /** 'menu' closes on Tab (menu semantics); anything else keeps Tab inside the panel. */
   role?: string;
@@ -66,7 +66,8 @@ export function Popover({
       const height = Math.min(h, maxHeight);
       const placeBelow = height <= below || below >= above;
       const top = placeBelow ? a.bottom + GAP : Math.max(MARGIN, a.top - GAP - height);
-      let left = placement === 'bottom-end' ? a.right - w : a.left;
+      let left =
+        placement === 'bottom-end' ? a.right - w : placement === 'bottom-center' ? a.left + a.width / 2 - w / 2 : a.left;
       left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
       el.style.top = `${Math.round(top)}px`;
       el.style.left = `${Math.round(left)}px`;

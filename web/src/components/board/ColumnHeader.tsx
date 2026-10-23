@@ -1,7 +1,10 @@
 import { LIMITS, type Column } from '@tt/shared';
-import { ArrowLeft, ArrowRight, CircleCheck, Ellipsis, Inbox, Pencil, Trash2 } from 'lucide-react';
+import { Archive, ArrowDownWideNarrow, ArrowLeft, ArrowRight, CircleCheck, Ellipsis, Inbox, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { useRenameColumn, useReorderColumns } from '../../api/columns';
+import { useArchiveAllDone } from '../../api/cardParts';
+import { useRenameColumn, useReorderColumns, useSortColumnByPriority } from '../../api/columns';
+import { toast } from '../../lib/toast';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Menu } from '../common/Menu';
 import { DeleteColumnDialog } from './DeleteColumnDialog';
 
@@ -26,6 +29,9 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
   const [draft, setDraft] = useState(column.name);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [archivingAll, setArchivingAll] = useState(false);
+  const archiveAll = useArchiveAllDone();
+  const sortByPriority = useSortColumnByPriority();
 
   const role = column.role ? ROLE_INFO[column.role] : null;
   // Set once the edit is resolved (saved or cancelled): the blur fired as the input unmounts must
@@ -141,6 +147,28 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
               disabled: index === columns.length - 1,
               onSelect: () => move(1),
             },
+            {
+              key: 'sort',
+              label: 'Sort by priority',
+              hint: 'P0 → P3, then S1 → S4',
+              icon: <ArrowDownWideNarrow size={16} />,
+              disabled: cardCount < 2,
+              onSelect: () =>
+                sortByPriority.mutate(column.id, {
+                  onSuccess: () => toast(`Sorted ${column.name} by priority`, { kind: 'success', durationMs: 2000 }),
+                }),
+            },
+            ...(column.role === 'done'
+              ? [
+                  {
+                    key: 'archive-all',
+                    label: 'Archive all cards…',
+                    icon: <Archive size={16} />,
+                    disabled: cardCount === 0,
+                    onSelect: () => setArchivingAll(true),
+                  },
+                ]
+              : []),
             'separator',
             {
               key: 'delete',
@@ -152,6 +180,24 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
               onSelect: () => setDeleting(true),
             },
           ]}
+        />
+      )}
+
+      {archivingAll && (
+        <ConfirmDialog
+          title={`Archive all ${cardCount} card${cardCount === 1 ? '' : 's'} in ${column.name}?`}
+          message="They leave the board but stay searchable, in the calendar, and in the Archive (main menu)."
+          confirmLabel="Archive all"
+          busy={archiveAll.isPending}
+          onCancel={() => setArchivingAll(false)}
+          onConfirm={() =>
+            archiveAll.mutate(undefined, {
+              onSuccess: (r) => {
+                setArchivingAll(false);
+                toast(`Archived ${r.archived} card${r.archived === 1 ? '' : 's'}`, { kind: 'success' });
+              },
+            })
+          }
         />
       )}
 

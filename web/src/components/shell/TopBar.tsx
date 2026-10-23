@@ -1,4 +1,6 @@
-import { Columns3, LogOut, Menu as MenuIcon, Settings, Tag } from 'lucide-react';
+import { Archive, Columns3, LogOut, Menu as MenuIcon, Settings, Tag, Trash2 } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { backgroundOf } from '../../lib/navigation';
 import { useState } from 'react';
 import { useLogout } from '../../api/auth';
 import { BrandMark } from '../common/BrandMark';
@@ -9,6 +11,10 @@ export function TopBar() {
   const shell = useShell();
   const logout = useLogout();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const page = (backgroundOf(location) ?? location).pathname;
+  const pageName = page === '/archive' ? 'Archive' : page === '/trash' ? 'Trash' : 'Board';
 
   return (
     <header className="topbar">
@@ -18,9 +24,20 @@ export function TopBar() {
       </div>
       {/* Main navigation. Calendar, Search and Templates join "Board" here in later phases. */}
       <nav className="topnav" aria-label="Main">
-        <h1 className="topnav-item is-current" aria-current="page">
-          Board
-        </h1>
+        {pageName === 'Board' ? (
+          <h1 className="topnav-item is-current" aria-current="page">
+            Board
+          </h1>
+        ) : (
+          <>
+            <Link className="topnav-item" to="/">
+              Board
+            </Link>
+            <h1 className="topnav-item is-current" aria-current="page">
+              {pageName}
+            </h1>
+          </>
+        )}
       </nav>
       <div className="topbar-spacer" />
       <button
@@ -41,6 +58,8 @@ export function TopBar() {
           items={[
             { key: 'labels', label: 'Manage labels', icon: <Tag size={16} />, onSelect: shell.openLabels },
             { key: 'column', label: 'Add column', icon: <Columns3 size={16} />, onSelect: shell.requestAddColumn },
+            { key: 'archive', label: 'Archive', icon: <Archive size={16} />, onSelect: () => void navigate('/archive') },
+            { key: 'trash', label: 'Trash', icon: <Trash2 size={16} />, onSelect: () => void navigate('/trash') },
             { key: 'settings', label: 'Settings', icon: <Settings size={16} />, onSelect: shell.openSettings },
             'separator',
             {

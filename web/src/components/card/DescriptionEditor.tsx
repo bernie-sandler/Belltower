@@ -1,4 +1,4 @@
-// Plain-text description editor (Markdown rendering arrives in Phase 2).
+// Markdown description: rendered when not editing, a textarea with Write/Preview tabs when editing.
 //
 // Concurrency: the draft remembers the saved text it started from (`base`). If the saved text
 // changes while editing — another device saved, or the server answered 409 — the editor keeps
@@ -13,6 +13,7 @@ import { conflictCard } from '../../api/errors';
 import { clearDraft, loadDraft, saveDraft } from '../../lib/drafts';
 import { toast } from '../../lib/toast';
 import { AutoGrowTextarea } from '../common/AutoGrowTextarea';
+import { Markdown } from '../common/Markdown';
 
 interface Props {
   card: CardDetail;
@@ -33,6 +34,7 @@ export function DescriptionEditor({ card, readOnly = false, onDirtyChange }: Pro
   const [restored, setRestored] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
+  const [preview, setPreview] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const focusOnOpen = useRef(false);
 
@@ -72,6 +74,7 @@ export function DescriptionEditor({ card, readOnly = false, onDirtyChange }: Pro
     setReviewed(false);
     setShowCurrent(false);
     setRestored(false);
+    setPreview(false);
     focusOnOpen.current = true;
     setEditing(true);
   }
@@ -146,6 +149,22 @@ export function DescriptionEditor({ card, readOnly = false, onDirtyChange }: Pro
               {showCurrent && <div className="description-text is-current">{card.description || '(empty)'}</div>}
             </div>
           )}
+          <div className="editor-tabs" role="tablist" aria-label="Description editor">
+            <button type="button" role="tab" aria-selected={!preview} className="editor-tab" onClick={() => setPreview(false)}>
+              Write
+            </button>
+            <button type="button" role="tab" aria-selected={preview} className="editor-tab" onClick={() => setPreview(true)}>
+              Preview
+            </button>
+            <span className="editor-hint muted">Markdown supported</span>
+          </div>
+          {preview ? (
+            draft.trim() ? (
+              <Markdown text={draft} className="description-text is-preview" />
+            ) : (
+              <p className="muted description-preview-empty">Nothing to preview.</p>
+            )
+          ) : (
           <AutoGrowTextarea
             ref={textRef}
             className="input description-input"
@@ -166,6 +185,7 @@ export function DescriptionEditor({ card, readOnly = false, onDirtyChange }: Pro
               }
             }}
           />
+          )}
           <div className="editor-actions">
             <button type="button" className="btn btn-primary" onClick={save} disabled={update.isPending}>
               {update.isPending ? 'Saving…' : 'Save'}
@@ -176,8 +196,8 @@ export function DescriptionEditor({ card, readOnly = false, onDirtyChange }: Pro
           </div>
         </div>
       ) : card.description ? (
-        <div className="description-text" onDoubleClick={start}>
-          {card.description}
+        <div onDoubleClick={start}>
+          <Markdown text={card.description} className="description-text" />
         </div>
       ) : readOnly ? (
         <p className="muted">No description.</p>

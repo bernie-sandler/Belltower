@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PRIORITY_LABELS, type CardTile, type Label } from '@tt/shared';
+import { PRIORITY_CODES, PRIORITY_LABELS, SEVERITY_CODES, SEVERITY_LABELS, type CardTile, type Label } from '@tt/shared';
 import { Clock, Ellipsis, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
 import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { cls } from '../../lib/cls';
@@ -35,7 +35,12 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
     .sort((a, b) => a.position - b.position);
   const due = dueStatus(tile, now);
   const hasFooter =
-    due !== null || tile.attachmentCount > 0 || tile.linkCount > 0 || tile.checklistTotal > 0;
+    due !== null ||
+    tile.attachmentCount > 0 ||
+    tile.linkCount > 0 ||
+    tile.checklistTotal > 0 ||
+    tile.priority !== null ||
+    tile.severity !== null;
 
   return (
     <div
@@ -47,11 +52,7 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
         hasMenu && 'has-menu',
       )}
     >
-      {tile.priority && (
-        <span className="tile-prio" title={`Priority: ${PRIORITY_LABELS[tile.priority]}`}>
-          <span className="visually-hidden">Priority {PRIORITY_LABELS[tile.priority]}. </span>
-        </span>
-      )}
+      {tile.priority && <span className="tile-prio" aria-hidden />}
       {labels.length > 0 && (
         <div className="tile-labels">
           {labels.map((l) => (
@@ -62,6 +63,18 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
       <div className="tile-title">{tile.title}</div>
       {hasFooter && (
         <div className="tile-footer">
+          {tile.priority && (
+            <span className={cls('badge level-badge', `prio-badge-${tile.priority}`)} title={`Priority ${PRIORITY_LABELS[tile.priority]}`}>
+              <span className="visually-hidden">Priority </span>
+              {PRIORITY_CODES[tile.priority]}
+            </span>
+          )}
+          {tile.severity && (
+            <span className={cls('badge level-badge', `sev-badge-${tile.severity}`)} title={`Severity ${SEVERITY_LABELS[tile.severity]}`}>
+              <span className="visually-hidden">Severity </span>
+              {SEVERITY_CODES[tile.severity]}
+            </span>
+          )}
           {due !== null && tile.dueDate && (
             <span className={cls('badge', 'due-badge', `due-${due}`)} title={DUE_TITLES[due]}>
               <Clock size={12} aria-hidden />

@@ -12,6 +12,7 @@ import { UpdateBanner } from './UpdateBanner';
 
 // Code-split: the board loads eagerly; everything opened on demand is its own chunk.
 const CardRoute = lazy(() => import('../card/CardRoute'));
+const CardListPage = lazy(() => import('../lists/CardListPage').then((m) => ({ default: m.CardListPage })));
 const LabelsManager = lazy(() => import('../labels/LabelsManager').then((m) => ({ default: m.LabelsManager })));
 const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
 
@@ -75,6 +76,22 @@ function AppRoutes() {
       <Routes location={background ?? location}>
         <Route path="/" element={<Board />} />
         <Route path="/cards/:id" element={<Board />} />
+        <Route
+          path="/archive"
+          element={
+            <Suspense fallback={<LoadingScreen />}>
+              <CardListPage kind="archived" />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/trash"
+          element={
+            <Suspense fallback={<LoadingScreen />}>
+              <CardListPage kind="trashed" />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Routes>

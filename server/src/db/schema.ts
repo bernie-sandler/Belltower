@@ -196,7 +196,14 @@ CREATE VIRTUAL TABLE card_search USING fts5 (
 );
 `;
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: 'initial schema', sql: v1 }];
+const v2 = `
+ALTER TABLE cards ADD COLUMN severity TEXT CHECK (severity IN ('blocker', 'major', 'minor', 'trivial'));
+`;
+
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, name: 'initial schema', sql: v1 },
+  { version: 2, name: 'card severity', sql: v2 },
+];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
 

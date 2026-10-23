@@ -1,4 +1,5 @@
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import Fastify, { LogController, type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { sep } from 'node:path';
@@ -9,6 +10,7 @@ import { AppError } from './errors';
 import { installGuard, isApiRequest } from './http/guard';
 import { registerAuthRoutes } from './http/routes/auth';
 import { registerBoardRoutes } from './http/routes/board';
+import { registerCardPartRoutes } from './http/routes/cardParts';
 import type { Ctx } from './services/context';
 
 export interface AppDeps {
@@ -47,6 +49,9 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   });
 
   await app.register(cookie);
+  await app.register(multipart, {
+    limits: { fileSize: config.maxUploadBytes, files: 10, fields: 10, parts: 20 },
+  });
 
   // Fastify rejects an empty body sent with Content-Type: application/json, which fetch wrappers
   // commonly set on bodyless DELETE/POST requests. Treat such requests as having no body.
@@ -101,6 +106,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   installGuard(app, deps);
   registerAuthRoutes(app, deps);
   registerBoardRoutes(app, deps);
+  registerCardPartRoutes(app, deps);
 
   if (config.webDistDir) {
     await app.register(fastifyStatic, {

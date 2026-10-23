@@ -7,4 +7,8 @@ export const qk = {
   card: (id: number) => ['card', id] as const,
   activities: ['activity'] as const,
   activity: (id: number) => ['activity', id] as const,
+  revisions: (activityId: number) => ['revisions', activityId] as const,
+  cardLists: ['cardList'] as const,
+  cardList: (status: string, q: string) => ['cardList', status, q] as const,
+  textPreview: (id: number, mode: string) => ['textPreview', id, mode] as const,
 };

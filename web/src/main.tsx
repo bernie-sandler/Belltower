@@ -9,6 +9,7 @@ import './styles/components.css';
 import './styles/auth.css';
 import './styles/board.css';
 import './styles/card.css';
+import './styles/parts.css';
 
 installStaleBundleReload();
 installGlobalKeyboard();

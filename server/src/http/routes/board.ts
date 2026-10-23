@@ -23,6 +23,7 @@ import {
   moveCard,
   restoreCard,
   undeleteCard,
+  sortColumnByPriority,
   updateCard,
 } from '../../services/cards';
 import { createColumn, deleteColumn, renameColumn, reorderColumns } from '../../services/columns';
@@ -56,6 +57,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.post('/api/columns', async (req) => createColumn(ctx, parse(ColumnNameBody, req.body).name));
   app.patch('/api/columns/:id', async (req) => renameColumn(ctx, idParam(req), parse(ColumnNameBody, req.body).name));
   app.put('/api/columns/order', async (req) => reorderColumns(ctx, parse(ReorderBody, req.body).ids));
+  app.post('/api/columns/:id/sort-by-priority', async (req) => ({ orders: sortColumnByPriority(ctx, idParam(req)) }));
   app.delete('/api/columns/:id', async (req, reply) => {
     deleteColumn(ctx, idParam(req), parse(DeleteColumnQuery, req.query).targetColumnId);
     return reply.status(204).send();

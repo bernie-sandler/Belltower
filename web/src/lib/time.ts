@@ -189,3 +189,39 @@ function subscribeNow(fn: () => void): () => void {
 export function useNow(): number {
   return useSyncExternalStore(subscribeNow, () => nowValue);
 }
+
+// ---- <input type="datetime-local"> in the app time zone ----
+
+/** An instant as 'YYYY-MM-DDTHH:mm' wall-clock time in the app TZ (for datetime-local inputs). */
+export function toLocalInput(instant: string | number, tz: string = appTimeZone): string {
+  const t = typeof instant === 'number' ? instant : Date.parse(instant);
+  return format(new TZDate(t, tz), "yyyy-MM-dd'T'HH:mm");
+}
+
+/**
+ * 'YYYY-MM-DDTHH:mm' read as wall-clock time in the app TZ (not the phone's) → UTC ISO string.
+ * A time that occurs twice when DST ends resolves to the first occurrence.
+ */
+export function fromLocalInput(value: string, tz: string = appTimeZone): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!m) return null;
+  const t = TZDate.tz(tz, Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).getTime();
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+/** A local date + 'HH:MM' in the app TZ → UTC ISO string. */
+export function localDateTimeToIso(date: string, time: string, tz: string = appTimeZone): string | null {
+  return fromLocalInput(`${date}T${time}`, tz);
+}
+
+/** Compact local timestamp for generated file names, e.g. 20261010-153012. */
+export function fileStamp(now: number = Date.now(), tz: string = appTimeZone): string {
+  return format(new TZDate(now, tz), 'yyyyMMdd-HHmmss');
+}
+
+/** File sizes: 812 B, 14 KB, 3.2 MB. */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
