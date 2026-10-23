@@ -167,3 +167,73 @@ export const TextPreviewQuery = z.object({
   mode: z.enum(['head', 'tail', 'full']).default('head'),
 });
 export type TextPreviewQuery = z.infer<typeof TextPreviewQuery>;
+
+// ---- Phase 3 ----
+
+const idList = z
+  .string()
+  .optional()
+  .transform((s) => (s ? s.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0) : []));
+
+const enumList = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .string()
+    .optional()
+    .transform((s) => (s ? s.split(',') : []))
+    .pipe(z.array(z.enum([...values, 'none'] as unknown as [string, ...string[]])));
+
+/** GET /api/search. Lists are comma-separated; 'none' matches cards without a priority/severity. */
+export const SearchQuery = z.object({
+  q: z.string().trim().max(500).default(''),
+  labelIds: idList,
+  columnIds: idList,
+  priorities: enumList(PRIORITIES),
+  severities: enumList(SEVERITIES),
+  /** 'all' (default) includes archived cards; Trash is never searched. */
+  status: z.enum(['all', 'board', 'archived']).default('all'),
+  /** Local dates: cards with any activity (including work logged) in this range. */
+  from: LocalDate.optional(),
+  to: LocalDate.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type SearchQuery = z.infer<typeof SearchQuery>;
+
+export const CalendarQuery = z
+  .object({ from: LocalDate, to: LocalDate })
+  .refine((v) => v.from <= v.to, 'from must not be after to');
+export type CalendarQuery = z.infer<typeof CalendarQuery>;
+
+const TemplateChecklistSchema = z.object({
+  title: z.string().trim().min(1).max(LIMITS.checklistTitle),
+  items: z.array(z.string().trim().min(1).max(LIMITS.checklistItem)).max(100),
+});
+
+export const TemplateBody = z.object({
+  title: Title,
+  description: Description.default(''),
+  priority: z.enum(PRIORITIES).nullable().default(null),
+  labelIds: z.array(id).max(50).default([]),
+  checklists: z.array(TemplateChecklistSchema).max(20).default([]),
+  intervalUnit: z.enum(['day', 'week', 'month']),
+  intervalCount: z.number().int().min(1).max(1000),
+  startDate: LocalDate,
+  dueInDays: z.number().int().min(0).max(3650).nullable().default(null),
+  enabled: z.boolean().default(true),
+});
+export type TemplateBody = z.infer<typeof TemplateBody>;
+
+// Spelled out (not TemplateBody.partial()) so omitted fields stay undefined instead of taking the
+// create-time defaults.
+export const UpdateTemplateBody = z.object({
+  title: Title.optional(),
+  description: Description.optional(),
+  priority: z.enum(PRIORITIES).nullable().optional(),
+  labelIds: z.array(id).max(50).optional(),
+  checklists: z.array(TemplateChecklistSchema).max(20).optional(),
+  intervalUnit: z.enum(['day', 'week', 'month']).optional(),
+  intervalCount: z.number().int().min(1).max(1000).optional(),
+  startDate: LocalDate.optional(),
+  dueInDays: z.number().int().min(0).max(3650).nullable().optional(),
+  enabled: z.boolean().optional(),
+});
+export type UpdateTemplateBody = z.infer<typeof UpdateTemplateBody>;

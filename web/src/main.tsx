@@ -10,6 +10,7 @@ import './styles/auth.css';
 import './styles/board.css';
 import './styles/card.css';
 import './styles/parts.css';
+import './styles/phase3.css';
 
 installStaleBundleReload();
 installGlobalKeyboard();

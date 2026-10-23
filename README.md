@@ -3,14 +3,13 @@
 A self-hosted, single-user, Trello-style issue tracker for a homelab. One Docker container with SQLite.
 Everything it stores lives under `/data`.
 
-> **Status: Phase 2 of 4.** Working now:
-> - login, the board, columns, cards, labels, drag and drop, and "Move to…"
-> - cards: Markdown descriptions, priority, due dates, completion dates, checklists, attachments (picker, drag-drop,
->   pasted screenshots) and linked cards
-> - the activity log and work log
-> - Archive and Trash
+> **Status: Phase 3 of 4.** Working now:
+> - the board, columns, cards, labels, drag and drop, "Move to…" and the filter bar
+> - card details (Markdown, priority P0–P3, severity S1–S4, due dates, checklists, attachments, links)
+> - the activity log and work log, Archive and Trash
+> - the calendar, full-text search, and recurring maintenance templates
 >
-> Coming next: the calendar, search and recurring maintenance (Phase 3); backup/restore and the full guide (Phase 4).
+> Coming next: backup/restore, a mobile polish pass and the full guide (Phase 4).
 > The design is in [docs/DESIGN.md](docs/DESIGN.md) and the API in [docs/API.md](docs/API.md).
 
 ## Run it on Unraid (Docker Compose Manager)

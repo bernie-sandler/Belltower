@@ -11,6 +11,7 @@ import { migrate } from './db/migrate';
 import { seedDefaults } from './db/seed';
 import { createLogger } from './logger';
 import type { Ctx } from './services/context';
+import { runDueTemplates } from './services/recurring';
 import { rebuildSearch, searchIndexLooksConsistent } from './services/search';
 
 function prepareDataDir(config: Config): void {
@@ -56,6 +57,22 @@ async function main(): Promise<void> {
   const app = await buildApp({ ctx, config, auth, limiter }, log);
 
   purgeExpiredSessions(ctx);
+
+  // Recurring maintenance: at startup, then every 10 minutes (cards appear shortly after local
+  // midnight on their day). Each run is idempotent per occurrence.
+  const runTemplates = () => {
+    try {
+      const r = runDueTemplates(ctx);
+      if (r.created.length || r.skipped.length) {
+        log.info(`Recurring templates: created ${r.created.length} card(s), skipped ${r.skipped.length} (still open)`);
+      }
+    } catch (err) {
+      log.error(err as Error, 'Recurring templates run failed');
+    }
+  };
+  runTemplates();
+  const scheduler = setInterval(runTemplates, 10 * 60 * 1000);
+  scheduler.unref();
   const housekeeping = setInterval(() => {
     purgeExpiredSessions(ctx);
     limiter.prune();
@@ -68,6 +85,7 @@ async function main(): Promise<void> {
     stopping = true;
     log.info(`${signal} received; shutting down`);
     clearInterval(housekeeping);
+    clearInterval(scheduler);
     try {
       await app.close();
     } catch (err) {

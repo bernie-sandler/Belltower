@@ -1,4 +1,7 @@
+import type { SearchField, SearchQuery, SearchResult } from '@tt/shared';
 import { stmt } from '../db/connection';
+import { addDays } from '../lib/localdate';
+import { startOfLocalDay } from '../lib/tz';
 import type { Ctx } from './context';
 
 /**
@@ -74,4 +77,124 @@ export function searchIndexLooksConsistent(ctx: Ctx): boolean {
   const indexed = stmt(ctx.db, 'SELECT count(*) FROM card_search').pluck().get() as number;
   const live = stmt(ctx.db, 'SELECT count(*) FROM cards WHERE deleted_at IS NULL').pluck().get() as number;
   return indexed === live;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Querying
+// ---------------------------------------------------------------------------------------------
+
+const FIELDS: SearchField[] = ['title', 'description', 'checklists', 'worklogs', 'history'];
+
+/**
+ * User text → FTS5 query. Every word becomes a quoted prefix term ("nginx.conf"*, "10.0.0.5"*),
+ * so punctuation in technical tokens can't break the syntax; words without letters or digits are
+ * dropped; terms are ANDed (and since a card is one row, they may sit in different fields).
+ */
+export function toFtsQuery(text: string): string | null {
+  const terms = text
+    .split(/\s+/)
+    .filter((t) => /[\p{L}\p{N}]/u.test(t))
+    .map((t) => `"${t.replace(/"/g, '""')}"*`);
+  return terms.length ? terms.join(' AND ') : null;
+}
+
+interface SearchRow {
+  id: number;
+  title: string;
+  column_id: number;
+  column_name: string;
+  label_ids: string | null;
+  priority: SearchResult['priority'];
+  severity: SearchResult['severity'];
+  completed_at: string | null;
+  archived_at: string | null;
+  updated_at: string;
+  s0?: string;
+  s1?: string;
+  s2?: string;
+  s3?: string;
+  s4?: string;
+}
+
+export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
+  const fts = toFtsQuery(q.q);
+  const where: string[] = ['c.deleted_at IS NULL'];
+  const params: unknown[] = [];
+
+  if (q.status === 'board') where.push('c.archived_at IS NULL');
+  if (q.status === 'archived') where.push('c.archived_at IS NOT NULL');
+  if (q.labelIds.length) {
+    where.push(`EXISTS (SELECT 1 FROM card_labels cl WHERE cl.card_id = c.id AND cl.label_id IN (${q.labelIds.map(() => '?').join(',')}))`);
+    params.push(...q.labelIds);
+  }
+  if (q.columnIds.length) {
+    where.push(`c.column_id IN (${q.columnIds.map(() => '?').join(',')})`);
+    params.push(...q.columnIds);
+  }
+  for (const [col, values] of [
+    ['priority', q.priorities],
+    ['severity', q.severities],
+  ] as const) {
+    if (!values.length) continue;
+    const named = values.filter((v) => v !== 'none');
+    const parts = named.length ? [`c.${col} IN (${named.map(() => '?').join(',')})`] : [];
+    if (values.includes('none')) parts.push(`c.${col} IS NULL`);
+    where.push(`(${parts.join(' OR ')})`);
+    params.push(...named);
+  }
+  if (q.from || q.to) {
+    // Card-level date filter: anything recorded for the card in the range (edits, moves, work).
+    const from = q.from ? startOfLocalDay(q.from, ctx.tz) : '0000';
+    const to = q.to ? startOfLocalDay(addDays(q.to, 1), ctx.tz) : '9999';
+    where.push(
+      `EXISTS (SELECT 1 FROM activity a WHERE a.card_id = c.id AND a.retracted_at IS NULL
+                 AND a.occurred_at >= ? AND a.occurred_at < ?)`,
+    );
+    params.push(from, to);
+  }
+
+  const base = `c.id, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.completed_at,
+    c.archived_at, c.updated_at,
+    (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
+       FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids`;
+
+  let rows: SearchRow[];
+  if (fts) {
+    const snippets = FIELDS.map((_, i) => `snippet(card_search, ${i}, char(2), char(3), '…', 16) AS s${i}`).join(', ');
+    rows = ctx.db
+      .prepare(
+        `SELECT ${base}, ${snippets}
+           FROM card_search JOIN cards c ON c.id = card_search.rowid JOIN columns col ON col.id = c.column_id
+          WHERE card_search MATCH ? AND ${where.join(' AND ')}
+          ORDER BY bm25(card_search, 10.0, 4.0, 2.0, 3.0, 1.0), c.updated_at DESC
+          LIMIT ?`,
+      )
+      .all(fts, ...params, q.limit) as SearchRow[];
+  } else {
+    // Filters only (no text): most recently changed first.
+    if (where.length === 1) return [];
+    rows = ctx.db
+      .prepare(
+        `SELECT ${base} FROM cards c JOIN columns col ON col.id = c.column_id
+          WHERE ${where.join(' AND ')} ORDER BY c.updated_at DESC LIMIT ?`,
+      )
+      .all(...params, q.limit) as SearchRow[];
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    columnId: r.column_id,
+    columnName: r.column_name,
+    labelIds: r.label_ids ? r.label_ids.split(',').map(Number) : [],
+    priority: r.priority,
+    severity: r.severity,
+    completedAt: r.completed_at,
+    archivedAt: r.archived_at,
+    updatedAt: r.updated_at,
+    matches: FIELDS.flatMap((field, i) => {
+      const s = r[`s${i}` as 's0'];
+      return s && s.includes('\u0002') ? [{ field, snippet: s }] : [];
+    }),
+  }));
 }

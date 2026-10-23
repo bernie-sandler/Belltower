@@ -225,3 +225,45 @@ export function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
+
+// ---- local-date arithmetic for the calendar (pure calendar math, no time zone) ----
+
+export function addLocalDays(date: string, n: number): string {
+  const day = epochDay(date);
+  if (day === null) return date;
+  const p = fromEpochDay(day + n);
+  return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
+}
+
+/** 0 = Sunday … 6 = Saturday. */
+export function weekdayOf(date: string): number {
+  const day = epochDay(date) ?? 0;
+  return (((day + 4) % 7) + 7) % 7;
+}
+
+/** Sunday on or before `date`. */
+export function startOfWeek(date: string): string {
+  return addLocalDays(date, -weekdayOf(date));
+}
+
+export function startOfMonth(date: string): string {
+  return `${date.slice(0, 7)}-01`;
+}
+
+export function addMonthsLocal(date: string, n: number): string {
+  const p = parseLocalDate(date)!;
+  const total = p.y * 12 + (p.m - 1) + n;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}-01`;
+}
+
+/** "October 2026". */
+export function formatMonth(date: string): string {
+  const p = parseLocalDate(date)!;
+  return format(new Date(p.y, p.m - 1, 1), 'MMMM yyyy');
+}
+
+/** "Mon, Oct 12" for a local date. */
+export function formatDayLong(date: string): string {
+  const p = parseLocalDate(date)!;
+  return format(new Date(p.y, p.m - 1, p.d), 'EEEE, MMM d');
+}

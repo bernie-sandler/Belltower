@@ -11,6 +11,7 @@ import { installGuard, isApiRequest } from './http/guard';
 import { registerAuthRoutes } from './http/routes/auth';
 import { registerBoardRoutes } from './http/routes/board';
 import { registerCardPartRoutes } from './http/routes/cardParts';
+import { registerPhase3Routes } from './http/routes/phase3';
 import type { Ctx } from './services/context';
 
 export interface AppDeps {
@@ -107,6 +108,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   registerAuthRoutes(app, deps);
   registerBoardRoutes(app, deps);
   registerCardPartRoutes(app, deps);
+  registerPhase3Routes(app, deps);
 
   if (config.webDistDir) {
     await app.register(fastifyStatic, {

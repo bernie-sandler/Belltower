@@ -32,6 +32,7 @@ import { useShell } from '../shell/ShellContext';
 import { AddColumn } from './AddColumn';
 import { Column } from './Column';
 import { ColumnPills } from './ColumnPills';
+import { FilterBar, matchesFilter, useBoardFilter } from './FilterBar';
 import {
   autoScroll,
   collisionDetection,
@@ -76,6 +77,15 @@ function BoardView({ board }: { board: BoardResponse }) {
   const columns = useMemo(() => sortedColumns(board.columns), [board.columns]);
   const tilesById = useMemo(() => new Map(board.cards.map((c) => [c.id, c] as const)), [board.cards]);
   const labelsById = useMemo(() => new Map(board.labels.map((l) => [l.id, l] as const)), [board.labels]);
+  const { filter, setFilter, active: filtering } = useBoardFilter();
+  // What the board shows (and drags over): everything, or just the cards that pass the filter.
+  const visibleBoard = useMemo(
+    () =>
+      filtering
+        ? { ...board, cards: board.cards.filter((c) => c.id < 0 || matchesFilter(c, filter, labelsById, now)) }
+        : board,
+    [board, filtering, filter, labelsById, now],
+  );
   // Cards still being created (temporary negative ids), shown dimmed at the bottom of their column.
   const pendingByColumn = useMemo(() => {
     const map = new Map<number, CardTile[]>();
@@ -88,7 +98,7 @@ function BoardView({ board }: { board: BoardResponse }) {
     return map;
   }, [board.cards]);
 
-  const dnd = useBoardDnd(board, columns, (move, onSettled) => moveCard.mutate(move, { onSettled }));
+  const dnd = useBoardDnd(visibleBoard, columns, (move, onSettled) => moveCard.mutate(move, { onSettled }));
 
   const [composerColumn, setComposerColumn] = useState<number | null>(null);
   const [addingColumn, setAddingColumn] = useState(false);
@@ -242,6 +252,14 @@ function BoardView({ board }: { board: BoardResponse }) {
 
   return (
     <div className="board-page">
+      <FilterBar
+        labels={board.labels}
+        filter={filter}
+        setFilter={setFilter}
+        active={filtering}
+        shown={visibleBoard.cards.filter((c) => c.id > 0).length}
+        total={board.cards.filter((c) => c.id > 0).length}
+      />
       {isMobile && columns.length > 0 && (
         <ColumnPills
           columns={columns}

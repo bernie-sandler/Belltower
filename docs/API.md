@@ -16,7 +16,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
   | 401 | `unauthenticated` (no or expired session → show the login page), `invalid_password` |
   | 403 | `csrf`, `invalid_setup_code` |
   | 404 | `not_found`, `setup_not_available` |
-  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed` |
+  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `open_instance`, `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed` |
   | 413 | `too_large` |
   | 429 | `rate_limited` (body also has `retryAfterSec`), `busy` |
   | 500 | `internal` |
@@ -107,6 +107,23 @@ Every route below that changes a card returns the updated `CardDetail`, which no
 
 `PATCH /api/cards/:id` also accepts `completedAt` (an ISO instant) to backdate when a card in Done was completed
 (`409 not_done` otherwise; it can't be in the future).
+
+## Phase 3: search, calendar, recurring maintenance
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/search?q=&labelIds=&columnIds=&priorities=&severities=&status=&from=&to=&limit=` | — | `SearchResult[]` | Full-text search over titles, descriptions, checklists, work logs and history. Every word must match somewhere on the card (prefix match). Archived cards are included (`status=board` or `archived` narrows it); the Trash never is. Lists are comma-separated; `none` matches cards with no priority/severity. `from`/`to` (local dates) keep cards with any activity in that range. Snippets mark hits with `…`, as plain text. |
+| `GET /api/calendar?from=&to=` | — | `CalendarItem[]` | Local dates, inclusive, up to 100 days. Returns cards due, cards completed and work logged, each on its local day. Archived cards count; Trash and retracted work logs don't. |
+| `GET /api/templates` | — | `RecurringTemplate[]` | |
+| `POST /api/templates` | `TemplateBody` | `201 RecurringTemplate` | Runs the scheduler right away, so a template due today creates its card immediately. |
+| `PATCH /api/templates/:id` | `UpdateTemplateBody` | `RecurringTemplate` | Resuming or changing the schedule restarts from today (no catch-up). |
+| `DELETE /api/templates/:id` | — | `204` | Cards it created stay. |
+| `POST /api/templates/:id/run[?force=1]` | — | `201 CardDetail` | "Create now". `409 open_instance` (body has `cardId`) while a card from it is still open, unless forced. The schedule is unchanged. |
+| `POST /api/columns/:id/sort-by-priority` | — | `{orders}` | One-off sort: P0 → P3, then S1 → S4, unrated cards last. |
+
+The scheduler runs at startup and every 10 minutes. On a template's day it creates one card in Triage, or skips (and notes
+the date on the open card) if the previous card is still open. After downtime it handles only the latest missed
+occurrence.
 
 ## Health
 
