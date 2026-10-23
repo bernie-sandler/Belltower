@@ -1,0 +1,10 @@
+/** TanStack Query keys, in one place. */
+export const qk = {
+  auth: ['auth'] as const,
+  config: ['config'] as const,
+  board: ['board'] as const,
+  cards: ['card'] as const,
+  card: (id: number) => ['card', id] as const,
+  activities: ['activity'] as const,
+  activity: (id: number) => ['activity', id] as const,
+};

@@ -1,0 +1,529 @@
+/* ---------- board layout ---------- */
+
+.board-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Columns sit side by side and the page scrolls horizontally; each column scrolls vertically. */
+.board {
+  position: relative; /* offsetLeft of columns is relative to the board */
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 0;
+  padding: 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 12px;
+}
+
+.board.is-dragging,
+.board.is-dragging .tile-slot {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---------- column ---------- */
+
+.column {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: var(--col-width);
+  max-height: 100%;
+  border-radius: var(--radius-col);
+  background: var(--surface);
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  padding: 8px 6px 4px 8px;
+}
+
+.column-name {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-strong);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+
+@media (hover: hover) {
+  .column-name:hover {
+    background: var(--btn-bg);
+  }
+}
+
+.column-name:active {
+  background: var(--btn-bg);
+}
+
+.column-name-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  font-weight: 600;
+}
+
+.column-role {
+  display: inline-flex;
+  flex: none;
+  padding: 0 2px;
+  color: var(--muted);
+}
+
+.column-count {
+  flex: none;
+  min-width: 24px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.column-cards {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 4px 8px; /* room for the last tile's focus ring (the scroller clips outlines) */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.column-add-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: var(--tap);
+  margin: 4px 8px 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  transition: background-color var(--dur), color var(--dur);
+}
+
+@media (hover: hover) {
+  .column-add-card:hover {
+    background: var(--btn-bg-hover);
+    color: var(--text-strong);
+  }
+}
+
+.column-add-card:active {
+  background: var(--btn-bg-hover);
+  color: var(--text-strong);
+}
+
+/* ---------- tile ---------- */
+
+.tile-slot {
+  position: relative;
+  flex: none;
+  border-radius: var(--radius-tile);
+  cursor: pointer;
+  /* Touch: tap opens, long-press drags; no callout/selection/double-tap zoom. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.tile-slot:focus-visible,
+.tile-activator:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Optional inner drag/open target (dnd-kit activator) when ⋯ is a sibling instead of a child. */
+.tile-activator {
+  border-radius: var(--radius-tile);
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow: hidden; /* keeps the priority strip inside the rounded corners */
+  border-radius: var(--radius-tile);
+  background: var(--tile);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-tile);
+  transition: background-color var(--dur);
+}
+
+@media (hover: hover) {
+  .tile-slot:hover .tile {
+    background: var(--tile-hover);
+  }
+}
+
+/* Press feedback (touch has no hover). */
+.tile-slot:active .tile {
+  background: var(--tile-hover);
+}
+
+.tile[class*='prio-'] {
+  padding-left: 14px;
+}
+
+/* Priority: a colored strip on the left edge. */
+.tile-prio {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: var(--prio);
+}
+
+.prio-critical {
+  --prio: var(--prio-critical);
+}
+
+.prio-high {
+  --prio: var(--prio-high);
+}
+
+.prio-medium {
+  --prio: var(--prio-medium);
+}
+
+.prio-low {
+  --prio: var(--prio-low);
+}
+
+.tile-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tile-title {
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.tile.has-menu .tile-labels,
+.tile.has-menu .tile-title {
+  padding-right: 22px;
+}
+
+.tile-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge.is-complete {
+  background: var(--success);
+  color: var(--on-color);
+}
+
+.due-overdue {
+  background: var(--danger);
+  color: var(--on-color);
+}
+
+.due-soon {
+  background: var(--warning);
+  color: var(--on-color);
+}
+
+.tile.is-pending {
+  opacity: 0.55;
+}
+
+/* The copy that follows the pointer while dragging. */
+.tile.is-overlay {
+  background: var(--tile-hover);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+  transform: rotate(2deg);
+  cursor: grabbing;
+}
+
+/* The gap left behind while a tile is dragged: a faint slot, same size as the tile. */
+.tile-slot.is-placeholder .tile {
+  background: var(--btn-bg);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.tile-slot.is-placeholder .tile > *,
+.tile-slot.is-placeholder .tile-menu-btn {
+  visibility: hidden;
+}
+
+/* "⋯": shown on hover/focus with a mouse; always visible on touch screens. Works whether the
+   button sits inside .tile or next to it inside .tile-slot (both boxes are the same size). */
+.tile-menu-btn {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tile-hover);
+  color: var(--text-strong);
+  opacity: 0;
+  transition: opacity var(--dur), background-color var(--dur);
+}
+
+/* The button sits at the tile's edge (inside its overflow:hidden box): draw the ring inward. */
+.tile-menu-btn:focus-visible {
+  outline-offset: -2px;
+}
+
+.tile-slot:focus-within .tile-menu-btn,
+.tile-menu-btn:focus-visible,
+.tile-menu-btn[aria-expanded='true'] {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .tile-slot:hover .tile-menu-btn {
+    opacity: 1;
+  }
+
+  .tile-menu-btn:hover {
+    background: var(--raised-hover);
+  }
+}
+
+.tile-menu-btn:active {
+  background: var(--raised-hover);
+}
+
+/* Touch screens (incl. an iPad with a trackpad, which still reports a coarse pointer). */
+@media (hover: none), (pointer: coarse) {
+  .tile {
+    min-height: 44px;
+  }
+
+  .tile-menu-btn {
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 0 var(--radius-tile) 0 var(--radius-tile);
+    background: transparent;
+    color: var(--muted);
+    opacity: 1;
+  }
+
+  .tile.has-menu .tile-labels,
+  .tile.has-menu .tile-title {
+    padding-right: 30px;
+  }
+}
+
+/* ---------- composer / add column ---------- */
+
+.composer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
+.composer-input {
+  min-height: 56px;
+  padding: 8px 12px;
+  overflow: hidden;
+  resize: none;
+  border: 0;
+  border-radius: var(--radius-tile);
+  background: var(--tile);
+  box-shadow: var(--shadow-tile);
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.add-column {
+  flex: none;
+  width: var(--col-width);
+}
+
+.add-column-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-col);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-strong);
+  font-weight: 600;
+  text-align: left;
+  transition: background-color var(--dur);
+}
+
+@media (hover: hover) {
+  .add-column-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+
+.add-column-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.add-column-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-col);
+  background: var(--surface);
+}
+
+/* ---------- phone column pills ---------- */
+
+/* Always on screen above the board (the board scrolls, this bar doesn't). */
+.column-pills {
+  position: relative; /* offsetParent for the pills (keeps the active one in view) */
+  display: flex;
+  flex: none;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.column-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  max-width: 60vw;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--btn-bg-hover);
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color var(--dur), color var(--dur);
+}
+
+/* Extend the hit area to 44px without making the bar taller. */
+.pill::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
+
+.pill.is-active {
+  background: var(--accent);
+  color: var(--on-color);
+}
+
+.pill-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pill-count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+/* ---------- phones ---------- */
+
+@media (max-width: 767px) {
+  .board {
+    gap: 10px;
+    padding: 4px 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    /* One column at a time with the next one peeking in. */
+    scroll-snap-type: x mandatory;
+  }
+
+  .board.is-dragging {
+    scroll-snap-type: none;
+  }
+
+  .column,
+  .add-column {
+    scroll-snap-align: start;
+  }
+
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .column-name,
+  .column-name-input {
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 768px) {
+  .column-pills {
+    display: none;
+  }
+}

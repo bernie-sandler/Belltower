@@ -1,0 +1,98 @@
+// Drag-and-drop ids and configuration shared by the board.
+
+import {
+  closestCenter,
+  closestCorners,
+  MeasuringStrategy,
+  pointerWithin,
+  type Collision,
+  type CollisionDetection,
+  type DropAnimation,
+  type KeyboardCodes,
+  type MeasuringConfiguration,
+  type UniqueIdentifier,
+} from '@dnd-kit/core';
+
+export const cardDndId = (id: number): string => `card:${id}`;
+export const columnDndId = (id: number): string => `col:${id}`;
+
+export function parseDndId(id: UniqueIdentifier): { kind: 'card' | 'col'; id: number } | null {
+  const [kind, raw] = String(id).split(':');
+  const n = Number(raw);
+  if ((kind !== 'card' && kind !== 'col') || !Number.isFinite(n)) return null;
+  return { kind, id: n };
+}
+
+const isColumnId = (id: UniqueIdentifier) => String(id).startsWith('col:');
+const isCardId = (id: UniqueIdentifier) => String(id).startsWith('card:');
+
+function sortableContainerOf(data: unknown): UniqueIdentifier | undefined {
+  return (data as { sortable?: { containerId?: UniqueIdentifier } } | undefined)?.sortable?.containerId;
+}
+
+/** The last target of the current drag, kept while the pointer is between columns. */
+let lastOver: { active: UniqueIdentifier; over: UniqueIdentifier } | null = null;
+
+/**
+ * Which column is targeted depends only on the pointer's x position, never on card layout. (An
+ * overlap-based fallback can pick the other column after each layout shift, so onDragOver would
+ * move the card back and forth on its own until React gives up with "maximum update depth".)
+ *
+ *  - Pointer on a card: that card.
+ *  - Pointer in a column (gap between cards, header, below the last card, or below a short
+ *    column): the nearest card of that column, so sorted items don't spring back whenever the
+ *    pointer crosses a gap. An empty column is itself the target.
+ *  - Pointer between columns or off the board: keep the previous target (what's shown stays
+ *    what a drop does).
+ *  - Keyboard drags have no pointer and use closest corners, which sortableKeyboardCoordinates
+ *    expects.
+ */
+export const collisionDetection: CollisionDetection = (args) => {
+  const pointer = args.pointerCoordinates;
+  if (!pointer) return closestCorners(args);
+
+  const remember = (collisions: Collision[]): Collision[] => {
+    const first = collisions[0];
+    if (first) lastOver = { active: args.active.id, over: first.id };
+    return collisions;
+  };
+
+  const within = pointerWithin(args);
+  const cards = within.filter((c) => isCardId(c.id));
+  if (cards.length > 0) return remember(cards);
+
+  let columnId = within.find((c) => isColumnId(c.id))?.id;
+  if (columnId === undefined) {
+    for (const container of args.droppableContainers) {
+      if (!isColumnId(container.id)) continue;
+      const rect = args.droppableRects.get(container.id);
+      if (rect && pointer.x >= rect.left && pointer.x <= rect.right) {
+        columnId = container.id;
+        break;
+      }
+    }
+  }
+  if (columnId === undefined) {
+    const keep = lastOver?.active === args.active.id ? lastOver.over : undefined;
+    return keep !== undefined && args.droppableRects.has(keep) ? [{ id: keep }] : [];
+  }
+
+  const inColumn = args.droppableContainers.filter((c) => sortableContainerOf(c.data.current) === columnId);
+  return remember(inColumn.length > 0 ? closestCenter({ ...args, droppableContainers: inColumn }) : [{ id: columnId }]);
+};
+
+/** Re-measure droppables continuously: cards move between columns mid-drag. */
+export const measuring: MeasuringConfiguration = {
+  droppable: { strategy: MeasuringStrategy.Always },
+};
+
+export const autoScroll = { threshold: { x: 0.15, y: 0.1 } };
+
+/** Space picks up / drops; Enter stays free to open the card. */
+export const keyboardCodes: KeyboardCodes = {
+  start: ['Space'],
+  cancel: ['Escape'],
+  end: ['Space', 'Enter'],
+};
+
+export const dropAnimation: DropAnimation = { duration: 150, easing: 'ease-out' };

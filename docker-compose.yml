@@ -1,0 +1,27 @@
+name: tower-tracker
+
+# Settings come from the .env file next to this one (copy .env.example to .env).
+# Every ${VAR:-default} below falls back to its default when .env doesn't set it.
+
+services:
+  tower-tracker:
+    build: .
+    image: tower-tracker:local
+    container_name: tower-tracker
+    restart: unless-stopped
+    # Proper PID 1 (signal forwarding, zombie reaping); the app checkpoints SQLite on SIGTERM.
+    init: true
+    stop_grace_period: 30s
+    ports:
+      # One PORT for both sides: the port on Unraid and the port the app listens on in the container.
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      PORT: ${PORT:-8080}
+      TZ: ${TZ:-America/Chicago}
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    volumes:
+      - ${DATA_PATH:-/mnt/cache/appdata/tower-tracker}:/data

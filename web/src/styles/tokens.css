@@ -1,0 +1,85 @@
+/* Design tokens. Dark, Trello-inspired. Every color in the app comes from here. */
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #1d2125;
+  --header-bg: #161a1d;
+  --surface: #101204; /* columns */
+  --tile: #22272b;
+  --tile-hover: #2c333a;
+  --raised: #282e33; /* menus, dialogs, sheets */
+  --raised-hover: #333b43;
+  --placeholder: #0b0d0e;
+  --overlay: rgba(3, 4, 4, 0.64);
+  --btn-bg: rgba(161, 189, 217, 0.08);
+  --btn-bg-hover: rgba(166, 197, 226, 0.16);
+  --input-bg: #22272b;
+
+  /* text */
+  --text: #b6c2cf;
+  --text-strong: #dee4ea;
+  --muted: #8c9bab;
+  --on-color: #1d2125; /* dark text on colored chips/badges */
+  --on-dark: #ffffff; /* light text on a dark custom label color */
+  --focus: #85b8ff; /* focus ring: ≥3:1 on every surface */
+
+  /* lines */
+  --border: #38414a;
+  --border-input: #738496;
+
+  /* accents */
+  --accent: #579dff;
+  --accent-strong: #85b8ff;
+  --danger: #f87168;
+  --danger-strong: #fd9891;
+  --warning: #f5cd47;
+  --success: #4bce97;
+  --success-strong: #7ee2b8;
+
+  /* priority indicator */
+  --prio-critical: #f87168;
+  --prio-high: #fea362;
+  --prio-medium: #f5cd47;
+  --prio-low: #8c9bab;
+
+  /* shape */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-tile: 8px;
+  --radius-col: 12px;
+  --shadow-tile: 0 1px 1px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  /* layout */
+  --col-width: 272px;
+  --topbar-h: 48px;
+  --tap: 32px; /* min height of buttons; 44px on touch/phones */
+  --tap-menu: 36px;
+  --swatch: 32px;
+
+  /* type */
+  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --fs: 14px;
+  --fs-sm: 12px;
+  --fs-input: 14px;
+
+  --dur: 120ms;
+}
+
+/* Phones and touch screens: 44px touch targets, 16px inputs (stops iOS zoom-on-focus). */
+@media (max-width: 767px), (pointer: coarse) {
+  :root {
+    --tap: 44px;
+    --tap-menu: 44px;
+    --swatch: 44px;
+    --fs-input: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --col-width: min(85vw, 320px);
+  }
+}
