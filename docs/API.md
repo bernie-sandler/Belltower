@@ -1,0 +1,83 @@
+# Tower Tracker HTTP API
+
+Types and request schemas live in [`shared/src`](../shared/src) (`@tt/shared`). This page lists the routes and
+their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings; `dueDate` is `YYYY-MM-DD` and
+`dueTime` is `HH:MM`, both in the app time zone (`AppConfig.timeZone`).
+
+## Conventions
+
+- **Session**: an HttpOnly cookie `tt_sid`. The browser sends it automatically; use `credentials: 'same-origin'`.
+- **CSRF**: every non-GET request to `/api/*` **must** send the header `X-Requested-With: tower-tracker`
+  (`CSRF_HEADER` / `CSRF_VALUE` in shared). Without it the request gets `403 csrf`.
+- **Errors**: always `{ error: string, message: string, details?: unknown }` with a matching HTTP status.
+  | Status | `error` codes |
+  |---|---|
+  | 400 | `validation` (zod issues in `details`), `anchor_not_found`, `target_required`, `invalid_target` (a column in the body no longer exists: refetch), `bad_request` |
+  | 401 | `unauthenticated` (no or expired session → show the login page), `invalid_password` |
+  | 403 | `csrf`, `invalid_setup_code` |
+  | 404 | `not_found`, `setup_not_available` |
+  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed` |
+  | 413 | `too_large` |
+  | 429 | `rate_limited` (body also has `retryAfterSec`), `busy` |
+  | 500 | `internal` |
+- **Bodyless requests** (DELETE, logout, undelete, archive, restore) may still send `Content-Type: application/json`;
+  the server ignores the header when there is no body.
+- **No auth needed** for: `GET /health`, `GET /api/auth/status`, `POST /api/auth/login`, `POST /api/auth/setup`,
+  and static files. Everything else returns `401 unauthenticated` without a valid session.
+
+## Auth
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/auth/status` | — | `AuthStatus` | Call on app load to choose between the setup page, the login page, or the app. |
+| `POST /api/auth/setup` | `SetupBody {setupCode, password}` | `204` + cookie | First run only. The setup code is printed in the container log. `404 setup_not_available` once a password exists. `403 invalid_setup_code`. Password must be at least 12 characters. Logs you in as a remembered device. |
+| `POST /api/auth/login` | `LoginBody {password, remember}` | `204` + cookie | `401 invalid_password`, `429 rate_limited {retryAfterSec}`, `409 setup_required`. `remember: true` gives a 90-day sliding cookie; otherwise the cookie lasts for the browser session with a 12-hour idle timeout. |
+| `POST /api/auth/logout` | — | `204` | Clears the cookie. |
+| `POST /api/auth/password` | `ChangePasswordBody {currentPassword, newPassword}` | `204` | `401 invalid_password`, `409 managed_by_env`. Revokes every other session. |
+
+## Config
+
+| `GET /api/config` | → `AppConfig {appVersion, timeZone, maxUploadBytes, passwordManagedByEnv}` |
+|---|---|
+
+## Board
+
+| Method & path | Body | Success |
+|---|---|---|
+| `GET /api/board` | — | `BoardResponse {columns, labels, cards}` (cards ordered by column, then position; archived and deleted cards excluded) |
+
+## Columns
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `POST /api/columns` | `ColumnNameBody {name}` | `Column` | Appended at the end (right). |
+| `PATCH /api/columns/:id` | `ColumnNameBody {name}` | `Column` | Rename. |
+| `PUT /api/columns/order` | `ReorderBody {ids}` | `Column[]` | `ids` must contain every column id exactly once, in the new left-to-right order. |
+| `DELETE /api/columns/:id?targetColumnId=N` | — | `204` | `409 role_column` for the Triage/Done columns. If the column has any cards (including archived or deleted ones), `targetColumnId` is required (`400 target_required`). All its cards move to the bottom of the target, and each move is logged. |
+
+## Labels
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `POST /api/labels` | `LabelBody {name, color}` | `Label` | `409 duplicate_name` (case-insensitive). `color` is lowercase `#rrggbb`; offer `LABEL_COLORS`. |
+| `PATCH /api/labels/:id` | `UpdateLabelBody` | `Label` | |
+| `DELETE /api/labels/:id` | — | `204` | Removed from every card (including ones in the Trash); each affected card logs `labels_changed` with `reason: 'label_deleted'`. |
+| `PUT /api/labels/order` | `ReorderBody {ids}` | `Label[]` | Every label id exactly once. |
+
+## Cards
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `POST /api/cards` | `CreateCardBody` | `201 CardDetail` | Defaults to the Triage column and `position: 'bottom'`. Logs `created`. |
+| `GET /api/cards/:id` | — | `CardDetail` | Also works for archived and deleted cards (check `archivedAt` / `deletedAt`). |
+| `PATCH /api/cards/:id` | `UpdateCardBody {expectedVersion, …fields}` | `CardDetail` | Send only the fields that changed. `409 version_conflict` (body includes the current `card`) if the card changed elsewhere; `409 card_deleted` if it is in the Trash. Each changed field logs one event. |
+| `POST /api/cards/:id/move` | `MoveCardBody {toColumnId, afterCardId}` | `MoveCardResponse {card, orders}` | `afterCardId: null` puts the card at the top. To put it at the bottom, pass the id of the column's last visible card (if that is the card itself, nothing moves). Anchoring on a card id keeps the move correct while the board is filtered. `400 anchor_not_found` means the client is stale: refetch the board. Moving to another column logs `moved`. Entering the Done column sets `completedAt`; leaving it clears it. Reordering within a column logs nothing. `orders` holds the authoritative order for the affected column(s); apply it to the cache. |
+| `DELETE /api/cards/:id` | — | `204` | Soft delete (moves the card to Trash). Logs `deleted`. |
+| `POST /api/cards/:id/undelete` | — | `CardDetail` | Restores the card from Trash to the bottom of its column. |
+| `POST /api/cards/:id/archive` | — | `CardDetail` | Only allowed for cards in the Done column (`409 not_done`). |
+| `POST /api/cards/:id/restore` | — | `CardDetail` | Un-archives the card to the bottom of its column. |
+| `GET /api/cards/:id/activity` | — | `ActivityEntry[]` | Newest first. |
+
+## Health
+
+`GET /health` returns `200 {"status":"ok"}`, or `503` if the DB or `/data` is unusable. No auth.

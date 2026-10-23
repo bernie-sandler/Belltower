@@ -1,0 +1,134 @@
+// Human-readable lines for activity entries. `data` shapes are documented in shared/src/types.ts;
+// names are copied into each entry, so history reads correctly after renames and deletes.
+// Everything is read defensively: unknown or future shapes fall back to a generic line.
+
+import { PRIORITY_LABELS, type ActivityEntry, type Priority } from '@tt/shared';
+import { formatClock, formatDateTime, formatLocalDate } from '../../lib/time';
+
+type Data = Record<string, unknown>;
+
+function obj(v: unknown): Data | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Data) : null;
+}
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+function nameOf(v: unknown): string {
+  return str(obj(v)?.name) ?? 'a column';
+}
+
+function names(v: unknown): string[] {
+  return Array.isArray(v) ? v.map((x) => str(obj(x)?.name)).filter((x): x is string => x !== null) : [];
+}
+
+function quoted(s: string | null, max = 60): string {
+  if (s === null) return '…';
+  const t = s.length > max ? `${s.slice(0, max - 1)}…` : s;
+  return `‘${t}’`;
+}
+
+function priorityName(v: unknown): string | null {
+  return typeof v === 'string' && v in PRIORITY_LABELS ? PRIORITY_LABELS[v as Priority] : null;
+}
+
+function dueText(v: unknown): string | null {
+  const d = obj(v);
+  const date = str(d?.date);
+  if (!date) return null;
+  const time = str(d?.time);
+  return time ? `${formatLocalDate(date)}, ${formatClock(time)}` : formatLocalDate(date);
+}
+
+function list(items: string[]): string {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+function humanize(type: string): string {
+  const s = type.replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export function activityText(entry: ActivityEntry): string {
+  const d = entry.data ?? {};
+  switch (entry.type) {
+    case 'created': {
+      const column = nameOf(d.column);
+      const template = str(d.templateTitle);
+      return template ? `Created in ${column} from template ${quoted(template)}` : `Created in ${column}`;
+    }
+    case 'moved':
+      return d.reason === 'column_deleted'
+        ? `Moved from ${nameOf(d.from)} → ${nameOf(d.to)} (the column was deleted)`
+        : `Moved from ${nameOf(d.from)} → ${nameOf(d.to)}`;
+    case 'title_changed':
+      return `Renamed from ${quoted(str(d.from))} to ${quoted(str(d.to))}`;
+    case 'description_changed': {
+      const from = str(d.from) ?? '';
+      const to = str(d.to) ?? '';
+      if (!from.trim() && to.trim()) return 'Description added';
+      if (from.trim() && !to.trim()) return 'Description removed';
+      return 'Description edited';
+    }
+    case 'labels_changed': {
+      const added = names(d.added);
+      const removed = names(d.removed);
+      if (d.reason === 'label_deleted' && removed.length) {
+        return `Label ${list(removed)} was deleted`;
+      }
+      const parts: string[] = [];
+      if (added.length) parts.push(`Added label${added.length > 1 ? 's' : ''} ${list(added)}`);
+      if (removed.length) {
+        const text = `removed label${removed.length > 1 ? 's' : ''} ${list(removed)}`;
+        parts.push(parts.length ? text : text.charAt(0).toUpperCase() + text.slice(1));
+      }
+      return parts.length ? parts.join('; ') : 'Labels changed';
+    }
+    case 'priority_changed': {
+      const to = priorityName(d.to);
+      return to ? `Priority set to ${to}` : 'Priority cleared';
+    }
+    case 'due_changed': {
+      const from = dueText(d.from);
+      const to = dueText(d.to);
+      if (!to) return 'Due date removed';
+      return from ? `Due date changed to ${to}` : `Due date set to ${to}`;
+    }
+    case 'completion_changed': {
+      const to = str(d.to);
+      return to ? `Completed on ${formatDateTime(to)}` : 'Marked not completed';
+    }
+    case 'checklist_added':
+      return `Added checklist ${quoted(str(d.title))}`;
+    case 'checklist_removed':
+      return `Removed checklist ${quoted(str(d.title))}`;
+    case 'checklist_item_checked':
+      return `Checked ${quoted(str(d.text) ?? str(d.title))}`;
+    case 'checklist_item_unchecked':
+      return `Unchecked ${quoted(str(d.text) ?? str(d.title))}`;
+    case 'attachment_added':
+      return `Attached ${quoted(str(d.filename) ?? str(d.name))}`;
+    case 'attachment_removed':
+      return `Removed attachment ${quoted(str(d.filename) ?? str(d.name))}`;
+    case 'linked':
+      return `Linked to ${quoted(str(d.title) ?? str(obj(d.card)?.title))}`;
+    case 'unlinked':
+      return `Unlinked from ${quoted(str(d.title) ?? str(obj(d.card)?.title))}`;
+    case 'archived':
+      return 'Archived';
+    case 'restored':
+      return 'Restored from the archive';
+    case 'deleted':
+      return 'Moved to Trash';
+    case 'undeleted':
+      return 'Restored from Trash';
+    case 'recurrence_skipped':
+      return 'Recurring run skipped: this card was still open';
+    case 'worklog':
+      return 'Logged work';
+    default:
+      return humanize(String(entry.type));
+  }
+}
