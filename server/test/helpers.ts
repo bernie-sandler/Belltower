@@ -33,7 +33,9 @@ export function makeCtx(opts: { now?: string; tz?: string; seed?: boolean } = {}
     clock,
     dir,
     close() {
-      db.close();
+      // A restore swaps ctx.db for a new connection; close whichever is current.
+      if (ctx.db.open) ctx.db.close();
+      if (db.open) db.close();
       rmSync(dir, { recursive: true, force: true });
     },
   };

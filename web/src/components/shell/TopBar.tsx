@@ -1,4 +1,4 @@
-import { Archive, CalendarDays, Columns3, KanbanSquare, LogOut, Menu as MenuIcon, Repeat, Search, Settings, Tag, Trash2 } from 'lucide-react';
+import { Archive, CalendarDays, Columns3, DatabaseBackup, FileUp, KanbanSquare, LogOut, Menu as MenuIcon, Repeat, Search, Settings, Tag, Trash2 } from 'lucide-react';
 import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
@@ -14,6 +14,14 @@ const NAV = [
   { to: '/search', label: 'Search', icon: Search },
   { to: '/templates', label: 'Recurring', icon: Repeat },
 ] as const;
+
+/** Pages reached from the menu; shown in the nav while open. */
+const EXTRA_PAGES: Record<string, string> = {
+  '/archive': 'Archive',
+  '/trash': 'Trash',
+  '/import': 'Import',
+  '/backup': 'Backup',
+};
 
 export function TopBar() {
   const shell = useShell();
@@ -39,9 +47,9 @@ export function TopBar() {
             </Link>
           );
         })}
-        {(page === '/archive' || page === '/trash') && (
+        {EXTRA_PAGES[page] && (
           <span className="topnav-item is-current" aria-current="page">
-            {page === '/archive' ? 'Archive' : 'Trash'}
+            {EXTRA_PAGES[page]}
           </span>
         )}
       </nav>
@@ -66,6 +74,9 @@ export function TopBar() {
             { key: 'column', label: 'Add column', icon: <Columns3 size={16} />, onSelect: shell.requestAddColumn },
             { key: 'archive', label: 'Archive', icon: <Archive size={16} />, onSelect: () => void navigate('/archive') },
             { key: 'trash', label: 'Trash', icon: <Trash2 size={16} />, onSelect: () => void navigate('/trash') },
+            'separator',
+            { key: 'import', label: 'Import cards', icon: <FileUp size={16} />, onSelect: () => void navigate('/import') },
+            { key: 'backup', label: 'Backup & restore', icon: <DatabaseBackup size={16} />, onSelect: () => void navigate('/backup') },
             { key: 'settings', label: 'Settings', icon: <Settings size={16} />, onSelect: shell.openSettings },
             'separator',
             {
