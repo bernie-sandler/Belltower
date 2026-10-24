@@ -13,6 +13,8 @@ import { registerBoardRoutes } from './http/routes/board';
 import { registerCardPartRoutes } from './http/routes/cardParts';
 import { registerPhase3Routes } from './http/routes/phase3';
 import { registerPhase4Routes } from './http/routes/phase4';
+import { registerTicketRoutes } from './http/routes/tickets';
+import type { TicketDrafter } from './services/aiDraft';
 import type { Ctx } from './services/context';
 
 export interface AppDeps {
@@ -21,6 +23,8 @@ export interface AppDeps {
   /** Mutable: setup completes / password source changes at runtime. */
   auth: AuthState;
   limiter: LoginRateLimiter;
+  /** Claude ticket drafting; null when ANTHROPIC_API_KEY isn't set. */
+  ai: TicketDrafter | null;
 }
 
 // Explicit CSP rather than helmet defaults: those add upgrade-insecure-requests and HSTS, which
@@ -111,6 +115,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   registerCardPartRoutes(app, deps);
   registerPhase3Routes(app, deps);
   registerPhase4Routes(app, deps);
+  registerTicketRoutes(app, deps);
 
   if (config.webDistDir) {
     await app.register(fastifyStatic, {

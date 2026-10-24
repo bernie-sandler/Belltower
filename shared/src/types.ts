@@ -1,4 +1,4 @@
-import type { ActivityType, CardSource, ColumnRole, Priority, Severity } from './constants';
+import type { ActivityType, CardSource, ColumnRole, Level, Priority, Severity } from './constants';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
 export type IsoTimestamp = string;
@@ -279,4 +279,27 @@ export interface RecurringTemplate {
   upcoming: LocalDateString[];
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
+}
+
+export interface AiStatus {
+  /** ANTHROPIC_API_KEY is set, so Add ticket can draft with Claude. */
+  enabled: boolean;
+  model: string | null;
+}
+
+/** Claude's suggestion for a new card; the user reviews and edits it before anything is saved. */
+export interface TicketDraft {
+  title: string;
+  description: string;
+  impact: Level;
+  urgency: Level;
+  /** Always PRIORITY_MATRIX[impact][urgency]. */
+  priority: Priority;
+  severity: Severity;
+  priorityReason: string;
+  severityReason: string;
+  /** Existing labels only. */
+  labelIds: number[];
+  checklist: string[];
+  dueDate: LocalDateString | null;
 }

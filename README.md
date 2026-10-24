@@ -2,7 +2,7 @@
 
 A self-hosted, single-user, Trello-style issue tracker for a homelab. It's for triaging and fixing problems, and it
 keeps a record of what you did and when. It runs as one Docker container with SQLite, keeps everything under `/data`,
-and needs no internet.
+and needs no internet (unless you turn on the optional Claude ticket drafting).
 
 - **Board**:
   - Triage → Backlog → In Progress → Blocked/Waiting → Done; columns can be renamed, added and reordered.
@@ -24,9 +24,14 @@ and needs no internet.
 - **Backup & restore**:
   - Export to JSON or ZIP (with attachments) and restore with a preview.
   - Plus nightly snapshots.
-- **Card import**: paste JSON written by an AI to create ready-made cards. See [docs/CARD-IMPORT.md](docs/CARD-IMPORT.md).
+- **Add ticket**: describe a problem in your own words and Claude drafts the card (priority, severity, details,
+  checklist) for you to review. Optional: it needs an Anthropic API key, and without one the app stays fully
+  offline.
+- **Card import**: without an API key, paste JSON written by any AI chat to create ready-made cards. See
+  [docs/CARD-IMPORT.md](docs/CARD-IMPORT.md).
 
-The design is in [docs/DESIGN.md](docs/DESIGN.md) and the HTTP API in [docs/API.md](docs/API.md).
+The design is in [docs/DESIGN.md](docs/DESIGN.md), the HTTP API in [docs/API.md](docs/API.md), and what changed in
+each version in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -88,6 +93,7 @@ Data is untouched by this.
 | `MAX_UPLOAD_MB` | `25` | Largest attachment. |
 | `PUID` / `PGID` | `99` / `100` | Owner of the files in `DATA_PATH` (Unraid's nobody:users). |
 | `TRUST_PROXY` | — | Only when a reverse proxy sits in front: the proxy's LAN IP. Never `true`. |
+| `ANTHROPIC_API_KEY` | — | Optional. Turns on Claude ticket drafting (see below). |
 
 Advanced settings the app understands (add them under `environment:` in `docker-compose.yml` if needed):
 
@@ -99,6 +105,8 @@ Advanced settings the app understands (add them under `environment:` in `docker-
 | `COOKIE_SECURE` | `auto` | `auto` sets the Secure flag on HTTPS requests. |
 | `SESSION_DAYS` | `90` | How long "Remember this device" lasts (it slides with use). |
 | `LOG_LEVEL` | `info` | |
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Claude model used to draft tickets. |
+| `ANTHROPIC_API_KEY_FILE` | — | Read the API key from a file instead of `ANTHROPIC_API_KEY`. |
 
 **Forgot the password?** Set `APP_PASSWORD` in `.env`, then run `docker compose up -d`. This sets the new password and
 signs out every device. You can remove the variable afterwards, and the password stays.
@@ -160,9 +168,42 @@ app keeps its own login, so sign in once there (tick **Remember this device**).
   Backups from older versions upgrade automatically; backups from a newer version are refused.
 - **Moving to a new server.** Export a ZIP, start a fresh container there, set its password, then restore the ZIP.
 
-## Card import (AI → cards)
+## Add ticket (Claude drafting)
 
-**Menu → Import cards → Copy AI prompt.**
+Press **Add ticket** in the top bar (or `Shift+N`).
+
+- **Describe the issue**: write what's wrong, as you'd tell a friend: symptoms, error messages, what changed, what
+  you tried. Press **Draft with Claude**. In 10–30 seconds you get a full ticket to review:
+  - a title and a Markdown description (Symptoms / Details / Next steps);
+  - priority from impact × urgency, and severity, each with a one-line reason;
+  - matching labels from your existing ones;
+  - a checklist of next steps.
+
+  Change anything you like, then **Create ticket**. Nothing is saved until you do.
+- **Blank ticket**: the same form, empty.
+
+**Setup.**
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com) (it needs a little prepaid credit).
+2. Put it in `.env` as `ANTHROPIC_API_KEY='…'`.
+3. Run `docker compose up -d`.
+
+The container log then says "Claude drafting on".
+
+**Cost and privacy.**
+- A draft costs roughly 1–3 cents with the default model.
+- To limit spending, the app allows 20 drafts per 10 minutes.
+- Only the text you type, your label names and today's date are sent to Anthropic. Nothing from your board, history
+  or attachments is sent.
+
+If Claude can't be reached, or the key is wrong, the dialog says so and lets you fill in the ticket yourself.
+
+Without a key, Add ticket offers **Blank ticket** and **Import from JSON** (below), and the app never contacts the
+internet.
+
+## Card import (AI → cards, no API key)
+
+This is available when `ANTHROPIC_API_KEY` isn't set. Go to **Add ticket → Import from JSON** (or **Menu → Import cards**),
+then press **Copy AI prompt**.
 1. Give the prompt to an AI, then describe the problem.
 2. Paste its answer back.
 3. Preview, then Import.
@@ -175,6 +216,7 @@ backdated work-log notes. Full format: [docs/CARD-IMPORT.md](docs/CARD-IMPORT.md
 | Key | |
 |---|---|
 | `n` | New card in Triage |
+| `Shift+N` | Add ticket |
 | `/` | Search |
 | `Esc` | Close the top menu, dialog or card |
 | `Space`, then the arrow keys, then `Space` | Move a focused card with the keyboard |

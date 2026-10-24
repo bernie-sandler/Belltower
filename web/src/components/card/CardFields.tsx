@@ -4,12 +4,9 @@
 
 import {
   LEVELS,
-  PRIORITIES,
   PRIORITY_CODES,
   PRIORITY_LABELS,
   PRIORITY_MATRIX,
-  SEVERITIES,
-  SEVERITY_CODES,
   SEVERITY_DESCRIPTIONS,
   SEVERITY_LABELS,
   type CardDetail,
@@ -24,22 +21,8 @@ import { cls } from '../../lib/cls';
 import { dueStatus, formatDateTime, formatDue, fromLocalInput, toLocalInput, useNow } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { Popover } from '../common/Popover';
-import { LevelPicker, type LevelOption } from './LevelPicker';
-
-const PRIORITY_OPTIONS: LevelOption<Priority>[] = PRIORITIES.map((p) => ({
-  value: p,
-  code: PRIORITY_CODES[p],
-  label: PRIORITY_LABELS[p],
-  badgeClass: `prio-badge-${p}`,
-}));
-
-const SEVERITY_OPTIONS: LevelOption<Severity>[] = SEVERITIES.map((v) => ({
-  value: v,
-  code: SEVERITY_CODES[v],
-  label: SEVERITY_LABELS[v],
-  description: SEVERITY_DESCRIPTIONS[v],
-  badgeClass: `sev-badge-${v}`,
-}));
+import { LevelPicker } from './LevelPicker';
+import { PRIORITY_OPTIONS, SEVERITY_OPTIONS } from './levelOptions';
 
 export function CardFields({ card, readOnly }: { card: CardDetail; readOnly: boolean }) {
   const update = useUpdateCard(card.id);
@@ -245,7 +228,7 @@ function CompletedField({
 const LEVEL_NAMES: Record<Level, string> = { high: 'High', medium: 'Medium', low: 'Low' };
 
 /** "Help me choose": the impact × urgency matrix; tapping a cell sets that priority. */
-function PriorityHelper({ value, onPick }: { value: Priority | null; onPick: (p: Priority) => void }) {
+export function PriorityHelper({ value, onPick }: { value: Priority | null; onPick: (p: Priority) => void }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
     <>

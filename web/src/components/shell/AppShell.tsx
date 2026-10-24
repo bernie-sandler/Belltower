@@ -2,12 +2,14 @@ import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { useShortcut } from '../../lib/keyboard';
 import { useConfig } from '../../api/config';
+import { useAiStatus } from '../../api/tickets';
 import { errorMessage } from '../../api/errors';
 import { backgroundOf } from '../../lib/navigation';
 import { setAppTimeZone } from '../../lib/time';
 import { Board } from '../board/Board';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { ShellContext, type ShellActions } from './ShellContext';
+import type { NewTicketMode } from '../tickets/NewTicketDialog';
 import { TopBar } from './TopBar';
 import { UpdateBanner } from './UpdateBanner';
 
@@ -20,6 +22,7 @@ const ImportCardsPage = lazy(() => import('../tools/ImportCardsPage').then((m) =
 const BackupPage = lazy(() => import('../tools/BackupPage').then((m) => ({ default: m.BackupPage })));
 const TemplatesPage = lazy(() => import('../templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })));
 const LabelsManager = lazy(() => import('../labels/LabelsManager').then((m) => ({ default: m.LabelsManager })));
+const NewTicketDialog = lazy(() => import('../tickets/NewTicketDialog').then((m) => ({ default: m.NewTicketDialog })));
 const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
 
 /** Signed-in app: needs /api/config (time zone, version) before rendering any dates. */
@@ -27,12 +30,15 @@ export function AppShell() {
   const config = useConfig();
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newTicket, setNewTicket] = useState<NewTicketMode | null>(null);
+  const ai = useAiStatus();
   const [addColumnRequest, setAddColumnRequest] = useState(0);
 
   const actions = useMemo<ShellActions>(
     () => ({
       openLabels: () => setLabelsOpen(true),
       openSettings: () => setSettingsOpen(true),
+      openNewTicket: setNewTicket,
       requestAddColumn: () => setAddColumnRequest((n) => n + 1),
       addColumnRequest,
     }),
@@ -50,6 +56,7 @@ export function AppShell() {
     );
   }
   setAppTimeZone(config.data.timeZone);
+  const aiEnabled = ai.data?.enabled === true;
 
   return (
     <ShellContext.Provider value={actions}>
@@ -57,12 +64,16 @@ export function AppShell() {
         <TopBar />
         <UpdateBanner />
         <main className="app-main">
-          <AppRoutes />
+          <AppRoutes
+            aiEnabled={aiEnabled}
+            onNewTicket={() => setNewTicket(aiEnabled ? 'describe' : 'blank')}
+          />
         </main>
       </div>
       <Suspense fallback={null}>
         {labelsOpen && <LabelsManager onClose={() => setLabelsOpen(false)} />}
         {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+        {newTicket && <NewTicketDialog mode={newTicket} onClose={() => setNewTicket(null)} />}
       </Suspense>
     </ShellContext.Provider>
   );
@@ -77,11 +88,12 @@ function Lazy({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
 }
 
-function AppRoutes() {
+function AppRoutes({ aiEnabled, onNewTicket }: { aiEnabled: boolean; onNewTicket: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
-  // '/' anywhere (not while typing) → search.
+  // '/' anywhere (not while typing) → search; Shift+N → Add ticket.
   useShortcut('/', () => void navigate('/search'));
+  useShortcut('N', onNewTicket);
   const background = backgroundOf(location);
 
   return (
@@ -100,7 +112,8 @@ function AppRoutes() {
         <Route path="/calendar" element={<Lazy><CalendarPage /></Lazy>} />
         <Route path="/search" element={<Lazy><SearchPage /></Lazy>} />
         <Route path="/templates" element={<Lazy><TemplatesPage /></Lazy>} />
-        <Route path="/import" element={<Lazy><ImportCardsPage /></Lazy>} />
+        {/* With Claude drafting on, Add ticket replaces the paste-JSON import. */}
+        <Route path="/import" element={aiEnabled ? <Navigate to="/" replace /> : <Lazy><ImportCardsPage /></Lazy>} />
         <Route path="/backup" element={<Lazy><BackupPage /></Lazy>} />
         <Route
           path="/trash"

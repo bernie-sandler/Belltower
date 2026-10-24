@@ -1,6 +1,8 @@
 # Card import format
 
-**Main menu → Import cards** turns JSON into ready-made cards. The quickest way to get the JSON is an AI.
+**Add ticket → Import from JSON** (or **Main menu → Import cards**) turns JSON into ready-made cards. The quickest
+way to get the JSON is an AI chat. This page is only offered when `ANTHROPIC_API_KEY` isn't set; with a key, use
+**Add ticket → Describe the issue** instead, which asks Claude directly.
 
 1. On the Import cards page, press **Copy AI prompt**. The prompt describes this format and lists your real columns
    and labels.

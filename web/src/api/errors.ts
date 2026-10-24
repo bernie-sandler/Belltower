@@ -39,6 +39,8 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong.'): 
       default:
         break;
     }
+    // Claude drafting errors (ai_bad_key, ai_unreachable, …) carry a message written for the user.
+    if (err.code.startsWith('ai_')) return err.message || fallback;
     if (err.status >= 500) return 'The server hit an error. Try again.';
     return err.message || fallback;
   }

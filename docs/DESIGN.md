@@ -251,6 +251,15 @@ event's `clipboardData.files`, which works over plain HTTP. Pasted screenshots a
 - **README wording**: copying `/data` with the container stopped is a full backup (Unraid's Appdata Backup
   stops containers by default). For live copies, rely on the snapshots.
 
+- **Add ticket (optional Claude drafting)**: with `ANTHROPIC_API_KEY` set, the top-bar **Add ticket → Describe
+  the issue** sends the typed description, the label names and today's date to Claude (`claude-opus-5-5` by
+  default, `ANTHROPIC_MODEL` overrides) from the **server** via `@anthropic-ai/sdk` with structured output, so
+  the browser and the CSP never talk to Anthropic. Claude rates impact and urgency (the server derives P0–P3
+  from the matrix) and severity, and writes the title, Markdown description and checklist. The user reviews
+  every field before `POST /api/tickets` creates the card through `createCard()`. Any failure (no network, bad
+  key, refusal) falls back to the same form filled by hand. Without a key nothing leaves the server, and Add
+  ticket offers the paste-JSON card import instead.
+
 ---
 
 ## 5. Auth & security

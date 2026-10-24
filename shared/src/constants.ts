@@ -75,6 +75,8 @@ export const LIMITS = {
   description: 100_000,
   checklistTitle: 200,
   checklistItem: 1000,
+  /** Add ticket: the problem description sent to Claude. */
+  draftText: 8000,
   worklog: 50_000,
   /** Text attachments preview this much (head or tail) before "Load full". */
   textPreviewBytes: 256 * 1024,

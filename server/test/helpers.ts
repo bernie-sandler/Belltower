@@ -13,6 +13,7 @@ import { openDatabase } from '../src/db/connection';
 import { migrate } from '../src/db/migrate';
 import { seedDefaults } from '../src/db/seed';
 import { createLogger } from '../src/logger';
+import type { TicketDrafter } from '../src/services/aiDraft';
 import type { Ctx } from '../src/services/context';
 
 setScryptCostForTests(10);
@@ -57,7 +58,7 @@ export interface TestApp extends ReturnType<typeof makeCtx> {
 }
 
 export async function makeApp(
-  opts: { env?: Record<string, string>; webDist?: boolean; globalDelayMs?: number } = {},
+  opts: { env?: Record<string, string>; webDist?: boolean; globalDelayMs?: number; ai?: TicketDrafter } = {},
 ): Promise<TestApp> {
   const t = makeCtx();
   let webDistDir: string | null = null;
@@ -75,7 +76,7 @@ export async function makeApp(
   const log = createLogger({ level: 'info', write: (l) => logLines.push(l) });
   const auth = await bootstrapAuth(t.ctx, config.appPassword, log);
   const limiter = new LoginRateLimiter(t.clock, { ...DEFAULT_RATE_LIMIT, globalDelayMs: opts.globalDelayMs ?? 0 });
-  const app = await buildApp({ ctx: t.ctx, config, auth, limiter }, log);
+  const app = await buildApp({ ctx: t.ctx, config, auth, limiter, ai: opts.ai ?? null }, log);
   await app.ready();
   return {
     ...t,

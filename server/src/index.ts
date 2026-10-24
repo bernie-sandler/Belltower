@@ -11,6 +11,7 @@ import { migrate } from './db/migrate';
 import { seedDefaults } from './db/seed';
 import { createLogger } from './logger';
 import type { Ctx } from './services/context';
+import { createClaudeDrafter } from './services/aiDraft';
 import { dailySnapshot } from './services/backup';
 import { runDueTemplates } from './services/recurring';
 import { localDateOf } from './lib/localdate';
@@ -56,7 +57,9 @@ async function main(): Promise<void> {
 
   const auth: AuthState = await bootstrapAuth(ctx, config.appPassword, log);
   const limiter = new LoginRateLimiter(systemClock);
-  const app = await buildApp({ ctx, config, auth, limiter }, log);
+  const ai = config.anthropicApiKey ? createClaudeDrafter(config.anthropicApiKey, config.aiModel) : null;
+  log.info(ai ? `Add ticket: Claude drafting on (${ai.model})` : 'Add ticket: Claude drafting off (no ANTHROPIC_API_KEY)');
+  const app = await buildApp({ ctx, config, auth, limiter, ai }, log);
 
   purgeExpiredSessions(ctx);
 
