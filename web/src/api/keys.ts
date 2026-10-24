@@ -14,4 +14,5 @@ export const qk = {
   search: (qs: string) => ['search', qs] as const,
   calendar: (from: string, to: string) => ['calendar', from, to] as const,
   templates: ['templates'] as const,
+  aiStatus: ['aiStatus'] as const,
 };

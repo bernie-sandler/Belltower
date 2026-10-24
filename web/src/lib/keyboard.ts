@@ -3,7 +3,7 @@
 //    themselves (inline editors, composers) call preventDefault, which leaves it to them.
 //  - Letter shortcuts ('n' = new card in Triage) only fire on the bare board: never while
 //    typing, with Ctrl/Meta/Alt held, during IME composition, while dragging, or with a layer open.
-//  - '/' opens Search.
+//  - '/' opens Search; Shift+N opens Add ticket.
 
 import { useEffect, useRef } from 'react';
 import { isDragging } from './dragging';
@@ -30,7 +30,9 @@ function onKeyDown(e: KeyboardEvent): void {
   if (isEditableTarget(e.target)) return;
   if (hasLayers()) return;
 
-  const list = handlers.get(e.key);
+  // Shift+letter binds as the capital ('N' = Add ticket), whatever the layout reports.
+  const key = e.shiftKey && /^[a-z]$/i.test(e.key) ? e.key.toUpperCase() : e.key;
+  const list = handlers.get(key);
   const handler = list?.[list.length - 1];
   if (handler) {
     e.preventDefault();

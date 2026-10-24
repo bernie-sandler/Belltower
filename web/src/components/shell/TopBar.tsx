@@ -1,9 +1,27 @@
-import { Archive, CalendarDays, Columns3, DatabaseBackup, FileUp, KanbanSquare, LogOut, Menu as MenuIcon, Repeat, Search, Settings, Tag, Trash2 } from 'lucide-react';
+import {
+  Archive,
+  CalendarDays,
+  Columns3,
+  DatabaseBackup,
+  FilePlus2,
+  FileUp,
+  KanbanSquare,
+  LogOut,
+  Menu as MenuIcon,
+  Plus,
+  Repeat,
+  Search,
+  Settings,
+  Sparkles,
+  Tag,
+  Trash2,
+} from 'lucide-react';
 import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
 import { useState } from 'react';
 import { useLogout } from '../../api/auth';
+import { useAiStatus } from '../../api/tickets';
 import { BrandMark } from '../common/BrandMark';
 import { Menu } from '../common/Menu';
 import { useShell } from './ShellContext';
@@ -27,6 +45,8 @@ export function TopBar() {
   const shell = useShell();
   const logout = useLogout();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  const aiEnabled = useAiStatus().data?.enabled === true;
   const location = useLocation();
   const navigate = useNavigate();
   const page = (backgroundOf(location) ?? location).pathname;
@@ -56,6 +76,55 @@ export function TopBar() {
       <div className="topbar-spacer" />
       <button
         type="button"
+        className="btn btn-primary btn-sm topbar-add-btn"
+        aria-haspopup="menu"
+        aria-expanded={addAnchor !== null}
+        aria-label="Add ticket"
+        onClick={(e) => setAddAnchor(addAnchor ? null : e.currentTarget)}
+      >
+        <Plus size={16} aria-hidden />
+        <span className="topbar-add-label">Add ticket</span>
+      </button>
+      {addAnchor && (
+        <Menu
+          anchor={addAnchor}
+          onClose={() => setAddAnchor(null)}
+          label="Add ticket"
+          items={[
+            ...(aiEnabled
+              ? [
+                  {
+                    key: 'describe',
+                    label: 'Describe the issue',
+                    hint: 'Claude drafts the ticket for you to review',
+                    icon: <Sparkles size={16} />,
+                    onSelect: () => shell.openNewTicket('describe'),
+                  },
+                ]
+              : []),
+            {
+              key: 'blank',
+              label: 'Blank ticket',
+              hint: 'Fill in every field yourself',
+              icon: <FilePlus2 size={16} />,
+              onSelect: () => shell.openNewTicket('blank'),
+            },
+            ...(aiEnabled
+              ? []
+              : [
+                  {
+                    key: 'import',
+                    label: 'Import from JSON',
+                    hint: 'Paste cards written by an AI chat',
+                    icon: <FileUp size={16} />,
+                    onSelect: () => void navigate('/import'),
+                  },
+                ]),
+          ]}
+        />
+      )}
+      <button
+        type="button"
         className="icon-btn topbar-menu-btn"
         aria-label="Main menu"
         aria-haspopup="menu"
@@ -75,7 +144,9 @@ export function TopBar() {
             { key: 'archive', label: 'Archive', icon: <Archive size={16} />, onSelect: () => void navigate('/archive') },
             { key: 'trash', label: 'Trash', icon: <Trash2 size={16} />, onSelect: () => void navigate('/trash') },
             'separator',
-            { key: 'import', label: 'Import cards', icon: <FileUp size={16} />, onSelect: () => void navigate('/import') },
+            ...(aiEnabled
+              ? []
+              : [{ key: 'import', label: 'Import cards', icon: <FileUp size={16} />, onSelect: () => void navigate('/import') }]),
             { key: 'backup', label: 'Backup & restore', icon: <DatabaseBackup size={16} />, onSelect: () => void navigate('/backup') },
             { key: 'settings', label: 'Settings', icon: <Settings size={16} />, onSelect: shell.openSettings },
             'separator',

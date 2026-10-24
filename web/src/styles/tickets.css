@@ -1,0 +1,122 @@
+/* Add ticket: top-bar button, describe step and the review form. */
+
+.topbar-add-btn {
+  gap: 6px;
+  margin-right: 4px;
+}
+
+@media (max-width: 767px) {
+  .topbar-add-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .topbar-add-btn {
+    min-width: var(--tap);
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+.new-ticket-text {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.new-ticket-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+}
+
+.ticket-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ticket-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -6px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: rgba(87, 157, 255, 0.08);
+  list-style: none;
+}
+
+.ticket-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ticket-fieldset > legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.ticket-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ticket-label-toggle {
+  display: inline-flex;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.ticket-label-toggle[aria-checked='true'] {
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .ticket-label-toggle:hover {
+    opacity: 1;
+  }
+}
+
+.ticket-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 22px;
+}
+
+.ticket-checklist li {
+  padding-left: 4px;
+}
+
+.ticket-checklist li > * {
+  vertical-align: middle;
+}
+
+.ticket-add-item {
+  align-self: flex-start;
+}
+
+.ticket-checklist .input {
+  width: calc(100% - var(--tap) - 4px);
+}
+
+.ticket-form .field-row .field-inline .input[type='date'] {
+  width: auto;
+}

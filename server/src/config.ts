@@ -24,6 +24,10 @@ export interface Config {
   /** Built SPA directory, or null when running the API alone (Vite dev server serves the UI). */
   webDistDir: string | null;
   appVersion: string;
+  /** From ANTHROPIC_API_KEY / ANTHROPIC_API_KEY_FILE. Null keeps Add ticket fully offline. */
+  anthropicApiKey: string | null;
+  /** Claude model used to draft tickets. */
+  aiModel: string;
 }
 
 export class ConfigError extends Error {}
@@ -78,6 +82,23 @@ function readPassword(env: NodeJS.ProcessEnv): string | null {
   return pw ? pw : null;
 }
 
+/** A secret from NAME or NAME_FILE (Docker secrets style); the file wins. */
+function readSecret(env: NodeJS.ProcessEnv, name: string): string | null {
+  const file = env[`${name}_FILE`]?.trim();
+  if (file) {
+    let text: string;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch (err) {
+      throw new ConfigError(`${name}_FILE could not be read (${file}): ${(err as Error).message}`);
+    }
+    const value = text.trim();
+    if (!value) throw new ConfigError(`${name}_FILE is empty`);
+    return value;
+  }
+  return env[name]?.trim() || null;
+}
+
 function defaultWebDist(): string | null {
   // Both src/config.ts (tsx dev) and dist/index.js (bundle) live one level below server/.
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -120,5 +141,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logLevel: env.LOG_LEVEL?.trim().toLowerCase() || 'info',
     webDistDir,
     appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev',
+    anthropicApiKey: readSecret(env, 'ANTHROPIC_API_KEY'),
+    aiModel: env.ANTHROPIC_MODEL?.trim() || 'claude-opus-5-5',
   };
 }

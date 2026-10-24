@@ -137,6 +137,14 @@ occurrence.
 | `GET /api/backup/snapshots` | — | `{name, sizeBytes, modifiedAt}[]` | Files in `/data/backups`. |
 | `POST /api/import/cards` | `{text?: string, data?: any, dryRun?: boolean = true}` | `200` preview / `201` result | See [CARD-IMPORT.md](CARD-IMPORT.md). All-or-nothing; `400` with `result` when any card is invalid. |
 
+## Add ticket (Claude drafting)
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/ai/status` | — | `{enabled, model}` | `enabled` when `ANTHROPIC_API_KEY` is set. |
+| `POST /api/ai/draft` | `{text}` (1–8000 chars) | `TicketDraft` | Asks Claude for `{title, description, impact, urgency, priority, severity, priorityReason, severityReason, labelIds, checklist, dueDate}`. Nothing is saved. `priority` is always `PRIORITY_MATRIX[impact][urgency]`; only existing labels are returned. 20 drafts per 10 minutes (`429 ai_draft_limit`). Errors: `503 ai_disabled`, `502 ai_bad_key`, `503 ai_rate_limited`, `503 ai_unreachable`, `503 ai_unavailable`, `422 ai_refused`, `502 ai_failed`. |
+| `POST /api/tickets` | `CreateCardBody` + `{checklist?: string[], aiDrafted?: boolean}` | `201 CardDetail` | Creates the reviewed card (one checklist named "Checklist"). History records `via: "Add ticket"` or `"Add ticket (Claude draft)"`. |
+
 ## Health
 
 `GET /health` returns `200 {"status":"ok"}`, or `503` if the DB or `/data` is unusable. No auth.

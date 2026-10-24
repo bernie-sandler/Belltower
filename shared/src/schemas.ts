@@ -237,3 +237,18 @@ export const UpdateTemplateBody = z.object({
   enabled: z.boolean().optional(),
 });
 export type UpdateTemplateBody = z.infer<typeof UpdateTemplateBody>;
+
+// ---- Add ticket (Claude drafting) ----
+export const DraftTicketBody = z.object({
+  /** The problem in your own words. */
+  text: z.string().trim().min(1).max(LIMITS.draftText).refine(noNul, NUL_MESSAGE),
+});
+export type DraftTicketBody = z.infer<typeof DraftTicketBody>;
+
+/** A card from the Add ticket form: CreateCardBody plus one checklist and where it came from. */
+export const CreateTicketBody = CreateCardBody.extend({
+  checklist: z.array(ItemText).max(50).optional(),
+  /** True when the fields started as a Claude draft (recorded in the card's history). */
+  aiDrafted: z.boolean().optional(),
+});
+export type CreateTicketBody = z.infer<typeof CreateTicketBody>;
