@@ -16,6 +16,7 @@ import { qk } from '../../api/keys';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Spinner } from '../common/Status';
 import { LabelChip } from '../labels/LabelChip';
+import { TicketTitle } from '../common/TicketTitle';
 
 type Kind = 'archived' | 'trashed';
 
@@ -96,9 +97,11 @@ export function CardListPage({ kind }: { kind: Kind }) {
                     })}
                   </span>
                 )}
-                <span className="card-list-title">{c.title}</span>
+                <span className="card-list-title">
+                  <TicketTitle ticketNo={c.ticketNo}>{c.title}</TicketTitle>
+                </span>
                 <span className="muted small">
-                  #{c.id} · {c.columnName} ·{' '}
+                  {c.columnName} ·{' '}
                   {kind === 'archived' ? `archived ${formatDateTime(c.archivedAt!, now)}` : `deleted ${formatDateTime(c.deletedAt!, now)}`}
                 </span>
               </button>

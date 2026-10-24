@@ -25,6 +25,7 @@ import {
 } from '../../lib/time';
 import { Modal } from '../common/Modal';
 import { Spinner } from '../common/Status';
+import { TicketTitle } from '../common/TicketTitle';
 
 type View = 'month' | 'week';
 
@@ -238,7 +239,9 @@ function CalendarChip({
       {item.priority && !compact && (
         <span className={cls('badge level-badge', `prio-badge-${item.priority}`)}>{PRIORITY_CODES[item.priority]}</span>
       )}
-      <span className="cal-title">{item.title}</span>
+      <span className="cal-title">
+        <TicketTitle ticketNo={item.ticketNo}>{item.title}</TicketTitle>
+      </span>
       {!compact && item.kind === 'worklog' && item.bodyMd && <span className="cal-body">{item.bodyMd}</span>}
       {!compact && item.archived && <span className="muted small">archived</span>}
     </>

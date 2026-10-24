@@ -14,7 +14,7 @@ import type { BoardResponse, CardTile } from '@tt/shared';
 import { Archive, ArrowRightLeft, ExternalLink, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { sortedColumns, useBoard } from '../../api/board';
+import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
@@ -98,7 +98,15 @@ function BoardView({ board }: { board: BoardResponse }) {
     return map;
   }, [board.cards]);
 
-  const dnd = useBoardDnd(visibleBoard, columns, (move, onSettled) => moveCard.mutate(move, { onSettled }));
+  const dnd = useBoardDnd(visibleBoard, columns, (move, onSettled) => {
+    const blocked = completionBlocked(board, move.cardId, move.toColumnId);
+    if (blocked) {
+      toast(blocked, { kind: 'warning' });
+      onSettled();
+      return;
+    }
+    moveCard.mutate(move, { onSettled });
+  });
 
   const [composerColumn, setComposerColumn] = useState<number | null>(null);
   const [addingColumn, setAddingColumn] = useState(false);

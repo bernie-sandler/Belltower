@@ -45,6 +45,7 @@ export function groupCards(board: BoardResponse): Map<number, CardTile[]> {
 export function toTile(card: CardTile | CardDetail): CardTile {
   return {
     id: card.id,
+    ticketNo: card.ticketNo,
     columnId: card.columnId,
     title: card.title,
     position: card.position,
@@ -58,8 +59,23 @@ export function toTile(card: CardTile | CardDetail): CardTile {
     linkCount: card.linkCount,
     checklistDone: card.checklistDone,
     checklistTotal: card.checklistTotal,
+    blockedBy: card.blockedBy,
     version: card.version,
   };
+}
+
+/** Message for the server rule "a blocked card can't be completed", checked before moving into Done. */
+export function blockedCompletionMessage(tile: Pick<CardTile, 'title' | 'blockedBy'>): string {
+  const n = tile.blockedBy;
+  return `“${tile.title}” is blocked by ${n} open card${n === 1 ? '' : 's'}. Finish ${n === 1 ? 'it' : 'them'} first.`;
+}
+
+/** Non-null when moving this card to `toColumnId` would complete it while it's still blocked. */
+export function completionBlocked(board: BoardResponse, cardId: number, toColumnId: number): string | null {
+  const tile = board.cards.find((c) => c.id === cardId);
+  const target = board.columns.find((c) => c.id === toColumnId);
+  if (!tile || target?.role !== 'done' || tile.columnId === toColumnId || tile.blockedBy === 0) return null;
+  return blockedCompletionMessage(tile);
 }
 
 /** Inserts or replaces a tile. */
@@ -210,6 +226,7 @@ export function tempTile(board: BoardResponse, v: CreateCardVars): CardTile {
   const last = list[list.length - 1];
   return {
     id: v.tempId,
+    ticketNo: null, // assigned by the server
     columnId: v.columnId,
     title: v.title,
     position: last ? last.position + 1 : 0,
@@ -223,6 +240,7 @@ export function tempTile(board: BoardResponse, v: CreateCardVars): CardTile {
     linkCount: 0,
     checklistDone: 0,
     checklistTotal: 0,
+    blockedBy: 0,
     version: 0,
   };
 }

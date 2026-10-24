@@ -59,10 +59,15 @@ export function activityText(entry: ActivityEntry): string {
       const template = str(d.templateTitle);
       return template ? `Created in ${column} from template ${quoted(template)}` : `Created in ${column}`;
     }
-    case 'moved':
-      return d.reason === 'column_deleted'
-        ? `Moved from ${nameOf(d.from)} → ${nameOf(d.to)} (the column was deleted)`
-        : `Moved from ${nameOf(d.from)} → ${nameOf(d.to)}`;
+    case 'moved': {
+      const base = `Moved from ${nameOf(d.from)} → ${nameOf(d.to)}`;
+      if (d.reason === 'column_deleted') return `${base} (the column was deleted)`;
+      if (d.reason === 'blocked') {
+        const by = Array.isArray(d.blockedBy) ? d.blockedBy.map((b) => quoted(str((b as { title?: unknown }).title))) : [];
+        return by.length ? `${base}: blocked by ${by.join(', ')}` : `${base}: blocked`;
+      }
+      return base;
+    }
     case 'title_changed':
       return `Renamed from ${quoted(str(d.from))} to ${quoted(str(d.to))}`;
     case 'description_changed': {

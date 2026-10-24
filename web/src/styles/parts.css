@@ -1016,3 +1016,28 @@ a.topnav-item {
     padding: 4px;
   }
 }
+
+/* Blocked by open cards: can't be completed (tile badge, card note, Move to hint). */
+.badge.blocked-badge {
+  gap: 3px;
+  background: rgba(248, 113, 104, 0.18);
+  color: var(--danger-strong);
+  font-weight: 600;
+}
+
+.blocked-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--warning);
+  font-size: 13px;
+}
+
+.blocked-hint {
+  margin: -4px 0 4px;
+}
+
+.card-action[aria-disabled='true'] {
+  opacity: 0.55;
+}

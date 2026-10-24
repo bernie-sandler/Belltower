@@ -2,13 +2,16 @@
 // Clicking a linked card opens it (over the same background page).
 
 import type { CardDetail, CardLink, LinkDirection } from '@tt/shared';
-import { CircleCheck, Link2, Search, X } from 'lucide-react';
+import { Ban, CircleCheck, Link2, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useBoard } from '../../api/board';
 import { useCardList, useLinkActions } from '../../api/cardParts';
 import { errorMessage } from '../../api/errors';
 import { useOpenCard } from '../../lib/navigation';
+import { toast } from '../../lib/toast';
 import { Modal } from '../common/Modal';
 import { Spinner } from '../common/Status';
+import { TicketTitle } from '../common/TicketTitle';
 
 const GROUPS: { direction: LinkDirection; title: string }[] = [
   { direction: 'blocked_by', title: 'Blocked by' },
@@ -53,9 +56,16 @@ export function Links({
           {GROUPS.map(({ direction, title }) => {
             const links = card.links.filter((l) => l.direction === direction);
             if (!links.length) return null;
+            const open = direction === 'blocked_by' ? links.filter((l) => !l.card.completedAt).length : 0;
             return (
               <div key={direction} className="link-group">
                 <h4 className="link-group-title">{title}</h4>
+                {open > 0 && !card.completedAt && (
+                  <p className="blocked-note" role="note">
+                    <Ban size={14} aria-hidden /> Can&apos;t be marked done until {open === 1 ? 'the open card below is' : `the ${open} open cards below are`}{' '}
+                    done.
+                  </p>
+                )}
                 <ul className="link-list">
                   {links.map((l) => (
                     <LinkRow
@@ -92,7 +102,9 @@ function LinkRow({
   return (
     <li className="link-row">
       <button type="button" className="link-row-main" onClick={onOpen}>
-        <span className="link-row-title">{c.title}</span>
+        <span className="link-row-title">
+          <TicketTitle ticketNo={c.ticketNo}>{c.title}</TicketTitle>
+        </span>
         <span className="muted small">
           {c.archivedAt ? 'Archived' : c.columnName}
           {c.completedAt && (
@@ -117,6 +129,7 @@ function LinkPicker({ card, onClose }: { card: CardDetail; onClose: () => void }
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
   const { link } = useLinkActions(card.id);
+  const { data: board } = useBoard();
   useEffect(() => {
     const t = window.setTimeout(() => setDebounced(q), 200);
     return () => window.clearTimeout(t);
@@ -159,7 +172,7 @@ function LinkPicker({ card, onClose }: { card: CardDetail; onClose: () => void }
           <input
             className="input"
             type="search"
-            placeholder="Search card titles or #id"
+            placeholder="Search titles or ticket numbers"
             aria-label="Search cards"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -177,11 +190,26 @@ function LinkPicker({ card, onClose }: { card: CardDetail; onClose: () => void }
                   type="button"
                   className="pick-item"
                   disabled={already || link.isPending}
-                  onClick={() => link.mutate({ otherCardId: c.id, direction }, { onSuccess: onClose })}
+                  onClick={() =>
+                    link.mutate(
+                      { otherCardId: c.id, direction },
+                      {
+                        onSuccess: (updated) => {
+                          onClose();
+                          if (updated.columnId !== card.columnId) {
+                            const name = board?.columns.find((col) => col.id === updated.columnId)?.name ?? 'another column';
+                            toast(`Blocked, so moved to ${name}`, { kind: 'info', durationMs: 3000 });
+                          }
+                        },
+                      },
+                    )
+                  }
                 >
-                  <span className="pick-title">{c.title}</span>
+                  <span className="pick-title">
+                    <TicketTitle ticketNo={c.ticketNo}>{c.title}</TicketTitle>
+                  </span>
                   <span className="muted small">
-                    #{c.id} · {c.archivedAt ? 'Archived' : c.columnName}
+                    {c.archivedAt ? 'Archived' : c.columnName}
                     {already && ' · already linked'}
                   </span>
                 </button>

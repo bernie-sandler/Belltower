@@ -55,6 +55,8 @@ export interface Label {
 /** What the board needs to draw a tile. */
 export interface CardTile {
   id: number;
+  /** "YYMMDD-N": local creation date plus a per-day counter, e.g. 261024-1. Shown as "261024-1 — Title". */
+  ticketNo: string | null;
   columnId: number;
   title: string;
   position: number;
@@ -68,6 +70,8 @@ export interface CardTile {
   linkCount: number;
   checklistDone: number;
   checklistTotal: number;
+  /** Open cards blocking this one (not done, not in Trash); it can't be completed while > 0. */
+  blockedBy: number;
   version: number;
 }
 
@@ -131,6 +135,7 @@ export interface CardLink {
 /** A card in a list (link picker, Archive, Trash). */
 export interface CardSummary {
   id: number;
+  ticketNo: string | null;
   title: string;
   columnId: number;
   columnName: string;
@@ -155,6 +160,8 @@ export interface BoardResponse {
   labels: Label[];
   /** Board-visible cards only (not archived, not deleted), ordered by column then position. */
   cards: CardTile[];
+  /** Where cards are moved when they become blocked; null = don't move them. */
+  blockedColumnId: number | null;
 }
 
 export interface MoveCardResponse {
@@ -220,6 +227,7 @@ export interface SearchMatch {
 
 export interface SearchResult {
   id: number;
+  ticketNo: string | null;
   title: string;
   columnId: number;
   columnName: string;
@@ -241,6 +249,7 @@ export interface CalendarItem {
   /** Local 'HH:MM' (due time, completion time, or the work-log's effective time). */
   time: string | null;
   cardId: number;
+  ticketNo: string | null;
   title: string;
   priority: Priority | null;
   severity: Severity | null;

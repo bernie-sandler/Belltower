@@ -99,7 +99,7 @@ export function useLinkActions(cardId: number) {
       applyCardDetail(qc, card);
       invalidateActivity(qc, cardId);
       refreshOther(v.otherCardId);
-      void qc.invalidateQueries({ queryKey: qk.board }); // the other card's link count
+      void qc.invalidateQueries({ queryKey: qk.board }); // link counts, and a newly blocked card may have moved
     },
   });
   const unlink = useMutation({

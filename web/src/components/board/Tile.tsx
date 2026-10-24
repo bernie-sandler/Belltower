@@ -1,13 +1,14 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PRIORITY_CODES, PRIORITY_LABELS, SEVERITY_CODES, SEVERITY_LABELS, type CardTile, type Label } from '@tt/shared';
-import { Clock, Ellipsis, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
+import { Ban, Clock, Ellipsis, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
 import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { cls } from '../../lib/cls';
 import { isDragging as isBoardDragging, justDropped } from '../../lib/dragging';
 import { dueStatus, formatDue, type DueStatus } from '../../lib/time';
 import { LabelChip } from '../labels/LabelChip';
 import { cardDndId } from './dnd';
+import { TicketTitle } from '../common/TicketTitle';
 
 const DUE_TITLES: Record<DueStatus, string> = {
   overdue: 'Overdue',
@@ -34,7 +35,9 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
     .filter((l): l is Label => l !== undefined)
     .sort((a, b) => a.position - b.position);
   const due = dueStatus(tile, now);
+  const blocked = tile.blockedBy > 0 && !tile.completedAt;
   const hasFooter =
+    blocked ||
     due !== null ||
     tile.attachmentCount > 0 ||
     tile.linkCount > 0 ||
@@ -60,7 +63,9 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
           ))}
         </div>
       )}
-      <div className="tile-title">{tile.title}</div>
+      <div className="tile-title">
+        <TicketTitle ticketNo={tile.ticketNo}>{tile.title}</TicketTitle>
+      </div>
       {hasFooter && (
         <div className="tile-footer">
           {tile.priority && (
@@ -73,6 +78,13 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
             <span className={cls('badge level-badge', `sev-badge-${tile.severity}`)} title={`Severity ${SEVERITY_LABELS[tile.severity]}`}>
               <span className="visually-hidden">Severity </span>
               {SEVERITY_CODES[tile.severity]}
+            </span>
+          )}
+          {blocked && (
+            <span className="badge blocked-badge" title={`Blocked by ${tile.blockedBy} open card${tile.blockedBy === 1 ? '' : 's'}`}>
+              <Ban size={12} aria-hidden />
+              Blocked
+              <span className="visually-hidden"> by {tile.blockedBy} open card{tile.blockedBy === 1 ? '' : 's'}</span>
             </span>
           )}
           {due !== null && tile.dueDate && (

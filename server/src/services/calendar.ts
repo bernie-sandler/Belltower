@@ -14,6 +14,7 @@ const MAX_DAYS = 100;
 
 interface Row {
   card_id: number;
+  ticket_no: string | null;
   title: string;
   priority: CalendarItem['priority'];
   severity: CalendarItem['severity'];
@@ -22,7 +23,7 @@ interface Row {
   archived_at: string | null;
 }
 
-const CARD_COLS = `c.id AS card_id, c.title, c.priority, c.severity, col.name AS column_name, c.completed_at, c.archived_at`;
+const CARD_COLS = `c.id AS card_id, c.ticket_no, c.title, c.priority, c.severity, col.name AS column_name, c.completed_at, c.archived_at`;
 
 export function calendarItems(ctx: Ctx, from: string, to: string): CalendarItem[] {
   if (toEpochDay(to) - toEpochDay(from) > MAX_DAYS) throw badRequest('validation', `At most ${MAX_DAYS} days at a time`);
@@ -30,6 +31,7 @@ export function calendarItems(ctx: Ctx, from: string, to: string): CalendarItem[
   const toI = startOfLocalDay(addDays(to, 1), ctx.tz);
   const base = (r: Row) => ({
     cardId: r.card_id,
+    ticketNo: r.ticket_no,
     title: r.title,
     priority: r.priority,
     severity: r.severity,

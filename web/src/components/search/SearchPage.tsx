@@ -21,6 +21,7 @@ import { useOpenCard } from '../../lib/navigation';
 import { formatDateTime, useNow } from '../../lib/time';
 import { Spinner } from '../common/Status';
 import { LabelChip } from '../labels/LabelChip';
+import { TicketTitle } from '../common/TicketTitle';
 
 const FIELD_NAMES: Record<SearchField, string> = {
   title: 'Title',
@@ -236,7 +237,9 @@ function ResultRow({
           {r.priority && <span className={cls('badge level-badge', `prio-badge-${r.priority}`)}>{PRIORITY_CODES[r.priority]}</span>}
           {r.severity && <span className={cls('badge level-badge', `sev-badge-${r.severity}`)}>{SEVERITY_CODES[r.severity]}</span>}
           <span className="search-result-title">
-            <Snippet text={r.matches.find((m) => m.field === 'title')?.snippet ?? r.title} />
+            <TicketTitle ticketNo={r.ticketNo}>
+              <Snippet text={r.matches.find((m) => m.field === 'title')?.snippet ?? r.title} />
+            </TicketTitle>
           </span>
         </span>
         {r.labelIds.length > 0 && (

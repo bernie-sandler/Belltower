@@ -62,6 +62,9 @@ export const ReorderBody = z.object({
 });
 export type ReorderBody = z.infer<typeof ReorderBody>;
 
+export const BlockedColumnBody = z.object({ columnId: id.nullable() });
+export type BlockedColumnBody = z.infer<typeof BlockedColumnBody>;
+
 export const DeleteColumnQuery = z.object({
   targetColumnId: z.coerce.number().int().positive().optional(),
 });

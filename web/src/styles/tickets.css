@@ -120,3 +120,22 @@
 .ticket-form .field-row .field-inline .input[type='date'] {
   width: auto;
 }
+
+/* Ticket numbers: "261024-1 — Title" */
+.ticket-no {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.ticket-sep {
+  color: var(--muted);
+}
+
+.card-title-ticket {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}

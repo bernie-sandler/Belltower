@@ -64,7 +64,7 @@ describe('backup round trip', () => {
     const api = client(src.app, srcCookie);
 
     const json1 = (await api('GET', '/api/backup/export.json')).json();
-    expect(json1).toMatchObject({ format: 'tower-tracker-backup', schemaVersion: 2, appTz: 'America/Chicago' });
+    expect(json1).toMatchObject({ format: 'tower-tracker-backup', schemaVersion: 3, appTz: 'America/Chicago' });
     expect(json1.tables.sessions).toBeUndefined();
     expect(json1.tables.settings.some((s: { key: string }) => s.key === 'password_hash')).toBe(false);
     const zipRes = await api('GET', '/api/backup/export.zip');
@@ -112,9 +112,12 @@ describe('backup round trip', () => {
     await api('POST', '/api/cards', { title: 'Old card', priority: 'low' });
     const json = (await api('GET', '/api/backup/export.json')).json();
 
-    // Pretend it came from schema 1 (no severity column yet).
+    // Pretend it came from schema 1 (no severity column or ticket numbers yet).
     json.schemaVersion = 1;
-    for (const c of json.tables.cards) delete c.severity;
+    for (const c of json.tables.cards) {
+      delete c.severity;
+      delete c.ticket_no;
+    }
 
     const dst = await makeApp();
     apps.push(dst);
@@ -123,7 +126,10 @@ describe('backup round trip', () => {
     expect(p).toMatchObject({ withFiles: false, schemaVersion: 1 });
     const dstApi = client(dst.app, dstCookie);
     await dstApi('POST', `/api/backup/restore/${p.token}/confirm`, { confirm: 'RESTORE' });
-    expect((await dstApi('GET', '/api/board')).json().cards).toMatchObject([{ title: 'Old card', priority: 'low', severity: null }]);
+    // Created 2026-10-10 10:00 Chicago; numbered on restore.
+    expect((await dstApi('GET', '/api/board')).json().cards).toMatchObject([
+      { title: 'Old card', priority: 'low', severity: null, ticketNo: '261010-1' },
+    ]);
   });
 
   it('rejects bad uploads and leaves the live data alone', async () => {
