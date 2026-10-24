@@ -9,10 +9,13 @@ and needs no internet (unless you turn on the optional Claude ticket drafting).
   - Move cards by drag and drop (mouse, long-press on a phone, or keyboard) or with **Move to…**.
   - Filter by label, priority, severity, due status and text.
 - **Cards**:
+  - Each card gets a ticket number when it's created, shown as "261024-1 — Title" (date `YYMMDD` plus a counter
+    that restarts each day).
   - A Markdown description, labels, priority (P0–P3, with an impact × urgency helper), severity (S1–S4), and a due
     date with an optional time.
   - Checklists, plus attachments: drag and drop, pasted screenshots, inline images, and a log viewer.
-  - Links between cards ("related to", "blocks / blocked by").
+  - Links between cards ("related to", "blocks / blocked by"). A blocked card moves to Blocked/Waiting
+    automatically and can't be marked done until every card blocking it is done.
 - **History**:
   - Every change is recorded automatically and can't be altered or deleted.
   - A **work log** for notes like "Swapped SATA power cable to drive 3", with backdating and edit history.

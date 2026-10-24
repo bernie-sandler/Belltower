@@ -200,9 +200,17 @@ const v2 = `
 ALTER TABLE cards ADD COLUMN severity TEXT CHECK (severity IN ('blocker', 'major', 'minor', 'trivial'));
 `;
 
+// Ticket numbers ("YYMMDD-N", the local creation date plus a per-day counter). Existing cards are
+// numbered by assignTicketNumbers() at startup / after a restore, which knows the app time zone.
+const v3 = `
+ALTER TABLE cards ADD COLUMN ticket_no TEXT;
+CREATE UNIQUE INDEX ux_cards_ticket_no ON cards (ticket_no) WHERE ticket_no IS NOT NULL;
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
+  { version: 3, name: 'ticket numbers', sql: v3 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

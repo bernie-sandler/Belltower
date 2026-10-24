@@ -6,7 +6,7 @@ import { stmt } from '../db/connection';
 import { badRequest, conflict, notFound } from '../errors';
 import { recordEvent } from './activity';
 import { linkDirection, type LinkRow } from './cardParts';
-import { getCard, getCardRow, getEditableCard, touchCard } from './cards';
+import { getCard, getCardRow, getEditableCard, parkIfBlocked, touchCard } from './cards';
 import { nowIso, tx, type Ctx } from './context';
 import { reindexCard } from './search';
 
@@ -46,6 +46,18 @@ export function createLink(ctx: Ctx, cardId: number, otherId: number, direction:
       throw conflict('duplicate_link', 'These cards already have a blocking link the other way round');
     }
 
+    if (type === 'blocks') {
+      // A completed card can't become blocked by an open one; reopen it first.
+      const blocked = to === cardId ? card : other;
+      const blocker = to === cardId ? other : card;
+      if (blocked.completed_at && !blocker.completed_at) {
+        throw conflict(
+          'blocked',
+          `“${blocked.title}” is already done, so an open card can't block it. Move it out of Done first.`,
+        );
+      }
+    }
+
     const id = Number(
       stmt(ctx.db, 'INSERT INTO card_links (from_card_id, to_card_id, type, created_at) VALUES (?, ?, ?, ?)').run(
         from,
@@ -60,6 +72,8 @@ export function createLink(ctx: Ctx, cardId: number, otherId: number, direction:
       touchCard(ctx, cid);
       reindexCard(ctx, cid);
     }
+    // A newly blocked card goes to the blocked column (when one is set).
+    if (type === 'blocks') parkIfBlocked(ctx, to);
     return getCard(ctx, cardId);
   });
 }

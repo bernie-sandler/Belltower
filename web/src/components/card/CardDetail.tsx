@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useId, useMemo, useRef, useState } from 'react';
-import { sortedColumns, useBoard } from '../../api/board';
+import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useCard, useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
 import { isApiError } from '../../api/client';
@@ -383,17 +383,24 @@ function CardDetailBody({
   );
 }
 
-/** One tap: move to the top of the Done column. */
+/** One tap: move to the top of the Done column (not while open cards still block it). */
 function MarkDoneButton({ cardId }: { cardId: number }) {
   const { data: board } = useBoard();
   const moveCard = useMoveCard();
   const done = board ? sortedColumns(board.columns).find((c) => c.role === 'done') : undefined;
-  if (!done) return null;
+  if (!done || !board) return null;
+  const blocked = completionBlocked(board, cardId, done.id);
   return (
     <button
       type="button"
       className="btn btn-block card-action"
+      aria-disabled={blocked !== null}
+      title={blocked ?? undefined}
       onClick={() => {
+        if (blocked) {
+          toast(blocked, { kind: 'warning' });
+          return;
+        }
         moveCard.mutate({ cardId, toColumnId: done.id, afterCardId: null });
         toast(`Moved to ${done.name}`, { kind: 'success', durationMs: 2500 });
       }}

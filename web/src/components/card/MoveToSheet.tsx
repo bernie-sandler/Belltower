@@ -3,7 +3,7 @@
 
 import { ArrowDownToLine, ArrowLeft, ArrowUpToLine, ChevronRight, CircleCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { bottomAnchor, currentAnchor, groupCards, sortedColumns, useBoard } from '../../api/board';
+import { blockedCompletionMessage, bottomAnchor, completionBlocked, currentAnchor, groupCards, sortedColumns, useBoard } from '../../api/board';
 import { useMoveCard } from '../../api/cards';
 import { cls } from '../../lib/cls';
 import { toast } from '../../lib/toast';
@@ -53,8 +53,13 @@ export function MoveToSheet({ cardId, onClose }: Props) {
     if (!board || !tile) return;
     const afterCardId = where === 'top' ? null : bottomAnchor(board, toColumnId, cardId);
     const unchanged = toColumnId === tile.columnId && afterCardId === currentAnchor(board, cardId);
+    const blocked = completionBlocked(board, cardId, toColumnId);
     onClose();
     if (unchanged) return;
+    if (blocked) {
+      toast(blocked, { kind: 'warning' });
+      return;
+    }
     moveCard.mutate({ cardId, toColumnId, afterCardId });
     const name = columns.find((c) => c.id === toColumnId)?.name ?? 'column';
     if (toColumnId !== tile.columnId) toast(`Moved to ${name}`, { kind: 'success', durationMs: 2500 });
@@ -98,9 +103,17 @@ export function MoveToSheet({ cardId, onClose }: Props) {
         ) : (
           <>
             {doneColumn && tile.columnId !== doneColumn.id && (
-              <button type="button" className="btn btn-success btn-block move-done" onClick={() => move(doneColumn.id, 'top')}>
-                <CircleCheck size={18} aria-hidden /> Mark done
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn btn-success btn-block move-done"
+                  disabled={tile.blockedBy > 0}
+                  onClick={() => move(doneColumn.id, 'top')}
+                >
+                  <CircleCheck size={18} aria-hidden /> Mark done
+                </button>
+                {tile.blockedBy > 0 && <p className="muted small blocked-hint">{blockedCompletionMessage(tile)}</p>}
+              </>
             )}
             <ul ref={listRef} className="move-columns" aria-label="Columns">
               {columns.map((c) => {

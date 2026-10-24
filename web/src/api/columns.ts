@@ -19,6 +19,16 @@ export function useCreateColumn() {
   });
 }
 
+/** Chooses the column that newly blocked cards are moved to (null = don't move them). */
+export function useSetBlockedColumn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (columnId: number | null) => api.put<void>('/api/board/blocked-column', { columnId }),
+    onSuccess: (_d, columnId) => setBoard(qc, (b) => ({ ...b, blockedColumnId: columnId })),
+    onError: (err) => refetchIfStale(qc, err),
+  });
+}
+
 export function useRenameColumn() {
   const qc = useQueryClient();
   return useMutation({

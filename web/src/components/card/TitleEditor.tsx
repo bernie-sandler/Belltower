@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useUpdateCard } from '../../api/cards';
 import { conflictCard } from '../../api/errors';
 import { AutoGrowTextarea } from '../common/AutoGrowTextarea';
+import { TicketTitle } from '../common/TicketTitle';
 
 interface Props {
   card: CardDetail;
@@ -58,13 +59,16 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
     <>
       <h2 id={titleId} className={editing ? 'visually-hidden' : 'card-title'}>
         {editing || readOnly ? (
-          card.title
+          <TicketTitle ticketNo={card.ticketNo}>{card.title}</TicketTitle>
         ) : (
           <button type="button" className="card-title-btn" onClick={start} title="Click to edit the title">
-            <span className="card-title-text">{card.title}</span>
+            <span className="card-title-text">
+              <TicketTitle ticketNo={card.ticketNo}>{card.title}</TicketTitle>
+            </span>
           </button>
         )}
       </h2>
+      {editing && card.ticketNo && <span className="ticket-no card-title-ticket">{card.ticketNo}</span>}
       {editing && (
         <AutoGrowTextarea
           className="input card-title-input"

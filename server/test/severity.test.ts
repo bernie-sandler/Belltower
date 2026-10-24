@@ -88,7 +88,7 @@ describe('migration 2', () => {
     db.prepare(
       `INSERT INTO cards (column_id, title, priority, position, created_at, updated_at) VALUES (1, 'Old card', 'high', 0, ?, ?)`,
     ).run(now, now);
-    expect(migrate(db)).toEqual([2]);
+    expect(migrate(db)).toEqual([2, 3]);
     const ctx = { db, clock: t.clock, tz: 'America/Chicago' };
     expect(getCard(ctx, 1)).toMatchObject({ title: 'Old card', priority: 'high', severity: null });
     db.close();

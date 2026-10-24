@@ -254,6 +254,11 @@ export function useMoveCard() {
         qc.setQueryData<CardDetail>(qk.card(v.cardId), (c) => (c ? { ...c, ...res.card } : c));
       }
       if (!consistent) wantBoardRefetch(); // the cache disagreed with the server (another device?)
+      if (res.card.linkCount > 0) {
+        // Finishing (or reopening) a blocker changes the "blocked" state of the cards it blocks.
+        wantBoardRefetch();
+        void qc.invalidateQueries({ queryKey: qk.cards });
+      }
     },
     onError: (err, v) => {
       const later = opsAfter(qc, v);
@@ -286,6 +291,10 @@ export function useMoveCard() {
         void qc.invalidateQueries({ queryKey: qk.card(v.cardId) });
         wantBoardRefetch();
         toast(goneMessage(err, origin?.title), { kind: 'warning' });
+      } else if (isApiError(err, 'blocked')) {
+        // 409 blocked: a blocker is still open (the board may not have known yet).
+        wantBoardRefetch();
+        toast(errorMessage(err), { kind: 'warning' });
       } else if (isStaleBoard(err)) {
         // 400 anchor_not_found / invalid_target.
         wantBoardRefetch();
@@ -308,7 +317,10 @@ export function useDeleteCard() {
   return useMutation({
     mutationFn: (id: number) => api.del(`/api/cards/${id}`),
     onSuccess: (_d, id) => {
+      const linked = (qc.getQueryData<BoardResponse>(qk.board)?.cards.find((c) => c.id === id)?.linkCount ?? 0) > 0;
       setBoard(qc, (b) => removeTile(b, id));
+      // A trashed blocker no longer blocks anything.
+      if (linked) void qc.invalidateQueries({ queryKey: qk.board });
       qc.setQueryData<CardDetail>(qk.card(id), (c) => (c ? { ...c, deletedAt: new Date().toISOString() } : c));
       void qc.invalidateQueries({ queryKey: qk.card(id) }); // the server's deletedAt
       void qc.invalidateQueries({ queryKey: qk.cardLists });
@@ -333,6 +345,7 @@ export function useRestoreCard(kind: 'undelete' | 'restore') {
       applyCardDetail(qc, card);
       invalidateActivity(qc, card.id);
       void qc.invalidateQueries({ queryKey: qk.cardLists });
+      if (card.linkCount > 0) void qc.invalidateQueries({ queryKey: qk.board }); // it may block cards again
     },
     onError: (_err, id) => {
       // e.g. 409 card_deleted when restoring from the archive: show the card's real state.

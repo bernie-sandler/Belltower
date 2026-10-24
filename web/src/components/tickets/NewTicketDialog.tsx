@@ -72,7 +72,10 @@ export function NewTicketDialog({ mode, onClose }: { mode: NewTicketMode; onClos
       onSuccess: (card) => {
         clearDraft(TEXT_DRAFT);
         onClose();
-        toast('Ticket created', { kind: 'success', action: { label: 'Open', onClick: () => openCard(card.id) } });
+        toast(card.ticketNo ? `Ticket ${card.ticketNo} created` : 'Ticket created', {
+          kind: 'success',
+          action: { label: 'Open', onClick: () => openCard(card.id) },
+        });
       },
       onError: (err) => setError(errorMessage(err)),
     });

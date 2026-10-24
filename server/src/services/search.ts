@@ -13,8 +13,8 @@ import type { Ctx } from './context';
 export function reindexCard(ctx: Ctx, cardId: number): void {
   const db = ctx.db;
   stmt(db, 'DELETE FROM card_search WHERE rowid = ?').run(cardId);
-  const card = stmt(db, 'SELECT id, title, description_md, deleted_at FROM cards WHERE id = ?').get(cardId) as
-    | { id: number; title: string; description_md: string; deleted_at: string | null }
+  const card = stmt(db, 'SELECT id, ticket_no, title, description_md, deleted_at FROM cards WHERE id = ?').get(cardId) as
+    | { id: number; ticket_no: string | null; title: string; description_md: string; deleted_at: string | null }
     | undefined;
   if (!card || card.deleted_at) return;
 
@@ -42,8 +42,8 @@ export function reindexCard(ctx: Ctx, cardId: number): void {
     ).all(cardId) as { body_md: string }[]
   ).map((r) => r.body_md);
 
-  // Extra searchable history: previous titles, attachment filenames, linked card titles.
-  const history: string[] = [];
+  // Extra searchable history: the ticket number, previous titles, attachment filenames, linked card titles.
+  const history: string[] = card.ticket_no ? [card.ticket_no] : [];
   const events = stmt(
     db,
     `SELECT type, data FROM activity
@@ -100,6 +100,7 @@ export function toFtsQuery(text: string): string | null {
 
 interface SearchRow {
   id: number;
+  ticket_no: string | null;
   title: string;
   column_id: number;
   column_name: string;
@@ -153,7 +154,7 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
     params.push(from, to);
   }
 
-  const base = `c.id, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.completed_at,
+  const base = `c.id, c.ticket_no, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.completed_at,
     c.archived_at, c.updated_at,
     (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
        FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids`;
@@ -183,6 +184,7 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
 
   return rows.map((r) => ({
     id: r.id,
+    ticketNo: r.ticket_no,
     title: r.title,
     columnId: r.column_id,
     columnName: r.column_name,

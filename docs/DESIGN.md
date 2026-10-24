@@ -88,9 +88,14 @@ attachments       id PK, card_id → cards, original_name, stored_name (uuid, no
                   mime_type (server-sniffed), kind ('image'|'text'|'file'), size_bytes, sha256, created_at
                   -- file at /data/attachments/<card_id>/<stored_name>
 
+cards.ticket_no   (schema 3) 'YYMMDD-N': local creation date + per-day counter, unique, never reused;
+                  backfilled by assignTicketNumbers() at startup and after a restore
 card_links        id PK, from_card_id → cards, to_card_id → cards, type ('relates'|'blocks'), created_at
                   CHECK(from <> to), CHECK(type <> 'relates' OR from < to), UNIQUE(from, to, type)
                   -- 'blocks': from blocks to (to shows "blocked by"); reverse 'blocks' rejected
+                  -- a card can't enter Done while any blocker is open (not completed, not deleted)
+                  -- a card that becomes blocked moves to the blocked column (settings.blocked_column_id,
+                  --   defaulting to the first "Blocked"/"Waiting" column; 'none' = off), logged as moved/reason blocked
 ```
 
 ### Activity log (append-only)

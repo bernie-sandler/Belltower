@@ -13,6 +13,7 @@ import { createLogger } from './logger';
 import type { Ctx } from './services/context';
 import { createClaudeDrafter } from './services/aiDraft';
 import { dailySnapshot } from './services/backup';
+import { assignTicketNumbers } from './services/cards';
 import { runDueTemplates } from './services/recurring';
 import { localDateOf } from './lib/localdate';
 import { rebuildSearch, searchIndexLooksConsistent } from './services/search';
@@ -53,6 +54,8 @@ async function main(): Promise<void> {
 
   const ctx: Ctx = { db, clock: systemClock, tz: config.timeZone };
   if (seedDefaults(ctx)) log.info('Seeded default columns, labels and maintenance templates');
+  const numbered = assignTicketNumbers(ctx);
+  if (numbered) log.info(`Gave ticket numbers to ${numbered} existing card(s)`);
   if (!searchIndexLooksConsistent(ctx)) log.info(`Rebuilt search index (${rebuildSearch(ctx)} cards)`);
 
   const auth: AuthState = await bootstrapAuth(ctx, config.appPassword, log);

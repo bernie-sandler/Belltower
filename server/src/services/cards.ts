@@ -11,11 +11,12 @@ import { PRIORITIES, SEVERITIES } from '@tt/shared';
 import { stmt } from '../db/connection';
 import { badRequest, conflict, notFound } from '../errors';
 import { columnRef, labelRef, recordEvent } from './activity';
-import { listAttachments, listChecklists, listLinks } from './cardParts';
-import { getColumnRow, getRoleColumn, listColumns, type ColumnRow } from './columns';
+import { assertNotBlocked, listAttachments, listChecklists, listLinks, openBlockers } from './cardParts';
+import { getBlockedColumnId, getColumnRow, getRoleColumn, listColumns, type ColumnRow } from './columns';
 import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
 import { reindexCard } from './search';
+import { localDateOf } from '../lib/localdate';
 
 export interface CardRow {
   id: number;
@@ -34,6 +35,7 @@ export interface CardRow {
   source: CardSource;
   source_ref: string | null;
   template_id: number | null;
+  ticket_no: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +46,7 @@ interface TileRow extends CardRow {
   link_count: number;
   checklist_done: number;
   checklist_total: number;
+  blocked_by: number;
 }
 
 const TILE_SELECT = `
@@ -57,7 +60,9 @@ SELECT c.*,
   (SELECT count(*) FROM checklist_items i JOIN checklists ch ON ch.id = i.checklist_id
     WHERE ch.card_id = c.id AND i.checked = 1) AS checklist_done,
   (SELECT count(*) FROM checklist_items i JOIN checklists ch ON ch.id = i.checklist_id
-    WHERE ch.card_id = c.id) AS checklist_total
+    WHERE ch.card_id = c.id) AS checklist_total,
+  (SELECT count(*) FROM card_links k JOIN cards b ON b.id = k.from_card_id
+    WHERE k.to_card_id = c.id AND k.type = 'blocks' AND b.deleted_at IS NULL AND b.completed_at IS NULL) AS blocked_by
 FROM cards c`;
 
 /** Cards shown on the board: not archived, not in Trash. */
@@ -66,6 +71,7 @@ const VISIBLE = 'deleted_at IS NULL AND archived_at IS NULL';
 function toTile(r: TileRow): CardTile {
   return {
     id: r.id,
+    ticketNo: r.ticket_no,
     columnId: r.column_id,
     title: r.title,
     position: r.position,
@@ -79,6 +85,7 @@ function toTile(r: TileRow): CardTile {
     linkCount: r.link_count,
     checklistDone: r.checklist_done,
     checklistTotal: r.checklist_total,
+    blockedBy: r.blocked_by,
     version: r.version,
   };
 }
@@ -137,7 +144,12 @@ export function getBoard(ctx: Ctx): BoardResponse {
       WHERE c.deleted_at IS NULL AND c.archived_at IS NULL
       ORDER BY col.position, c.position, c.id`,
   ).all() as TileRow[];
-  return { columns: listColumns(ctx), labels: listLabels(ctx), cards: rows.map(toTile) };
+  return {
+    columns: listColumns(ctx),
+    labels: listLabels(ctx),
+    cards: rows.map(toTile),
+    blockedColumnId: getBlockedColumnId(ctx),
+  };
 }
 
 function visibleIdsInColumn(ctx: Ctx, columnId: number): number[] {
@@ -203,6 +215,32 @@ export interface CreateCardOptions {
   via?: string;
 }
 
+/**
+ * The next ticket number for a card created at `at`: "YYMMDD-N", where YYMMDD is the local date
+ * (app time zone) and N counts up from 1 each day. Numbers are never reused, not even after a card
+ * is deleted from the Trash view (cards are never really deleted).
+ */
+export function nextTicketNo(ctx: Ctx, at: Date): string {
+  const prefix = localDateOf(at, ctx.tz).slice(2).replace(/-/g, '');
+  const max = stmt(ctx.db, "SELECT max(CAST(substr(ticket_no, 8) AS INTEGER)) FROM cards WHERE ticket_no LIKE ? || '-%'")
+    .pluck()
+    .get(prefix) as number | null;
+  return `${prefix}-${(max ?? 0) + 1}`;
+}
+
+/** Numbers cards that don't have a ticket number yet (from before 0.6, or an older backup), oldest first. */
+export function assignTicketNumbers(ctx: Ctx): number {
+  return tx(ctx, () => {
+    const rows = stmt(ctx.db, 'SELECT id, created_at FROM cards WHERE ticket_no IS NULL ORDER BY created_at, id').all() as {
+      id: number;
+      created_at: string;
+    }[];
+    const set = stmt(ctx.db, 'UPDATE cards SET ticket_no = ? WHERE id = ?');
+    for (const r of rows) set.run(nextTicketNo(ctx, new Date(r.created_at)), r.id);
+    return rows.length;
+  });
+}
+
 export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOptions = {}): CardDetail {
   const title = input.title.trim();
   if (!title) throw badRequest('validation', 'Title is required');
@@ -221,11 +259,12 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       position = bottomPosition(ctx, column.id);
     }
 
+    const ticketNo = nextTicketNo(ctx, ctx.clock.now());
     const info = stmt(
       ctx.db,
       `INSERT INTO cards (column_id, title, description_md, priority, severity, due_date, due_time, position,
-                          completed_at, source, source_ref, template_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          completed_at, source, source_ref, template_id, ticket_no, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       column.id,
       title,
@@ -239,6 +278,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       opts.source ?? 'manual',
       opts.sourceRef ?? null,
       opts.templateId ?? null,
+      ticketNo,
       now,
       now,
     );
@@ -266,6 +306,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     recordEvent(ctx, id, 'created', {
       column: columnRef(column),
       title,
+      ticketNo,
       source: opts.source ?? 'manual',
       ...(opts.templateId ? { templateId: opts.templateId, templateTitle: opts.templateTitle } : {}),
       ...(opts.via ? { via: opts.via } : {}),
@@ -437,7 +478,10 @@ export function moveCard(
       const from: ColumnRow = getColumnRow(ctx, card.column_id);
       const now = nowIso(ctx);
       let completedAt = card.completed_at;
-      if (target.role === 'done' && from.role !== 'done') completedAt = now;
+      if (target.role === 'done' && from.role !== 'done') {
+        assertNotBlocked(ctx, card);
+        completedAt = now;
+      }
       if (from.role === 'done' && target.role !== 'done') completedAt = null;
       stmt(ctx.db, 'UPDATE cards SET column_id = ?, completed_at = ?, updated_at = ? WHERE id = ?').run(
         target.id,
@@ -449,11 +493,42 @@ export function moveCard(
       writePositions(ctx, sourceIds);
       orders[String(from.id)] = sourceIds;
       recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target) });
+      // Reopening a finished card makes the cards it blocks blocked again.
+      if (from.role === 'done' && target.role !== 'done') parkCardsBlockedBy(ctx, id);
     }
     writePositions(ctx, targetIds);
     orders[String(target.id)] = targetIds;
     return { card: getCardTile(ctx, id), orders };
   });
+}
+
+/**
+ * Moves a card that has open blockers to the bottom of the blocked column (see getBlockedColumnId).
+ * Done, archived and trashed cards stay put, as do cards already there. Returns whether it moved.
+ */
+export function parkIfBlocked(ctx: Ctx, id: number): boolean {
+  const card = getCardRow(ctx, id);
+  if (card.deleted_at || card.archived_at || card.completed_at) return false;
+  const targetId = getBlockedColumnId(ctx);
+  if (targetId === null || card.column_id === targetId) return false;
+  const blockers = openBlockers(ctx, id);
+  if (!blockers.length) return false;
+
+  const from = getColumnRow(ctx, card.column_id);
+  const target = getColumnRow(ctx, targetId);
+  stmt(ctx.db, 'UPDATE cards SET column_id = ?, updated_at = ? WHERE id = ?').run(target.id, nowIso(ctx), id);
+  writePositions(ctx, visibleIdsInColumn(ctx, from.id));
+  writePositions(ctx, [...visibleIdsInColumn(ctx, target.id).filter((cid) => cid !== id), id]);
+  recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target), reason: 'blocked', blockedBy: blockers });
+  return true;
+}
+
+/** parkIfBlocked for every card that `blockerId` blocks. */
+export function parkCardsBlockedBy(ctx: Ctx, blockerId: number): void {
+  const ids = stmt(ctx.db, "SELECT to_card_id FROM card_links WHERE from_card_id = ? AND type = 'blocks'")
+    .pluck()
+    .all(blockerId) as number[];
+  for (const id of ids) parkIfBlocked(ctx, id);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -481,6 +556,7 @@ export function undeleteCard(ctx: Ctx, id: number): CardDetail {
     stmt(ctx.db, 'UPDATE cards SET deleted_at = NULL, position = ?, updated_at = ? WHERE id = ?').run(pos, now, id);
     recordEvent(ctx, id, 'undeleted', { column: columnRef(getColumnRow(ctx, card.column_id)) });
     reindexCard(ctx, id);
+    parkCardsBlockedBy(ctx, id); // a restored open blocker blocks again
     return getCard(ctx, id);
   });
 }

@@ -1,8 +1,9 @@
 import { LIMITS, type Column } from '@tt/shared';
-import { Archive, ArrowDownWideNarrow, ArrowLeft, ArrowRight, CircleCheck, Ellipsis, Inbox, Pencil, Trash2 } from 'lucide-react';
+import { Archive, ArrowDownWideNarrow, ArrowLeft, ArrowRight, Ban, CircleCheck, Ellipsis, Inbox, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useArchiveAllDone } from '../../api/cardParts';
-import { useRenameColumn, useReorderColumns, useSortColumnByPriority } from '../../api/columns';
+import { useBoard } from '../../api/board';
+import { useRenameColumn, useReorderColumns, useSetBlockedColumn, useSortColumnByPriority } from '../../api/columns';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Menu } from '../common/Menu';
@@ -32,6 +33,8 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
   const [archivingAll, setArchivingAll] = useState(false);
   const archiveAll = useArchiveAllDone();
   const sortByPriority = useSortColumnByPriority();
+  const setBlockedColumn = useSetBlockedColumn();
+  const isBlockedColumn = useBoard().data?.blockedColumnId === column.id;
 
   const role = column.role ? ROLE_INFO[column.role] : null;
   // Set once the edit is resolved (saved or cancelled): the blur fired as the input unmounts must
@@ -112,6 +115,12 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
           <span className="visually-hidden">{role.title}</span>
         </span>
       )}
+      {isBlockedColumn && (
+        <span className="column-role" title="Blocked cards are moved here automatically">
+          <Ban size={14} aria-hidden />
+          <span className="visually-hidden">Blocked cards are moved here automatically</span>
+        </span>
+      )}
       <span className="column-count" title={`${cardCount} card${cardCount === 1 ? '' : 's'}`}>
         {cardCount}
       </span>
@@ -158,6 +167,28 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
                   onSuccess: () => toast(`Sorted ${column.name} by priority`, { kind: 'success', durationMs: 2000 }),
                 }),
             },
+            ...(column.role === null
+              ? [
+                  {
+                    key: 'blocked',
+                    label: isBlockedColumn ? 'Stop moving blocked cards here' : 'Move blocked cards here',
+                    hint: isBlockedColumn
+                      ? 'Newly blocked cards will stay where they are'
+                      : 'Cards go here automatically when they become blocked',
+                    icon: <Ban size={16} />,
+                    onSelect: () =>
+                      setBlockedColumn.mutate(isBlockedColumn ? null : column.id, {
+                        onSuccess: () =>
+                          toast(
+                            isBlockedColumn
+                              ? 'Blocked cards will no longer be moved automatically'
+                              : `Blocked cards will be moved to ${column.name}`,
+                            { kind: 'success', durationMs: 2500 },
+                          ),
+                      }),
+                  },
+                ]
+              : []),
             ...(column.role === 'done'
               ? [
                   {

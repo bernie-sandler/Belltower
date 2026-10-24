@@ -12,6 +12,7 @@ import type {
   LinkDirection,
 } from '@tt/shared';
 import { stmt } from '../db/connection';
+import { conflict } from '../errors';
 import type { Ctx } from './context';
 
 export interface ChecklistRow {
@@ -94,7 +95,7 @@ export function listAttachments(ctx: Ctx, cardId: number): Attachment[] {
 }
 
 const SUMMARY_SELECT = `
-SELECT c.id, c.title, c.column_id, col.name AS column_name, c.completed_at, c.archived_at, c.deleted_at,
+SELECT c.id, c.ticket_no, c.title, c.column_id, col.name AS column_name, c.completed_at, c.archived_at, c.deleted_at,
        c.updated_at,
        (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
           FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids
@@ -102,6 +103,7 @@ SELECT c.id, c.title, c.column_id, col.name AS column_name, c.completed_at, c.ar
 
 interface SummaryRow {
   id: number;
+  ticket_no: string | null;
   title: string;
   column_id: number;
   column_name: string;
@@ -114,6 +116,7 @@ interface SummaryRow {
 
 const toSummary = (r: SummaryRow): CardSummary => ({
   id: r.id,
+  ticketNo: r.ticket_no,
   title: r.title,
   columnId: r.column_id,
   columnName: r.column_name,
@@ -145,7 +148,7 @@ const STATUS_ORDER: Record<CardListStatus, string> = {
   live: 'c.updated_at DESC',
 };
 
-/** Card lists for the link picker, Archive and Trash. `q` matches titles (case-insensitive). */
+/** Card lists for the link picker, Archive and Trash. `q` matches titles and ticket numbers (case-insensitive). */
 export function listCards(ctx: Ctx, opts: { status: CardListStatus; q?: string; limit: number }): CardSummary[] {
   const where = [STATUS_WHERE[opts.status]];
   const params: unknown[] = [];
@@ -153,12 +156,13 @@ export function listCards(ctx: Ctx, opts: { status: CardListStatus; q?: string; 
   if (q) {
     // A bare number also finds the card with that id ("#12" or "12").
     const n = Number(q.replace(/^#/, ''));
+    const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
     if (Number.isInteger(n) && n > 0) {
-      where.push(`(c.title LIKE ? ESCAPE '\\' OR c.id = ?)`);
-      params.push(`%${q.replace(/[\\%_]/g, '\\$&')}%`, n);
+      where.push(`(c.title LIKE ? ESCAPE '\\' OR c.ticket_no LIKE ? ESCAPE '\\' OR c.id = ?)`);
+      params.push(like, like, n);
     } else {
-      where.push(`c.title LIKE ? ESCAPE '\\'`);
-      params.push(`%${q.replace(/[\\%_]/g, '\\$&')}%`);
+      where.push(`(c.title LIKE ? ESCAPE '\\' OR c.ticket_no LIKE ? ESCAPE '\\')`);
+      params.push(like, like);
     }
   }
   const sql = `${SUMMARY_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${STATUS_ORDER[opts.status]}, c.id DESC LIMIT ?`;
@@ -184,4 +188,27 @@ export function listLinks(ctx: Ctx, cardId: number): CardLink[] {
 export function linkDirection(row: LinkRow, cardId: number): LinkDirection {
   if (row.type === 'relates') return 'relates';
   return row.from_card_id === cardId ? 'blocks' : 'blocked_by';
+}
+
+/** Cards that block `cardId` and are still open: not done (completed) and not in the Trash. */
+export function openBlockers(ctx: Ctx, cardId: number): { id: number; title: string }[] {
+  return stmt(
+    ctx.db,
+    `SELECT b.id, b.title FROM card_links k JOIN cards b ON b.id = k.from_card_id
+      WHERE k.to_card_id = ? AND k.type = 'blocks' AND b.deleted_at IS NULL AND b.completed_at IS NULL
+      ORDER BY b.id`,
+  ).all(cardId) as { id: number; title: string }[];
+}
+
+/** A blocked card can't be completed until every card blocking it is done. 409 `blocked`. */
+export function assertNotBlocked(ctx: Ctx, card: { id: number; title: string }): void {
+  const blockers = openBlockers(ctx, card.id);
+  if (!blockers.length) return;
+  const names = blockers.slice(0, 3).map((b) => `#${b.id} “${b.title}”`).join(', ');
+  const more = blockers.length > 3 ? ` and ${blockers.length - 3} more` : '';
+  throw conflict(
+    'blocked',
+    `“${card.title}” can't be completed while it's blocked by ${names}${more}. Finish ${blockers.length === 1 ? 'that card' : 'those cards'} first.`,
+    { blockers },
+  );
 }

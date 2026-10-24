@@ -24,6 +24,7 @@ import { migrate, schemaVersion } from '../db/migrate';
 import { LATEST_SCHEMA_VERSION } from '../db/schema';
 import { AppError, badRequest } from '../errors';
 import type { Ctx } from './context';
+import { assignTicketNumbers } from './cards';
 import { rebuildSearch } from './search';
 
 export const BACKUP_FORMAT = 'tower-tracker-backup';
@@ -199,6 +200,7 @@ export function buildRestoreDb(data: BackupData, dbPath: string, tz: string, clo
     if (check !== 'ok') throw badRequest('validation', `Restored database failed its integrity check: ${String(check)}`);
     // Never re-seed defaults on top of restored data.
     db.prepare(`INSERT INTO settings (key, value) VALUES ('seeded', '1') ON CONFLICT(key) DO NOTHING`).run();
+    assignTicketNumbers({ db, clock, tz }); // backups from before 0.6 have none
     rebuildSearch({ db, clock, tz });
     return counts;
   } finally {
