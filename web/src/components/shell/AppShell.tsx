@@ -16,6 +16,8 @@ const CardRoute = lazy(() => import('../card/CardRoute'));
 const CardListPage = lazy(() => import('../lists/CardListPage').then((m) => ({ default: m.CardListPage })));
 const CalendarPage = lazy(() => import('../calendar/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const SearchPage = lazy(() => import('../search/SearchPage').then((m) => ({ default: m.SearchPage })));
+const ImportCardsPage = lazy(() => import('../tools/ImportCardsPage').then((m) => ({ default: m.ImportCardsPage })));
+const BackupPage = lazy(() => import('../tools/BackupPage').then((m) => ({ default: m.BackupPage })));
 const TemplatesPage = lazy(() => import('../templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })));
 const LabelsManager = lazy(() => import('../labels/LabelsManager').then((m) => ({ default: m.LabelsManager })));
 const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
@@ -98,6 +100,8 @@ function AppRoutes() {
         <Route path="/calendar" element={<Lazy><CalendarPage /></Lazy>} />
         <Route path="/search" element={<Lazy><SearchPage /></Lazy>} />
         <Route path="/templates" element={<Lazy><TemplatesPage /></Lazy>} />
+        <Route path="/import" element={<Lazy><ImportCardsPage /></Lazy>} />
+        <Route path="/backup" element={<Lazy><BackupPage /></Lazy>} />
         <Route
           path="/trash"
           element={

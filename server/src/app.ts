@@ -12,6 +12,7 @@ import { registerAuthRoutes } from './http/routes/auth';
 import { registerBoardRoutes } from './http/routes/board';
 import { registerCardPartRoutes } from './http/routes/cardParts';
 import { registerPhase3Routes } from './http/routes/phase3';
+import { registerPhase4Routes } from './http/routes/phase4';
 import type { Ctx } from './services/context';
 
 export interface AppDeps {
@@ -109,6 +110,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   registerBoardRoutes(app, deps);
   registerCardPartRoutes(app, deps);
   registerPhase3Routes(app, deps);
+  registerPhase4Routes(app, deps);
 
   if (config.webDistDir) {
     await app.register(fastifyStatic, {

@@ -11,7 +11,9 @@ import { migrate } from './db/migrate';
 import { seedDefaults } from './db/seed';
 import { createLogger } from './logger';
 import type { Ctx } from './services/context';
+import { dailySnapshot } from './services/backup';
 import { runDueTemplates } from './services/recurring';
+import { localDateOf } from './lib/localdate';
 import { rebuildSearch, searchIndexLooksConsistent } from './services/search';
 
 function prepareDataDir(config: Config): void {
@@ -69,6 +71,10 @@ async function main(): Promise<void> {
     } catch (err) {
       log.error(err as Error, 'Recurring templates run failed');
     }
+    // One consistent database snapshot per day in /data/backups (last 7 kept).
+    dailySnapshot(ctx, config.backupsDir, localDateOf(new Date(), config.timeZone))
+      .then((file) => file && log.info(`Daily snapshot written: ${file}`))
+      .catch((err) => log.error(err as Error, 'Daily snapshot failed'));
   };
   runTemplates();
   const scheduler = setInterval(runTemplates, 10 * 60 * 1000);
@@ -93,8 +99,8 @@ async function main(): Promise<void> {
     }
     try {
       // Fold the WAL back into the main file so a copy of /data is self-contained.
-      db.pragma('wal_checkpoint(TRUNCATE)');
-      db.close();
+      ctx.db.pragma('wal_checkpoint(TRUNCATE)');
+      ctx.db.close();
     } catch (err) {
       log.error(err as Error, 'Error while closing database');
     }

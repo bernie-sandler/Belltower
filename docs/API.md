@@ -125,6 +125,18 @@ The scheduler runs at startup and every 10 minutes. On a template's day it creat
 the date on the open card) if the previous card is still open. After downtime it handles only the latest missed
 occurrence.
 
+## Phase 4: backup, restore, card import
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/backup/export.json` | — | JSON file | `{format: "tower-tracker-backup", schemaVersion, appVersion, appTz, exportedAt, tables}`. Sessions and the password are excluded. |
+| `GET /api/backup/export.zip` | — | ZIP file | `data.json` plus `attachments/<card id>/<uuid>`. |
+| `POST /api/backup/restore` | multipart `file` (.zip or .json), up to `MAX_IMPORT_MB` | `RestorePreview` | Builds and checks a new database; nothing live changes. The preview `token` is valid for 30 minutes. |
+| `POST /api/backup/restore/:token/confirm` | `{confirm: "RESTORE"}` | `{restored, previousDb}` | Swaps the restored data in. The old database and attachments are kept in `/data/backups`. Password and sessions carry over. |
+| `DELETE /api/backup/restore/:token` | — | `204` | Discards a staged restore. |
+| `GET /api/backup/snapshots` | — | `{name, sizeBytes, modifiedAt}[]` | Files in `/data/backups`. |
+| `POST /api/import/cards` | `{text?: string, data?: any, dryRun?: boolean = true}` | `200` preview / `201` result | See [CARD-IMPORT.md](CARD-IMPORT.md). All-or-nothing; `400` with `result` when any card is invalid. |
+
 ## Health
 
 `GET /health` returns `200 {"status":"ok"}`, or `503` if the DB or `/data` is unusable. No auth.

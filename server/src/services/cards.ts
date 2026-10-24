@@ -199,6 +199,8 @@ export interface CreateCardOptions {
   sourceRef?: string | null;
   templateId?: number | null;
   templateTitle?: string;
+  /** How a card from outside arrived, e.g. 'card import' (recorded on the 'created' event). */
+  via?: string;
 }
 
 export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOptions = {}): CardDetail {
@@ -266,6 +268,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       title,
       source: opts.source ?? 'manual',
       ...(opts.templateId ? { templateId: opts.templateId, templateTitle: opts.templateTitle } : {}),
+      ...(opts.via ? { via: opts.via } : {}),
     });
     reindexCard(ctx, id);
     return getCard(ctx, id);
