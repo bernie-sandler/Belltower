@@ -41,6 +41,8 @@ import { CardFields } from './CardFields';
 import { Checklists } from './Checklists';
 import { Links } from './Links';
 import { DescriptionEditor, descriptionDraftKey } from './DescriptionEditor';
+import { CompleteWorkDialog } from './CompleteWorkDialog';
+import { Family } from './Family';
 import { LabelPicker } from './LabelPicker';
 import { MoveToSheet } from './MoveToSheet';
 import { TitleEditor } from './TitleEditor';
@@ -288,6 +290,7 @@ function CardDetailBody({
             </div>
           </section>
 
+          <Family card={card} readOnly={deleted} />
           <CardFields card={card} readOnly={deleted} />
 
           <DescriptionEditor card={card} readOnly={deleted} onDirtyChange={onDescriptionDirty} />
@@ -325,7 +328,7 @@ function CardDetailBody({
               <button type="button" className="btn btn-block card-action" onClick={() => setMoving(true)}>
                 <ArrowRightLeft size={16} aria-hidden /> Move to…
               </button>
-              {doneColumn && card.columnId !== doneColumn.id && <MarkDoneButton cardId={card.id} />}
+              {doneColumn && card.columnId !== doneColumn.id && <MarkDoneButton card={card} />}
               {doneColumn && card.columnId === doneColumn.id && (
                 <button
                   type="button"
@@ -383,14 +386,22 @@ function CardDetailBody({
   );
 }
 
-/** One tap: move to the top of the Done column (not while open cards still block it). */
-function MarkDoneButton({ cardId }: { cardId: number }) {
+/**
+ * One tap: move to the top of the Done column (not while open cards still block it). A work card
+ * with open tickets asks whether to complete them too.
+ */
+function MarkDoneButton({ card }: { card: CardDetailType }) {
+  const cardId = card.id;
   const { data: board } = useBoard();
   const moveCard = useMoveCard();
+  const [asking, setAsking] = useState(false);
   const done = board ? sortedColumns(board.columns).find((c) => c.role === 'done') : undefined;
   if (!done || !board) return null;
   const blocked = completionBlocked(board, cardId, done.id);
+  const openTickets = card.kind === 'work' ? card.children.filter((c) => !c.completedAt && !c.archivedAt).length : 0;
   return (
+    <>
+    {asking && <CompleteWorkDialog card={card} onClose={() => setAsking(false)} />}
     <button
       type="button"
       className="btn btn-block card-action"
@@ -401,11 +412,16 @@ function MarkDoneButton({ cardId }: { cardId: number }) {
           toast(blocked, { kind: 'warning' });
           return;
         }
+        if (openTickets > 0) {
+          setAsking(true);
+          return;
+        }
         moveCard.mutate({ cardId, toColumnId: done.id, afterCardId: null });
         toast(`Moved to ${done.name}`, { kind: 'success', durationMs: 2500 });
       }}
     >
       <CircleCheck size={16} aria-hidden /> Mark done
     </button>
+    </>
   );
 }

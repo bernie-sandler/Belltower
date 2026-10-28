@@ -5,6 +5,7 @@
 import type {
   Attachment,
   AttachmentKind,
+  CardKind,
   CardLink,
   CardSummary,
   Checklist,
@@ -95,7 +96,7 @@ export function listAttachments(ctx: Ctx, cardId: number): Attachment[] {
 }
 
 const SUMMARY_SELECT = `
-SELECT c.id, c.ticket_no, c.title, c.column_id, col.name AS column_name, c.completed_at, c.archived_at, c.deleted_at,
+SELECT c.id, c.ticket_no, c.kind, c.title, c.column_id, col.name AS column_name, c.completed_at, c.archived_at, c.deleted_at,
        c.updated_at,
        (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
           FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids
@@ -104,6 +105,7 @@ SELECT c.id, c.ticket_no, c.title, c.column_id, col.name AS column_name, c.compl
 interface SummaryRow {
   id: number;
   ticket_no: string | null;
+  kind: CardKind;
   title: string;
   column_id: number;
   column_name: string;
@@ -117,6 +119,7 @@ interface SummaryRow {
 const toSummary = (r: SummaryRow): CardSummary => ({
   id: r.id,
   ticketNo: r.ticket_no,
+  kind: r.kind,
   title: r.title,
   columnId: r.column_id,
   columnName: r.column_name,
@@ -149,9 +152,16 @@ const STATUS_ORDER: Record<CardListStatus, string> = {
 };
 
 /** Card lists for the link picker, Archive and Trash. `q` matches titles and ticket numbers (case-insensitive). */
-export function listCards(ctx: Ctx, opts: { status: CardListStatus; q?: string; limit: number }): CardSummary[] {
+export function listCards(
+  ctx: Ctx,
+  opts: { status: CardListStatus; q?: string; limit: number; kind?: CardKind },
+): CardSummary[] {
   const where = [STATUS_WHERE[opts.status]];
   const params: unknown[] = [];
+  if (opts.kind) {
+    where.push('c.kind = ?');
+    params.push(opts.kind);
+  }
   const q = opts.q?.trim();
   if (q) {
     // A bare number also finds the card with that id ("#12" or "12").
@@ -167,6 +177,17 @@ export function listCards(ctx: Ctx, opts: { status: CardListStatus; q?: string; 
   }
   const sql = `${SUMMARY_SELECT} WHERE ${where.join(' AND ')} ORDER BY ${STATUS_ORDER[opts.status]}, c.id DESC LIMIT ?`;
   return (ctx.db.prepare(sql).all(...params, opts.limit) as SummaryRow[]).map(toSummary);
+}
+
+/** Tickets filed under a work card (not in Trash): open ones first, then by board position. */
+export function listChildren(ctx: Ctx, cardId: number): CardSummary[] {
+  return (
+    stmt(
+      ctx.db,
+      `${SUMMARY_SELECT} WHERE c.parent_id = ? AND c.deleted_at IS NULL
+        ORDER BY (c.completed_at IS NOT NULL), col.position, c.position, c.id`,
+    ).all(cardId) as SummaryRow[]
+  ).map(toSummary);
 }
 
 /** Links of a card to cards that aren't in the Trash, from this card's point of view. */

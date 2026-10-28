@@ -1,11 +1,14 @@
 // The instructions to give an AI so its answer can be pasted straight into "Import cards".
 // Built from the live board, so it lists your real column and label names.
 
-import type { Column, Label } from '@tt/shared';
+import type { CardTile, Column, Label } from '@tt/shared';
 
-export function buildAiPrompt(columns: Column[], labels: Label[], today: string): string {
+export function buildAiPrompt(columns: Column[], labels: Label[], today: string, workCards: CardTile[] = []): string {
   const cols = columns.map((c) => c.name).join(', ');
   const labs = labels.map((l) => l.name).join(', ');
+  const works = workCards.length
+    ? workCards.map((w) => `  ${w.ticketNo ?? `#${w.id}`}: ${w.title}`).join('\n')
+    : '  (none yet)';
   return `You are helping me file issues in my homelab issue tracker ("Tower Tracker").
 Turn what I describe below into one or more cards. Reply with ONLY a JSON code block in exactly this format:
 
@@ -47,6 +50,19 @@ Rules:
 - "checklists": concrete, checkable diagnostic or fix steps, in order.
 - "worklog": only things I said I already did, with "at" as "YYYY-MM-DD HH:MM" if I gave a time.
 - One card per distinct problem.
+- Work cards group related tickets like a folder: a work card is what I'm actually working on, tickets are
+  the individual issues or findings. For a bigger job with several parts, make one work card
+  ("type": "work") and put its tickets in "tickets": [...] (one level only), for example:
+  { "type": "work", "title": "Upgrade Plex", "tickets": [ { "title": "Back up the Plex database" }, { "title": "Test HDR playback" } ] }
+- To file a ticket under one of my existing open work cards, add "partOf" with its ticket number:
+${works}
+  A ticket can also point at a work card in the same answer by giving that work card a "ref" (e.g. "ref": "plex")
+  and using "partOf": "plex".
+- Links between cards (optional): "blocks", "blockedBy" (this card can't be finished until those are done)
+  and "relatedTo", each a list of other cards. Name a card in the same answer by its "ref" (any card can
+  have one), or a card already on my board by its ticket number (like 261027-1). For example:
+  { "ref": "swap", "title": "Swap UPS battery", "blockedBy": ["order-battery"], "relatedTo": ["261024-1"] }
+  Give each link once; don't make two cards block each other.
 
 Here's the problem:
 `;

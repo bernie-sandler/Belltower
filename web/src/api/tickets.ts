@@ -30,6 +30,11 @@ export function useCreateTicket() {
     onSuccess: (card) => {
       applyCardDetail(qc, card);
       void qc.invalidateQueries({ queryKey: qk.board });
+      if (card.parentId !== null) {
+        // The work card's ticket list and history changed too.
+        void qc.invalidateQueries({ queryKey: qk.card(card.parentId) });
+        void qc.invalidateQueries({ queryKey: qk.activity(card.parentId) });
+      }
     },
   });
 }

@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PRIORITY_CODES, PRIORITY_LABELS, SEVERITY_CODES, SEVERITY_LABELS, type CardTile, type Label } from '@tt/shared';
-import { Ban, Clock, Ellipsis, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
+import { Ban, Clock, Ellipsis, FolderOpen, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
 import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { cls } from '../../lib/cls';
 import { isDragging as isBoardDragging, justDropped } from '../../lib/dragging';
@@ -36,7 +36,9 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
     .sort((a, b) => a.position - b.position);
   const due = dueStatus(tile, now);
   const blocked = tile.blockedBy > 0 && !tile.completedAt;
+  const isWork = tile.kind === 'work';
   const hasFooter =
+    isWork ||
     blocked ||
     due !== null ||
     tile.attachmentCount > 0 ||
@@ -49,6 +51,7 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
     <div
       className={cls(
         'tile',
+        isWork && 'tile-work',
         tile.priority && `prio-${tile.priority}`,
         pending && 'is-pending',
         overlay && 'is-overlay',
@@ -78,6 +81,18 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
             <span className={cls('badge level-badge', `sev-badge-${tile.severity}`)} title={`Severity ${SEVERITY_LABELS[tile.severity]}`}>
               <span className="visually-hidden">Severity </span>
               {SEVERITY_CODES[tile.severity]}
+            </span>
+          )}
+          {isWork && (
+            <span className="badge work-badge" title={tile.childCount ? `${tile.childCount - tile.childOpen} of ${tile.childCount} tickets done` : 'Work card'}>
+              <FolderOpen size={12} aria-hidden />
+              Work
+              {tile.childCount > 0 && (
+                <span className="work-badge-count">
+                  <span className="visually-hidden">, tickets done: </span>
+                  {tile.childCount - tile.childOpen}/{tile.childCount}
+                </span>
+              )}
             </span>
           )}
           {blocked && (

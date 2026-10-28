@@ -5,6 +5,7 @@ import {
   LabelBody,
   MoveCardBody,
   ReorderBody,
+  CompleteCardBody,
   BlockedColumnBody,
   UpdateCardBody,
   UpdateLabelBody,
@@ -17,14 +18,15 @@ import { stmt } from '../../db/connection';
 import { listActivity } from '../../services/activity';
 import {
   archiveCard,
+  completeCard,
   createCard,
   deleteCard,
   getBoard,
   getCard,
   moveCard,
   restoreCard,
-  undeleteCard,
   sortColumnByPriority,
+  undeleteCard,
   updateCard,
 } from '../../services/cards';
 import { createColumn, deleteColumn, renameColumn, reorderColumns, setBlockedColumn } from '../../services/columns';
@@ -88,6 +90,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.get('/api/cards/:id', async (req) => getCard(ctx, idParam(req)));
   app.patch('/api/cards/:id', async (req) => updateCard(ctx, idParam(req), parse(UpdateCardBody, req.body)));
   app.post('/api/cards/:id/move', async (req) => moveCard(ctx, idParam(req), parse(MoveCardBody, req.body)));
+  app.post('/api/cards/:id/complete', async (req) => completeCard(ctx, idParam(req), parse(CompleteCardBody, req.body)));
   app.delete('/api/cards/:id', async (req, reply) => {
     deleteCard(ctx, idParam(req));
     return reply.status(204).send();

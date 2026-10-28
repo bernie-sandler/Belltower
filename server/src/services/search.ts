@@ -101,6 +101,7 @@ export function toFtsQuery(text: string): string | null {
 interface SearchRow {
   id: number;
   ticket_no: string | null;
+  kind: SearchResult['kind'];
   title: string;
   column_id: number;
   column_name: string;
@@ -154,7 +155,7 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
     params.push(from, to);
   }
 
-  const base = `c.id, c.ticket_no, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.completed_at,
+  const base = `c.id, c.ticket_no, c.kind, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.completed_at,
     c.archived_at, c.updated_at,
     (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
        FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids`;
@@ -185,6 +186,7 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
   return rows.map((r) => ({
     id: r.id,
     ticketNo: r.ticket_no,
+    kind: r.kind,
     title: r.title,
     columnId: r.column_id,
     columnName: r.column_name,

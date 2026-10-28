@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { CardTile, Column as ColumnType, Label } from '@tt/shared';
-import { Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, FolderOpen, Plus } from 'lucide-react';
 import { memo, useCallback, useMemo } from 'react';
 import { cls } from '../../lib/cls';
 import { AddCardComposer } from './AddCardComposer';
@@ -17,7 +17,11 @@ interface Props {
   cardIds: number[];
   /** Optimistic cards still being created; always shown at the bottom. */
   pendingTiles: CardTile[];
+  /** Every card on the board (work cards in other columns label their groups here). */
   tilesById: Map<number, CardTile>;
+  /** Work cards whose tickets are hidden. */
+  collapsed: Set<number>;
+  onToggleGroup: (workCardId: number) => void;
   labelsById: Map<number, Label>;
   now: number;
   composerOpen: boolean;
@@ -37,6 +41,8 @@ export const Column = memo(function Column({
   cardIds,
   pendingTiles,
   tilesById,
+  collapsed,
+  onToggleGroup,
   labelsById,
   now,
   composerOpen,
@@ -49,7 +55,28 @@ export const Column = memo(function Column({
 }: Props) {
   // The whole column accepts drops, so empty columns and the header area work as targets.
   const { setNodeRef } = useDroppable({ id: columnDndId(column.id), data: { type: 'column', columnId: column.id } });
-  const sortableIds = useMemo(() => cardIds.map(cardDndId), [cardIds]);
+  // Rows in display order: cards, plus a header where a group of tickets starts whose work card is
+  // in another column. Tickets of a collapsed group aren't rendered (or sortable), but stay in
+  // cardIds so drop positions are still computed against the real order.
+  const rows = useMemo(() => {
+    const here = new Set(cardIds);
+    const out: ({ kind: 'card'; id: number; nested: boolean; group?: { count: number } } | { kind: 'header'; parentId: number; count: number })[] = [];
+    let open: number | null = null;
+    for (const id of cardIds) {
+      const tile = tilesById.get(id);
+      if (!tile) continue;
+      const parent = tile.parentId;
+      if (parent !== null && !here.has(parent) && open !== parent) {
+        out.push({ kind: 'header', parentId: parent, count: cardIds.filter((x) => tilesById.get(x)?.parentId === parent).length });
+      }
+      open = parent ?? (tile.kind === 'work' ? tile.id : null);
+      if (parent !== null && collapsed.has(parent)) continue;
+      const count = tile.kind === 'work' ? cardIds.filter((x) => tilesById.get(x)?.parentId === tile.id).length : 0;
+      out.push({ kind: 'card', id, nested: parent !== null, ...(count ? { group: { count } } : {}) });
+    }
+    return out;
+  }, [cardIds, tilesById, collapsed]);
+  const sortableIds = useMemo(() => rows.flatMap((r) => (r.kind === 'card' ? [cardDndId(r.id)] : [])), [rows]);
   const count = cardIds.length + pendingTiles.length;
   const nameId = `column-name-${column.id}`;
 
@@ -72,19 +99,56 @@ export const Column = memo(function Column({
 
       <div className="column-cards">
         <SortableContext id={columnDndId(column.id)} items={sortableIds} strategy={verticalListSortingStrategy}>
-          {cardIds.map((id) => {
-            const tile = tilesById.get(id);
-            return tile ? (
-              <SortableTile
-                key={id}
-                tile={tile}
-                labelsById={labelsById}
-                now={now}
-                menuOpen={menuCardId === id}
-                onOpen={onOpenCard}
-                onMenu={onTileMenu}
-              />
-            ) : null;
+          {rows.map((row) => {
+            if (row.kind === 'header') {
+              const parent = tilesById.get(row.parentId);
+              const isCollapsed = collapsed.has(row.parentId);
+              return (
+                <div key={`group-${row.parentId}`} className="group-header">
+                  <button
+                    type="button"
+                    className="group-toggle"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => onToggleGroup(row.parentId)}
+                  >
+                    {isCollapsed ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+                    <FolderOpen size={14} aria-hidden />
+                    <span className="group-title">
+                      {parent?.ticketNo && <span className="ticket-no">{parent.ticketNo}</span>} {parent?.title ?? 'Work card'}
+                    </span>
+                    <span className="group-count">{row.count}</span>
+                  </button>
+                  <button type="button" className="link-btn group-open" onClick={() => onOpenCard(row.parentId)}>
+                    Open
+                  </button>
+                </div>
+              );
+            }
+            const tile = tilesById.get(row.id)!;
+            const isCollapsed = collapsed.has(row.id);
+            return (
+              <div key={row.id} className={cls('tile-row', row.nested && 'is-nested')}>
+                <SortableTile
+                  tile={tile}
+                  labelsById={labelsById}
+                  now={now}
+                  menuOpen={menuCardId === row.id}
+                  onOpen={onOpenCard}
+                  onMenu={onTileMenu}
+                />
+                {row.group && (
+                  <button
+                    type="button"
+                    className="group-toggle group-toggle-local"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => onToggleGroup(row.id)}
+                  >
+                    {isCollapsed ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+                    {isCollapsed ? `${row.group.count} ticket${row.group.count === 1 ? '' : 's'} hidden` : `${row.group.count} ticket${row.group.count === 1 ? '' : 's'}`}
+                  </button>
+                )}
+              </div>
+            );
           })}
         </SortableContext>
         {pendingTiles.map((tile) => (

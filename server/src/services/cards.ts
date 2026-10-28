@@ -1,5 +1,6 @@
 import type {
   BoardResponse,
+  CardKind,
   CardDetail,
   CardSource,
   CardTile,
@@ -11,7 +12,7 @@ import { PRIORITIES, SEVERITIES } from '@tt/shared';
 import { stmt } from '../db/connection';
 import { badRequest, conflict, notFound } from '../errors';
 import { columnRef, labelRef, recordEvent } from './activity';
-import { assertNotBlocked, listAttachments, listChecklists, listLinks, openBlockers } from './cardParts';
+import { assertNotBlocked, cardSummary, listAttachments, listChecklists, listChildren, listLinks, openBlockers } from './cardParts';
 import { getBlockedColumnId, getColumnRow, getRoleColumn, listColumns, type ColumnRow } from './columns';
 import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
@@ -36,6 +37,8 @@ export interface CardRow {
   source_ref: string | null;
   template_id: number | null;
   ticket_no: string | null;
+  kind: CardKind;
+  parent_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +50,9 @@ interface TileRow extends CardRow {
   checklist_done: number;
   checklist_total: number;
   blocked_by: number;
+  eff_parent_id: number | null;
+  child_count: number;
+  child_open: number;
 }
 
 const TILE_SELECT = `
@@ -62,7 +68,10 @@ SELECT c.*,
   (SELECT count(*) FROM checklist_items i JOIN checklists ch ON ch.id = i.checklist_id
     WHERE ch.card_id = c.id) AS checklist_total,
   (SELECT count(*) FROM card_links k JOIN cards b ON b.id = k.from_card_id
-    WHERE k.to_card_id = c.id AND k.type = 'blocks' AND b.deleted_at IS NULL AND b.completed_at IS NULL) AS blocked_by
+    WHERE k.to_card_id = c.id AND k.type = 'blocks' AND b.deleted_at IS NULL AND b.completed_at IS NULL) AS blocked_by,
+  (SELECT p.id FROM cards p WHERE p.id = c.parent_id AND p.deleted_at IS NULL AND p.archived_at IS NULL) AS eff_parent_id,
+  (SELECT count(*) FROM cards k WHERE k.parent_id = c.id AND k.deleted_at IS NULL) AS child_count,
+  (SELECT count(*) FROM cards k WHERE k.parent_id = c.id AND k.deleted_at IS NULL AND k.completed_at IS NULL) AS child_open
 FROM cards c`;
 
 /** Cards shown on the board: not archived, not in Trash. */
@@ -72,6 +81,10 @@ function toTile(r: TileRow): CardTile {
   return {
     id: r.id,
     ticketNo: r.ticket_no,
+    kind: r.kind,
+    parentId: r.eff_parent_id,
+    childCount: r.child_count,
+    childOpen: r.child_open,
     columnId: r.column_id,
     title: r.title,
     position: r.position,
@@ -102,7 +115,34 @@ function toDetail(ctx: Ctx, r: TileRow): CardDetail {
     checklists: listChecklists(ctx, r.id),
     attachments: listAttachments(ctx, r.id),
     links: listLinks(ctx, r.id),
+    parent: r.parent_id !== null ? visibleSummary(ctx, r.parent_id) : null,
+    children: r.kind === 'work' ? listChildren(ctx, r.id) : [],
   };
+}
+
+function visibleSummary(ctx: Ctx, id: number) {
+  const s = cardSummary(ctx, id);
+  return s && !s.deletedAt ? s : null;
+}
+
+/** What history stores about the other card in a parent/child event. */
+function familyRef(card: { id: number; ticket_no: string | null; title: string }) {
+  return { id: card.id, ticketNo: card.ticket_no, title: card.title };
+}
+
+/** Checks a card's type and the work card it would be filed under (400 invalid_parent). */
+function checkFamily(ctx: Ctx, kind: CardKind, parentId: number | null, selfId: number | null): CardRow | null {
+  if (parentId === null) return null;
+  if (kind === 'work') throw badRequest('invalid_parent', "A work card can't be part of another card");
+  if (parentId === selfId) throw badRequest('invalid_parent', "A card can't be part of itself");
+  const parent = stmt(ctx.db, 'SELECT * FROM cards WHERE id = ?').get(parentId) as CardRow | undefined;
+  if (!parent || parent.deleted_at) throw badRequest('invalid_parent', 'That work card no longer exists');
+  if (parent.kind !== 'work') throw badRequest('invalid_parent', 'Tickets can only be filed under a work card');
+  return parent;
+}
+
+function openChildCount(ctx: Ctx, id: number): number {
+  return stmt(ctx.db, 'SELECT count(*) FROM cards WHERE parent_id = ? AND deleted_at IS NULL').pluck().get(id) as number;
 }
 
 function tileRow(ctx: Ctx, id: number): TileRow {
@@ -204,6 +244,10 @@ export interface CreateCardInput {
   dueTime?: string | null;
   position?: 'top' | 'bottom';
   checklists?: { title: string; items: string[] }[];
+  /** Default 'ticket'. */
+  kind?: CardKind;
+  /** The work card this ticket is part of. */
+  parentId?: number | null;
 }
 
 export interface CreateCardOptions {
@@ -246,7 +290,9 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
   if (!title) throw badRequest('validation', 'Title is required');
   if (input.dueTime && !input.dueDate) throw badRequest('validation', 'dueTime requires dueDate');
 
+  const kind = input.kind ?? 'ticket';
   return tx(ctx, () => {
+    const parent = checkFamily(ctx, kind, input.parentId ?? null, null);
     const column = input.columnId !== undefined ? targetColumn(ctx, input.columnId) : getRoleColumn(ctx, 'triage');
     const labels = resolveLabels(ctx, input.labelIds, input.labelNames);
     const now = nowIso(ctx);
@@ -263,8 +309,8 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     const info = stmt(
       ctx.db,
       `INSERT INTO cards (column_id, title, description_md, priority, severity, due_date, due_time, position,
-                          completed_at, source, source_ref, template_id, ticket_no, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          completed_at, source, source_ref, template_id, ticket_no, kind, parent_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       column.id,
       title,
@@ -279,6 +325,8 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       opts.sourceRef ?? null,
       opts.templateId ?? null,
       ticketNo,
+      kind,
+      parent?.id ?? null,
       now,
       now,
     );
@@ -310,7 +358,13 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       source: opts.source ?? 'manual',
       ...(opts.templateId ? { templateId: opts.templateId, templateTitle: opts.templateTitle } : {}),
       ...(opts.via ? { via: opts.via } : {}),
+      ...(kind === 'work' ? { kind } : {}),
+      ...(parent ? { parent: familyRef(parent) } : {}),
     });
+    if (parent) {
+      recordEvent(ctx, parent.id, 'child_added', { child: { id, ticketNo, title } });
+      touchCard(ctx, parent.id);
+    }
     reindexCard(ctx, id);
     return getCard(ctx, id);
   });
@@ -330,6 +384,8 @@ export interface UpdateCardInput {
   dueDate?: string | null;
   dueTime?: string | null;
   completedAt?: string;
+  kind?: CardKind;
+  parentId?: number | null;
 }
 
 function assertEditable(card: CardRow): void {
@@ -412,6 +468,42 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       }
     }
 
+    // Type and "part of": validated together, since changing one can make the other invalid.
+    const kind = patch.kind ?? card.kind;
+    const parentId = patch.parentId !== undefined ? patch.parentId : card.parent_id;
+    if (kind !== card.kind || parentId !== card.parent_id) {
+      if (kind === 'ticket' && card.kind === 'work') {
+        const n = openChildCount(ctx, id);
+        if (n) {
+          throw badRequest('invalid_parent', `This work card still has ${n} ticket${n === 1 ? '' : 's'}; move ${n === 1 ? 'it' : 'them'} out first`);
+        }
+      }
+      if (kind === 'work' && parentId !== null && patch.parentId === undefined) {
+        throw badRequest('invalid_parent', 'Take this ticket out of its work card before making it a work card');
+      }
+      const parent = checkFamily(ctx, kind, parentId, id);
+      if (kind !== card.kind) {
+        sets.push('kind = ?');
+        params.push(kind);
+        recordEvent(ctx, id, 'kind_changed', { from: card.kind, to: kind });
+      }
+      if (parentId !== card.parent_id) {
+        const old = card.parent_id !== null ? (stmt(ctx.db, 'SELECT * FROM cards WHERE id = ?').get(card.parent_id) as CardRow) : null;
+        sets.push('parent_id = ?');
+        params.push(parentId);
+        recordEvent(ctx, id, 'parent_changed', { from: old ? familyRef(old) : null, to: parent ? familyRef(parent) : null });
+        const self = familyRef({ ...card, title: patch.title?.trim() || card.title });
+        if (old) {
+          recordEvent(ctx, old.id, 'child_removed', { child: self });
+          touchCard(ctx, old.id);
+        }
+        if (parent) {
+          recordEvent(ctx, parent.id, 'child_added', { child: self });
+          touchCard(ctx, parent.id);
+        }
+      }
+    }
+
     if (patch.completedAt !== undefined && patch.completedAt !== card.completed_at) {
       if (!card.completed_at) {
         throw conflict('not_done', 'Only a completed card (in the Done column) has a completion date');
@@ -450,6 +542,7 @@ export function moveCard(
   ctx: Ctx,
   id: number,
   input: { toColumnId: number; afterCardId: number | null },
+  opts: { skipBlockCheck?: boolean } = {},
 ): MoveCardResponse {
   return tx(ctx, () => {
     const card = getCardRow(ctx, id);
@@ -479,7 +572,7 @@ export function moveCard(
       const now = nowIso(ctx);
       let completedAt = card.completed_at;
       if (target.role === 'done' && from.role !== 'done') {
-        assertNotBlocked(ctx, card);
+        if (!opts.skipBlockCheck) assertNotBlocked(ctx, card);
         completedAt = now;
       }
       if (from.role === 'done' && target.role !== 'done') completedAt = null;
@@ -499,6 +592,54 @@ export function moveCard(
     writePositions(ctx, targetIds);
     orders[String(target.id)] = targetIds;
     return { card: getCardTile(ctx, id), orders };
+  });
+}
+
+/**
+ * Mark done: moves the card to the top of Done and, with includeChildren, every open ticket filed
+ * under it too. All or nothing: if any of them is blocked by a card outside the set, nothing moves
+ * (409 blocked, listing each stuck card and its blockers).
+ */
+export function completeCard(
+  ctx: Ctx,
+  id: number,
+  opts: { includeChildren: boolean },
+): { card: CardDetail; orders: Record<string, number[]>; completed: number[] } {
+  return tx(ctx, () => {
+    const card = getCardRow(ctx, id);
+    assertEditable(card);
+    if (card.archived_at) throw conflict('card_archived', 'Restore this card from the archive first');
+    const done = getRoleColumn(ctx, 'done');
+    const children =
+      opts.includeChildren && card.kind === 'work'
+        ? (stmt(
+            ctx.db,
+            `SELECT * FROM cards WHERE parent_id = ? AND deleted_at IS NULL AND archived_at IS NULL AND completed_at IS NULL
+              ORDER BY position, id`,
+          ).all(id) as CardRow[])
+        : [];
+    // Children first, the work card last, so it ends up on top of Done.
+    const targets = [...children, ...(card.completed_at ? [] : [card])];
+    const ids = new Set(targets.map((c) => c.id));
+
+    const stuck = targets
+      .map((c) => ({ id: c.id, ticketNo: c.ticket_no, title: c.title, blockers: openBlockers(ctx, c.id).filter((b) => !ids.has(b.id)) }))
+      .filter((s) => s.blockers.length);
+    if (stuck.length) {
+      const names = stuck.slice(0, 3).map((s) => `“${s.title}”`).join(', ');
+      const more = stuck.length > 3 ? ` and ${stuck.length - 3} more` : '';
+      throw conflict(
+        'blocked',
+        `${names}${more} ${stuck.length === 1 ? 'is' : 'are'} still blocked by open cards, so nothing was completed.`,
+        { blockers: stuck.flatMap((s) => s.blockers), stuck },
+      );
+    }
+
+    const orders: Record<string, number[]> = {};
+    for (const t of targets) {
+      Object.assign(orders, moveCard(ctx, t.id, { toColumnId: done.id, afterCardId: null }, { skipBlockCheck: true }).orders);
+    }
+    return { card: getCard(ctx, id), orders, completed: targets.map((t) => t.id) };
   });
 }
 

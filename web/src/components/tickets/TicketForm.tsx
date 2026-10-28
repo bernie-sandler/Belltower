@@ -2,6 +2,8 @@
 
 import {
   LIMITS,
+  type CardKind,
+  type CardTile,
   type Column,
   type CreateTicketBody,
   type Label,
@@ -9,7 +11,7 @@ import {
   type Severity,
   type TicketDraft,
 } from '@tt/shared';
-import { CalendarDays, Columns3, Flag, ListChecks, OctagonAlert, Plus, Tag, X } from 'lucide-react';
+import { CalendarDays, Columns3, Flag, FolderInput, FolderOpen, ListChecks, OctagonAlert, Plus, Tag, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { sortedColumns } from '../../api/board';
 import { sortedLabels } from '../../api/labels';
@@ -30,6 +32,9 @@ export interface TicketFields {
   labelIds: number[];
   dueDate: string;
   checklist: string[];
+  kind: CardKind;
+  /** The work card a ticket is filed under. */
+  parentId: number | null;
 }
 
 export const emptyTicket = (): TicketFields => ({
@@ -41,6 +46,8 @@ export const emptyTicket = (): TicketFields => ({
   labelIds: [],
   dueDate: '',
   checklist: [],
+  kind: 'ticket',
+  parentId: null,
 });
 
 export const fromDraft = (d: TicketDraft): TicketFields => ({
@@ -52,6 +59,8 @@ export const fromDraft = (d: TicketDraft): TicketFields => ({
   labelIds: d.labelIds,
   dueDate: d.dueDate ?? '',
   checklist: d.checklist,
+  kind: 'ticket',
+  parentId: null,
 });
 
 export function toCreateBody(f: TicketFields, aiDrafted: boolean): CreateTicketBody {
@@ -65,6 +74,8 @@ export function toCreateBody(f: TicketFields, aiDrafted: boolean): CreateTicketB
     labelIds: f.labelIds,
     dueDate: f.dueDate || null,
     ...(checklist.length ? { checklist } : {}),
+    kind: f.kind,
+    ...(f.kind === 'ticket' && f.parentId !== null ? { parentId: f.parentId } : {}),
     aiDrafted,
   };
 }
@@ -76,11 +87,13 @@ interface Props {
   suggestion: TicketDraft | null;
   columns: Column[];
   labels: Label[];
+  /** Work cards on the board, for "Part of". */
+  workCards: CardTile[];
   /** Ctrl/⌘+Enter in a text field. */
   onSubmit: () => void;
 }
 
-export function TicketForm({ fields, onChange, suggestion, columns, labels, onSubmit }: Props) {
+export function TicketForm({ fields, onChange, suggestion, columns, labels, workCards, onSubmit }: Props) {
   const id = useId();
   const [preview, setPreview] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
@@ -103,6 +116,47 @@ export function TicketForm({ fields, onChange, suggestion, columns, labels, onSu
 
   return (
     <div className="ticket-form">
+      <div className="field-row">
+        <div className="segmented" role="radiogroup" aria-label="Card type">
+          {(
+            [
+              ['ticket', 'Ticket'],
+              ['work', 'Work card'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={fields.kind === value}
+              className="segmented-item"
+              onClick={() => onChange({ ...fields, kind: value, parentId: value === 'work' ? null : fields.parentId })}
+            >
+              {value === 'work' && <FolderOpen size={14} aria-hidden />} {label}
+            </button>
+          ))}
+        </div>
+        {fields.kind === 'ticket' && (
+          <label className="field-inline">
+            <span className="field-inline-label">
+              <FolderInput size={14} aria-hidden /> Part of
+            </span>
+            <select
+              className="input select"
+              value={fields.parentId ?? ''}
+              onChange={(e) => set('parentId', e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">No work card</option>
+              {workCards.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.ticketNo ? `${w.ticketNo} — ` : ''}
+                  {w.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       <label className="field">
         <span className="field-label">Title</span>
         <input

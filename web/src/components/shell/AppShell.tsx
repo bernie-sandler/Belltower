@@ -9,7 +9,7 @@ import { setAppTimeZone } from '../../lib/time';
 import { Board } from '../board/Board';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { ShellContext, type ShellActions } from './ShellContext';
-import type { NewTicketMode } from '../tickets/NewTicketDialog';
+import type { NewTicketMode, NewTicketPreset } from '../tickets/NewTicketDialog';
 import { TopBar } from './TopBar';
 import { UpdateBanner } from './UpdateBanner';
 
@@ -30,7 +30,7 @@ export function AppShell() {
   const config = useConfig();
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [newTicket, setNewTicket] = useState<NewTicketMode | null>(null);
+  const [newTicket, setNewTicket] = useState<{ mode: NewTicketMode; preset?: NewTicketPreset } | null>(null);
   const ai = useAiStatus();
   const [addColumnRequest, setAddColumnRequest] = useState(0);
 
@@ -38,7 +38,7 @@ export function AppShell() {
     () => ({
       openLabels: () => setLabelsOpen(true),
       openSettings: () => setSettingsOpen(true),
-      openNewTicket: setNewTicket,
+      openNewTicket: (mode, preset) => setNewTicket({ mode, preset }),
       requestAddColumn: () => setAddColumnRequest((n) => n + 1),
       addColumnRequest,
     }),
@@ -66,14 +66,14 @@ export function AppShell() {
         <main className="app-main">
           <AppRoutes
             aiEnabled={aiEnabled}
-            onNewTicket={() => setNewTicket(aiEnabled ? 'describe' : 'blank')}
+            onNewTicket={() => setNewTicket({ mode: aiEnabled ? 'describe' : 'blank' })}
           />
         </main>
       </div>
       <Suspense fallback={null}>
         {labelsOpen && <LabelsManager onClose={() => setLabelsOpen(false)} />}
         {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
-        {newTicket && <NewTicketDialog mode={newTicket} onClose={() => setNewTicket(null)} />}
+        {newTicket && <NewTicketDialog mode={newTicket.mode} preset={newTicket.preset} onClose={() => setNewTicket(null)} />}
       </Suspense>
     </ShellContext.Provider>
   );

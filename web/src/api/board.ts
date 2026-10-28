@@ -41,11 +41,43 @@ export function groupCards(board: BoardResponse): Map<number, CardTile[]> {
   return map;
 }
 
+/**
+ * A column's cards in display order: the tickets of a work card stay together, right after the
+ * work card when it's in the same column, otherwise where the first of them sits. Within a group
+ * (and everywhere else) the order is the cards' positions.
+ */
+export function groupedOrder(list: CardTile[]): CardTile[] {
+  const here = new Set(list.map((c) => c.id));
+  const byParent = new Map<number, CardTile[]>();
+  for (const c of list) {
+    if (c.parentId === null) continue;
+    const kids = byParent.get(c.parentId);
+    if (kids) kids.push(c);
+    else byParent.set(c.parentId, [c]);
+  }
+  const out: CardTile[] = [];
+  const placed = new Set<number>();
+  for (const c of list) {
+    if (placed.has(c.id)) continue;
+    if (c.parentId !== null && here.has(c.parentId)) continue; // follows its work card
+    const group = c.parentId !== null ? byParent.get(c.parentId)! : [c, ...(c.kind === 'work' ? (byParent.get(c.id) ?? []) : [])];
+    for (const g of group) {
+      out.push(g);
+      placed.add(g.id);
+    }
+  }
+  return out;
+}
+
 /** The tile subset of a full card. */
 export function toTile(card: CardTile | CardDetail): CardTile {
   return {
     id: card.id,
     ticketNo: card.ticketNo,
+    kind: card.kind,
+    parentId: card.parentId,
+    childCount: card.childCount,
+    childOpen: card.childOpen,
     columnId: card.columnId,
     title: card.title,
     position: card.position,
@@ -227,6 +259,10 @@ export function tempTile(board: BoardResponse, v: CreateCardVars): CardTile {
   return {
     id: v.tempId,
     ticketNo: null, // assigned by the server
+    kind: 'ticket',
+    parentId: null,
+    childCount: 0,
+    childOpen: 0,
     columnId: v.columnId,
     title: v.title,
     position: last ? last.position + 1 : 0,

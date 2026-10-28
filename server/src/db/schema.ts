@@ -207,10 +207,19 @@ ALTER TABLE cards ADD COLUMN ticket_no TEXT;
 CREATE UNIQUE INDEX ux_cards_ticket_no ON cards (ticket_no) WHERE ticket_no IS NOT NULL;
 `;
 
+// Work cards and "part of": a ticket can be filed under one work card (one level only; the rules
+// live in services/cards.ts).
+const v4 = `
+ALTER TABLE cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'ticket' CHECK (kind IN ('ticket', 'work'));
+ALTER TABLE cards ADD COLUMN parent_id INTEGER REFERENCES cards (id);
+CREATE INDEX ix_cards_parent ON cards (parent_id) WHERE parent_id IS NOT NULL;
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
   { version: 3, name: 'ticket numbers', sql: v3 },
+  { version: 4, name: 'work cards', sql: v4 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

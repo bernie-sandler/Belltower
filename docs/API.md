@@ -72,6 +72,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 | `POST /api/cards` | `CreateCardBody` | `201 CardDetail` | Defaults to the Triage column and `position: 'bottom'`. Logs `created`. |
 | `GET /api/cards/:id` | — | `CardDetail` | Also works for archived and deleted cards (check `archivedAt` / `deletedAt`). |
 | `PATCH /api/cards/:id` | `UpdateCardBody {expectedVersion, …fields}` | `CardDetail` | Send only the fields that changed. `409 version_conflict` (body includes the current `card`) if the card changed elsewhere; `409 card_deleted` if it is in the Trash. Each changed field logs one event. |
+| `POST /api/cards/:id/complete` | `{includeChildren?: boolean = false}` | `{card, orders, completed}` | Mark done: moves the card (and, with `includeChildren` on a work card, every open ticket filed under it) to the top of Done. All or nothing: `409 blocked` with `stuck: [{id, ticketNo, title, blockers}]` if any of them is blocked by an open card outside the set. `completed` lists the ids moved. |
 | `POST /api/cards/:id/move` | `MoveCardBody {toColumnId, afterCardId}` | `MoveCardResponse {card, orders}` | `afterCardId: null` puts the card at the top. To put it at the bottom, pass the id of the column's last visible card (if that is the card itself, nothing moves). Anchoring on a card id keeps the move correct while the board is filtered. `400 anchor_not_found` means the client is stale: refetch the board. Moving to another column logs `moved`. Entering the Done column sets `completedAt`; leaving it clears it. A card with open blockers (cards that block it and aren't done or in the Trash; `CardTile.blockedBy` counts them) can't enter Done: `409 blocked` with `blockers: [{id, title}]`. Reordering within a column logs nothing. `orders` holds the authoritative order for the affected column(s); apply it to the cache. |
 | `DELETE /api/cards/:id` | — | `204` | Soft delete (moves the card to Trash). Logs `deleted`. |
 | `POST /api/cards/:id/undelete` | — | `CardDetail` | Restores the card from Trash to the bottom of its column. |
@@ -105,6 +106,13 @@ Every route below that changes a card returns the updated `CardDetail`, which no
 | `GET /api/attachments/:id` | — | file | Images and text files are served inline, everything else as a download; `?download=1` always downloads. Sent with a sandboxing CSP. |
 | `GET /api/attachments/:id/text?mode=head\|tail\|full` | — | `TextPreview` | Text files only (`415 not_text`). Previews 256 KB; `full` is limited to 5 MB. |
 | `DELETE /api/attachments/:id` | — | `CardDetail` | Deletes the file; the history keeps its name. |
+
+Work cards: `CreateCardBody` and `UpdateCardBody` accept `kind` (`'ticket'` default, or `'work'`) and `parentId`
+(the work card a ticket is filed under; `null` takes it out). Only a work card can be a parent and only a ticket can
+have one (`400 invalid_parent`); a work card that still has tickets can't become a ticket. Tiles carry `kind`,
+`parentId` (null while the parent is archived or in the Trash), `childCount` and `childOpen`; `CardDetail` adds
+`parent` and `children`. Filing logs `parent_changed` on the ticket and `child_added`/`child_removed` on the work
+cards. `GET /api/cards?kind=work` lists only work cards.
 
 `PATCH /api/cards/:id` also accepts `completedAt` (an ISO instant) to backdate when a card in Done was completed
 (`409 not_done` otherwise; it can't be in the future).

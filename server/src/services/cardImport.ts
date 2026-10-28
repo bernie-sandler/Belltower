@@ -5,11 +5,17 @@
 //  - column and labels by name (case-insensitive); unknown labels are created, unknown columns fall
 //    back to Triage with a warning
 //  - due: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM"; work-log times: local "YYYY-MM-DD HH:MM" or ISO
+//  - work cards: "type": "work", with tickets nested in "tickets": [...] or pointing back with
+//    "partOf": an existing work card's ticket number, or the "ref" (or title) of one in the batch
+//  - links: "blocks", "blockedBy" and "relatedTo" name other cards the same way (ticket number on
+//    the board, or "ref"/title in the batch); links are created once all the cards exist
 // A preview (dryRun) reports exactly what would be created, per card, before anything is saved.
 
 import {
   LIMITS,
   type CardDetail,
+  type CardKind,
+  type LinkDirection,
   type Priority,
   type Severity,
 } from '@tt/shared';
@@ -17,12 +23,30 @@ import { stmt } from '../db/connection';
 import { badRequest } from '../errors';
 import { zonedToInstant } from '../lib/tz';
 import { createCard, FUTURE_SLACK_MS } from './cards';
+import { getBlockedColumnId } from './columns';
+import { createLink } from './links';
 import { tx, type Ctx } from './context';
 import { addWorklog } from './worklog';
 
 export const CARD_IMPORT_FORMAT = 'tower-tracker/cards@1';
 
+/** Where an imported ticket is filed: another card in this batch, or a work card already on the board. */
+export type ImportParent =
+  | { batchIndex: number; title: string }
+  | { id: number; ticketNo: string | null; title: string };
+
+export interface ImportLink {
+  /** From this card's point of view, as in the card's "Linked cards" section. */
+  direction: LinkDirection;
+  target: ImportParent;
+}
+
 export interface ImportCard {
+  kind: CardKind;
+  /** Set by "ref" so other cards in the batch can say "partOf": ref. */
+  ref: string | null;
+  parent: ImportParent | null;
+  links: ImportLink[];
   title: string;
   description: string;
   column: { id: number; name: string };
@@ -36,7 +60,10 @@ export interface ImportCard {
 }
 
 export interface ImportItemResult {
+  /** Position in the flattened list: nested tickets follow their work card. */
   index: number;
+  /** For nested tickets: "2.1" style, so errors point at the right card. */
+  label: string;
   ok: boolean;
   card: ImportCard | null;
   errors: string[];
@@ -87,13 +114,54 @@ const pick = (o: Record<string, unknown>, ...keys: string[]) => {
   return undefined;
 };
 
-function normalizeOne(ctx: Ctx, raw: unknown, index: number, columns: { id: number; name: string; role: string | null }[]): ImportItemResult {
+type ColumnInfo = { id: number; name: string; role: string | null };
+
+/** A normalized card plus what's needed to resolve its parent once the whole batch is known. */
+interface Pending extends ImportItemResult {
+  partOf: string | null;
+  nestedUnder: number | null;
+  linkRefs: { direction: LinkDirection; ref: string; field: string }[];
+}
+
+function normalizeOne(
+  ctx: Ctx,
+  raw: unknown,
+  index: number,
+  label: string,
+  columns: ColumnInfo[],
+  defaultColumn: ColumnInfo | null,
+): Pending {
   const errors: string[] = [];
   const warnings: string[] = [];
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { index, ok: false, card: null, errors: ['Each card must be an object'], warnings };
+    return { index, label, ok: false, card: null, errors: ['Each card must be an object'], warnings, partOf: null, nestedUnder: null, linkRefs: [] };
   }
   const o = raw as Record<string, unknown>;
+
+  const rawKind = str(pick(o, 'type', 'kind'))?.toLowerCase() ?? null;
+  const hasNested = Array.isArray(o.tickets);
+  let kind: CardKind = hasNested ? 'work' : 'ticket';
+  if (rawKind) {
+    if (rawKind === 'work' || rawKind === 'work card') kind = 'work';
+    else if (rawKind === 'ticket' || rawKind === 'issue') kind = 'ticket';
+    else errors.push(`Unknown type "${rawKind}" (use "work" or "ticket")`);
+  }
+  if (hasNested && kind !== 'work') errors.push('Only a work card ("type": "work") can have "tickets"');
+  const ref = str(pick(o, 'ref', 'id', 'key'));
+  const partOf = str(pick(o, 'partOf', 'part_of', 'parent'));
+  if (partOf && kind === 'work') errors.push(`A work card can't be "partOf" another card`);
+
+  const linkRefs: Pending['linkRefs'] = [];
+  for (const [direction, field, keys] of LINK_FIELDS) {
+    const v = pick(o, ...keys);
+    if (v === undefined) continue;
+    for (const x of Array.isArray(v) ? v : [v]) {
+      const ref = str(x);
+      if (ref) linkRefs.push({ direction, ref, field });
+      else errors.push(`"${field}" must list ticket numbers or refs (got ${JSON.stringify(x)})`);
+    }
+  }
+  if (linkRefs.length > 50) errors.push('At most 50 links per card');
 
   const title = str(pick(o, 'title', 'name', 'summary'));
   if (!title) errors.push('Missing "title"');
@@ -103,7 +171,7 @@ function normalizeOne(ctx: Ctx, raw: unknown, index: number, columns: { id: numb
   if (description.length > LIMITS.description) errors.push('"description" is too long');
 
   const triage = columns.find((c) => c.role === 'triage') ?? columns[0]!;
-  let column = triage;
+  let column = defaultColumn ?? triage;
   const colName = str(pick(o, 'column', 'list', 'status', 'stage'));
   if (colName) {
     const found = columns.find((c) => c.name.toLowerCase() === colName.toLowerCase());
@@ -192,9 +260,154 @@ function normalizeOne(ctx: Ctx, raw: unknown, index: number, columns: { id: numb
   }
 
   const card: ImportCard | null = title
-    ? { title, description, column, labels, priority, severity, dueDate, dueTime, checklists, worklog }
+    ? { kind, ref, parent: null, links: [], title, description, column, labels, priority, severity, dueDate, dueTime, checklists, worklog }
     : null;
-  return { index, ok: errors.length === 0 && card !== null, card, errors, warnings };
+  return { index, label, ok: errors.length === 0 && card !== null, card, errors, warnings, partOf, nestedUnder: null, linkRefs };
+}
+
+/** Import field → link direction (from the card's point of view), with accepted spellings. */
+const LINK_FIELDS: [LinkDirection, string, string[]][] = [
+  ['blocks', 'blocks', ['blocks']],
+  ['blocked_by', 'blockedBy', ['blockedBy', 'blocked_by', 'dependsOn', 'depends_on', 'waitingOn', 'waiting_on']],
+  ['relates', 'relatedTo', ['relatedTo', 'related_to', 'related', 'relates']],
+];
+
+/** Flattens nested "tickets" (one level) right after their work card. */
+function flatten(ctx: Ctx, list: unknown[], columns: ColumnInfo[]): Pending[] {
+  const out: Pending[] = [];
+  list.forEach((raw, i) => {
+    const parent = normalizeOne(ctx, raw, out.length, String(i + 1), columns, null);
+    const parentIndex = out.length;
+    out.push(parent);
+    const nested = raw && typeof raw === 'object' ? (raw as Record<string, unknown>).tickets : undefined;
+    if (!Array.isArray(nested)) return;
+    nested.forEach((childRaw, j) => {
+      const child = normalizeOne(ctx, childRaw, out.length, `${i + 1}.${j + 1}`, columns, columns.find((c) => c.id === parent.card?.column.id) ?? null);
+      child.nestedUnder = parentIndex;
+      if (childRaw && typeof childRaw === 'object' && Array.isArray((childRaw as Record<string, unknown>).tickets)) {
+        child.errors.push('Tickets can only be nested one level deep');
+      }
+      if (child.card?.kind === 'work') child.errors.push('A work card can\'t be nested inside another work card');
+      if (child.partOf) child.errors.push('A nested ticket already belongs to the work card above it; remove "partOf"');
+      out.push(child);
+    });
+  });
+  return out;
+}
+
+interface ExistingCard {
+  id: number;
+  ticket_no: string | null;
+  title: string;
+  kind: CardKind;
+  completed_at: string | null;
+}
+
+/**
+ * Resolves the references between cards: "partOf" and nesting into each card's parent, and
+ * "blocks"/"blockedBy"/"relatedTo" into links. A reference is the "ref" or exact title (when only
+ * one card has it) of a card in this import, or the ticket number of a card on the board.
+ */
+function resolveRelations(ctx: Ctx, items: Pending[], columns: ColumnInfo[]): void {
+  const byRef = new Map<string, Pending>();
+  const byTitle = new Map<string, Pending[]>();
+  for (const it of items) {
+    if (!it.card) continue;
+    if (it.card.ref) {
+      const key = it.card.ref.toLowerCase();
+      if (byRef.has(key)) it.errors.push(`Another card already uses "ref": "${it.card.ref}"`);
+      byRef.set(key, it);
+    }
+    const t = it.card.title.toLowerCase();
+    byTitle.set(t, [...(byTitle.get(t) ?? []), it]);
+  }
+  const inBatch = (ref: string, onlyWork = false): Pending | undefined => {
+    const key = ref.toLowerCase();
+    const r = byRef.get(key);
+    if (r) return r;
+    const titled = (byTitle.get(key) ?? []).filter((p) => !onlyWork || p.card?.kind === 'work');
+    return titled.length === 1 ? titled[0] : undefined;
+  };
+  const onBoard = (ticketNo: string) =>
+    stmt(ctx.db, 'SELECT id, ticket_no, title, kind, completed_at FROM cards WHERE ticket_no = ? AND deleted_at IS NULL').get(ticketNo) as
+      | ExistingCard
+      | undefined;
+
+  for (const it of items) {
+    if (!it.card) continue;
+    if (it.nestedUnder !== null) {
+      const p = items[it.nestedUnder]!;
+      if (p.card) it.card.parent = { batchIndex: p.index, title: p.card.title };
+    } else if (it.partOf) {
+      const found = inBatch(it.partOf, true) ?? inBatch(it.partOf);
+      if (found?.card) {
+        if (found.card.kind !== 'work') it.errors.push(`"partOf": "${it.partOf}" is a ticket, not a work card`);
+        else it.card.parent = { batchIndex: found.index, title: found.card.title };
+      } else {
+        const existing = onBoard(it.partOf);
+        if (!existing) it.errors.push(`"partOf": "${it.partOf}" isn't a work card in this import or a ticket number on the board`);
+        else if (existing.kind !== 'work') it.errors.push(`"partOf": ${it.partOf} is a ticket, not a work card`);
+        else it.card.parent = { id: existing.id, ticketNo: existing.ticket_no, title: existing.title };
+      }
+    }
+  }
+
+  // Links. Every link is stored once, so the same link given on both cards (A "blocks" B and
+  // B "blockedBy" A) is created once; two cards blocking each other is an error.
+  const doneColumns = new Set(columns.filter((c) => c.role === 'done').map((c) => c.id));
+  const blockedColumnId = getBlockedColumnId(ctx);
+  const blockedColumn = columns.find((c) => c.id === blockedColumnId);
+  type End = { key: string; title: string; done: boolean; pending?: Pending };
+  const edges = new Set<string>(); // one key per link
+  const seenBlocked = new Set<number>();
+  for (const it of items) {
+    if (!it.card) continue;
+    const self: End = { key: `b${it.index}`, title: it.card.title, done: doneColumns.has(it.card.column.id), pending: it };
+    for (const { direction, ref, field } of it.linkRefs) {
+      let other: End;
+      let target: ImportParent;
+      const found = inBatch(ref);
+      if (found?.card) {
+        if (found === it) {
+          it.errors.push(`"${field}": a card can't be linked to itself`);
+          continue;
+        }
+        other = { key: `b${found.index}`, title: found.card.title, done: doneColumns.has(found.card.column.id), pending: found };
+        target = { batchIndex: found.index, title: found.card.title };
+      } else {
+        const existing = onBoard(ref);
+        if (!existing) {
+          it.errors.push(`"${field}": "${ref}" isn't a card in this import or a ticket number on the board`);
+          continue;
+        }
+        other = { key: `e${existing.id}`, title: existing.title, done: existing.completed_at !== null };
+        target = { id: existing.id, ticketNo: existing.ticket_no, title: existing.title };
+      }
+
+      const [blocker, blocked] = direction === 'blocks' ? [self, other] : [other, self];
+      const key = direction === 'relates' ? `r:${[self.key, other.key].sort().join('|')}` : `k:${blocker.key}>${blocked.key}`;
+      if (edges.has(key)) continue; // the same link, given again (e.g. on the other card)
+      if (direction !== 'relates' && edges.has(`k:${blocked.key}>${blocker.key}`)) {
+        it.errors.push(`"${field}": “${self.title}” and “${other.title}” can't block each other`);
+        continue;
+      }
+      if (direction !== 'relates' && blocked.done && !blocker.done) {
+        it.errors.push(`"${field}": “${blocked.title}” is done, so the open card “${blocker.title}” can't block it`);
+        continue;
+      }
+      edges.add(key);
+      it.card.links.push({ direction, target });
+
+      const bp = blocked.pending;
+      if (direction !== 'relates' && !blocker.done && bp?.card && !seenBlocked.has(bp.index)) {
+        seenBlocked.add(bp.index);
+        if (blockedColumn && bp.card.column.id !== blockedColumn.id && !doneColumns.has(bp.card.column.id)) {
+          bp.warnings.push(`Blocked by an open card, so it will go to ${blockedColumn.name}`);
+        }
+      }
+    }
+  }
+  for (const it of items) it.ok = it.errors.length === 0 && it.card !== null;
 }
 
 /** Validates (and, unless dryRun, creates) the cards. All-or-nothing: nothing is created if any card has errors. */
@@ -214,13 +427,20 @@ export function importCards(ctx: Ctx, input: unknown, dryRun: boolean): ImportRe
     name: string;
     role: string | null;
   }[];
-  const items = list.map((raw, i) => normalizeOne(ctx, raw, i, columns));
+  const pending = flatten(ctx, list, columns);
+  if (pending.length > 200) throw badRequest('validation', 'Import at most 200 cards at a time (including nested tickets)');
+  resolveRelations(ctx, pending, columns);
+  const items: ImportItemResult[] = pending.map(({ partOf: _p, nestedUnder: _n, linkRefs: _l, ...item }) => item);
   const result: ImportResult = { format: CARD_IMPORT_FORMAT, items, created: [] };
   if (dryRun || items.some((i) => !i.ok)) return result;
 
   tx(ctx, () => {
-    for (const item of items) {
+    // Work cards first, so tickets can be filed under them; `created` keeps the batch order.
+    const createdIds = new Map<number, number>();
+    const order = [...items.filter((i) => i.card!.kind === 'work'), ...items.filter((i) => i.card!.kind !== 'work')];
+    for (const item of order) {
       const c = item.card!;
+      const parentId = c.parent ? ('batchIndex' in c.parent ? createdIds.get(c.parent.batchIndex)! : c.parent.id) : null;
       const detail: CardDetail = createCard(
         ctx,
         {
@@ -233,12 +453,22 @@ export function importCards(ctx: Ctx, input: unknown, dryRun: boolean): ImportRe
           dueDate: c.dueDate,
           dueTime: c.dueTime,
           checklists: c.checklists,
+          kind: c.kind,
+          parentId,
         },
         { source: 'api', via: 'card import' },
       );
       for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) });
-      result.created.push(detail.id);
+      createdIds.set(item.index, detail.id);
     }
+    // Links once every card exists (a blocked card then moves to the blocked column, as usual).
+    for (const item of items) {
+      const from = createdIds.get(item.index)!;
+      for (const l of item.card!.links) {
+        createLink(ctx, from, 'batchIndex' in l.target ? createdIds.get(l.target.batchIndex)! : l.target.id, l.direction);
+      }
+    }
+    result.created = items.map((i) => createdIds.get(i.index)!);
   });
   return result;
 }

@@ -9,6 +9,7 @@ import {
   type ActivityEntry,
   type ActivityRevision,
   type CardDetail,
+  type CardKind,
   type CardSummary,
   type LinkDirection,
   type TextPreview,
@@ -119,11 +120,12 @@ export function useLinkActions(cardId: number) {
 
 export type CardListStatus = 'board' | 'archived' | 'trashed' | 'live';
 
-export function useCardList(status: CardListStatus, q = '', enabled = true) {
+export function useCardList(status: CardListStatus, q = '', enabled = true, kind?: CardKind) {
   const params = new URLSearchParams({ status, limit: '200' });
   if (q.trim()) params.set('q', q.trim());
+  if (kind) params.set('kind', kind);
   return useQuery({
-    queryKey: qk.cardList(status, q.trim()),
+    queryKey: [...qk.cardList(status, q.trim()), kind ?? 'all'],
     queryFn: ({ signal }) => api.get<CardSummary[]>(`/api/cards?${params}`, signal),
     enabled,
     placeholderData: keepPreviousData,

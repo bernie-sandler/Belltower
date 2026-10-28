@@ -10,7 +10,7 @@ import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable';
 import type { BoardResponse, Column } from '@tt/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { groupCards } from '../../api/board';
+import { groupCards, groupedOrder } from '../../api/board';
 import type { MoveVars } from '../../api/cards';
 import { setDragging } from '../../lib/dragging';
 import { parseDndId } from './dnd';
@@ -31,7 +31,7 @@ function itemsFromBoard(board: BoardResponse, columns: Column[]): Items {
   for (const col of columns) {
     items.set(
       col.id,
-      (groups.get(col.id) ?? []).filter((c) => c.id > 0).map((c) => c.id),
+      groupedOrder((groups.get(col.id) ?? []).filter((c) => c.id > 0)).map((c) => c.id),
     );
   }
   return items;

@@ -9,6 +9,7 @@ import { cls } from '../../lib/cls';
 import { toast } from '../../lib/toast';
 import { Modal } from '../common/Modal';
 import { Spinner } from '../common/Status';
+import { CompleteWorkDialog } from './CompleteWorkDialog';
 
 interface Props {
   cardId: number;
@@ -19,6 +20,7 @@ export function MoveToSheet({ cardId, onClose }: Props) {
   const { data: board } = useBoard();
   const moveCard = useMoveCard();
   const [selected, setSelected] = useState<number | null>(null);
+  const [askingDone, setAskingDone] = useState(false);
   const topRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const lastSelected = useRef<number | null>(null);
@@ -65,6 +67,10 @@ export function MoveToSheet({ cardId, onClose }: Props) {
     if (toColumnId !== tile.columnId) toast(`Moved to ${name}`, { kind: 'success', durationMs: 2500 });
   }
 
+  if (askingDone && tile) {
+    return <CompleteWorkDialog card={tile} onClose={onClose} />;
+  }
+
   if (!tile) {
     return (
       <Modal title="Move card" variant="sheet" size="sm" onClose={onClose}>
@@ -108,7 +114,7 @@ export function MoveToSheet({ cardId, onClose }: Props) {
                   type="button"
                   className="btn btn-success btn-block move-done"
                   disabled={tile.blockedBy > 0}
-                  onClick={() => move(doneColumn.id, 'top')}
+                  onClick={() => (tile.kind === 'work' && tile.childOpen > 0 ? setAskingDone(true) : move(doneColumn.id, 'top'))}
                 >
                   <CircleCheck size={18} aria-hidden /> Mark done
                 </button>

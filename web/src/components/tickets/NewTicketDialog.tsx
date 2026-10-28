@@ -20,9 +20,15 @@ import { emptyTicket, fromDraft, TicketForm, toCreateBody, type TicketFields } f
 
 export type NewTicketMode = 'describe' | 'blank';
 
+/** Fields to start from, e.g. "Add ticket here" on a work card. */
+export interface NewTicketPreset {
+  parentId?: number;
+  columnId?: number;
+}
+
 const TEXT_DRAFT = 'new-ticket-text';
 
-export function NewTicketDialog({ mode, onClose }: { mode: NewTicketMode; onClose: () => void }) {
+export function NewTicketDialog({ mode, preset, onClose }: { mode: NewTicketMode; preset?: NewTicketPreset; onClose: () => void }) {
   const ai = useAiStatus();
   const board = useBoard();
   const draft = useDraftTicket();
@@ -32,7 +38,13 @@ export function NewTicketDialog({ mode, onClose }: { mode: NewTicketMode; onClos
   const canDraft = ai.data?.enabled === true;
   const [step, setStep] = useState<'describe' | 'form'>(mode === 'describe' && canDraft ? 'describe' : 'form');
   const [text, setText] = useState(() => loadDraft(TEXT_DRAFT) ?? '');
-  const [fields, setFields] = useState<TicketFields>(emptyTicket);
+  const [fields, setFields] = useState<TicketFields>(() => ({
+    ...emptyTicket(),
+    parentId: preset?.parentId ?? null,
+    columnId: preset?.columnId ?? null,
+  }));
+  // What a Claude draft doesn't decide: kept from the form as it was.
+  const keep = (f: TicketFields) => ({ kind: f.kind, parentId: f.parentId, columnId: f.columnId });
   const [suggestion, setSuggestion] = useState<TicketDraft | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,13 +61,13 @@ export function NewTicketDialog({ mode, onClose }: { mode: NewTicketMode; onClos
     draft.mutate(text.trim(), {
       onSuccess: (d) => {
         setSuggestion(d);
-        setFields(fromDraft(d));
+        setFields((f) => ({ ...fromDraft(d), ...keep(f) }));
         setStep('form');
       },
       onError: (err) => {
         // Fall back to filling it in by hand, starting from what was typed.
         setSuggestion(null);
-        setFields({ ...emptyTicket(), title: firstLine(text), description: text.trim() });
+        setFields((f) => ({ ...emptyTicket(), ...keep(f), title: firstLine(text), description: text.trim() }));
         setNotice(`${errorMessage(err)} Fill in the ticket yourself below.`);
         setStep('form');
       },
@@ -151,6 +163,7 @@ export function NewTicketDialog({ mode, onClose }: { mode: NewTicketMode; onClos
               onChange={setFields}
               suggestion={suggestion}
               columns={board.data?.columns ?? []}
+              workCards={(board.data?.cards ?? []).filter((c) => c.kind === 'work' && c.id > 0)}
               labels={board.data?.labels ?? []}
               onSubmit={submit}
             />

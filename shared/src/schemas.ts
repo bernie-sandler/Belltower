@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, SEVERITIES } from './constants';
+import { CARD_KINDS, LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, SEVERITIES } from './constants';
 
 const id = z.number().int().positive();
 
@@ -94,6 +94,10 @@ export const CreateCardBody = z.object({
   dueTime: LocalTime.nullable().optional(),
   /** Where in the column the card goes. Default 'bottom'. */
   position: z.enum(['top', 'bottom']).optional(),
+  /** Default 'ticket'. */
+  kind: z.enum(CARD_KINDS).optional(),
+  /** The work card this ticket is part of. */
+  parentId: id.nullable().optional(),
 });
 export type CreateCardBody = z.infer<typeof CreateCardBody>;
 
@@ -109,6 +113,9 @@ export const UpdateCardBody = z.object({
   dueTime: LocalTime.nullable().optional(),
   /** Backdate (or correct) when a card in Done was completed. Not allowed in the future. */
   completedAt: IsoInstant.optional(),
+  kind: z.enum(CARD_KINDS).optional(),
+  /** File the ticket under a work card (null takes it out). */
+  parentId: id.nullable().optional(),
 });
 export type UpdateCardBody = z.infer<typeof UpdateCardBody>;
 
@@ -146,10 +153,15 @@ export type CreateLinkBody = z.infer<typeof CreateLinkBody>;
 /** GET /api/cards: card lists for the link picker, Archive and Trash. */
 export const CardListQuery = z.object({
   status: z.enum(['board', 'archived', 'trashed', 'live']).default('live'),
+  kind: z.enum(CARD_KINDS).optional(),
   q: z.string().trim().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 export type CardListQuery = z.infer<typeof CardListQuery>;
+
+/** Mark done, optionally together with the open tickets filed under a work card. */
+export const CompleteCardBody = z.object({ includeChildren: z.boolean().default(false) });
+export type CompleteCardBody = z.infer<typeof CompleteCardBody>;
 
 // ---- work log ----
 export const WorklogBody = z.object({
