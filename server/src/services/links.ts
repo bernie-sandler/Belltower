@@ -73,7 +73,12 @@ export function createLink(ctx: Ctx, cardId: number, otherId: number, direction:
       reindexCard(ctx, cid);
     }
     // A newly blocked card goes to the blocked column (when one is set).
-    if (type === 'blocks') parkIfBlocked(ctx, to);
+    if (type === 'blocks') {
+      parkIfBlocked(ctx, to);
+      const blocked = getCardRow(ctx, to);
+      const blocker = getCardRow(ctx, from);
+      if (!blocked.completed_at && !blocker.completed_at) ctx.emit?.({ type: 'card_blocked', cardId: to, blockerIds: [from] });
+    }
     return getCard(ctx, cardId);
   });
 }

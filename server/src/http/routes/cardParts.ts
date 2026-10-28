@@ -11,11 +11,7 @@ import {
 } from '@tt/shared';
 import { create as contentDisposition } from 'content-disposition';
 import type { FastifyInstance } from 'fastify';
-import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, rmSync, statSync } from 'node:fs';
-import path from 'node:path';
-import { Transform } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { createReadStream, mkdirSync, rmSync, statSync } from 'node:fs';
 import type { AppDeps } from '../../app';
 import { AppError, badRequest } from '../../errors';
 import {
@@ -40,9 +36,8 @@ import {
 } from '../../services/checklists';
 import { createLink, deleteLink } from '../../services/links';
 import { addWorklog, listRevisions, updateWorklog } from '../../services/worklog';
+import { saveUploadPart, tooLarge } from '../uploads';
 import { idParam, parse } from '../util';
-
-const HEAD_BYTES = 8192;
 
 /** Attachment responses can't run scripts or be framed, whatever the file contains. */
 const ATTACHMENT_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
@@ -97,33 +92,7 @@ export function registerCardPartRoutes(app: FastifyInstance, deps: AppDeps): voi
     const tmpPaths: string[] = [];
     try {
       for await (const part of req.files()) {
-        const tmpPath = path.join(config.tmpDir, `${randomUUID()}.part`);
-        tmpPaths.push(tmpPath);
-        const hash = createHash('sha256');
-        let size = 0;
-        const head: Buffer[] = [];
-        let headLen = 0;
-        const meter = new Transform({
-          transform(chunk: Buffer, _enc, cb) {
-            hash.update(chunk);
-            size += chunk.length;
-            if (headLen < HEAD_BYTES) {
-              const take = chunk.subarray(0, HEAD_BYTES - headLen);
-              head.push(take);
-              headLen += take.length;
-            }
-            cb(null, chunk);
-          },
-        });
-        await pipeline(part.file, meter, createWriteStream(tmpPath));
-        if (part.file.truncated) throw tooLarge(config.maxUploadBytes);
-        files.push({
-          tmpPath,
-          originalName: part.filename,
-          sizeBytes: size,
-          sha256: hash.digest('hex'),
-          head: Buffer.concat(head),
-        });
+        files.push(await saveUploadPart(part, config.tmpDir, config.maxUploadBytes, tmpPaths));
       }
       if (!files.length) throw badRequest('validation', 'No file was uploaded');
       return addAttachments(ctx, config.attachmentsDir, cardId, files);
@@ -170,6 +139,3 @@ export function registerCardPartRoutes(app: FastifyInstance, deps: AppDeps): voi
   });
 }
 
-function tooLarge(maxBytes: number): AppError {
-  return new AppError(413, 'too_large', `Files can be at most ${Math.round(maxBytes / 1024 / 1024)} MB`);
-}

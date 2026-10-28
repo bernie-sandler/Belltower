@@ -115,6 +115,9 @@ describe('backup round trip', () => {
 
     // Pretend it came from schema 1 (no severity, ticket numbers or work cards yet).
     json.schemaVersion = 1;
+    // Tables added later didn't exist yet.
+    delete json.tables.request_types;
+    delete json.tables.api_tokens;
     for (const c of json.tables.cards) {
       delete c.severity;
       delete c.ticket_no;

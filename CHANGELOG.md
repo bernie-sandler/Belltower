@@ -3,6 +3,32 @@
 Versions follow [semver](https://semver.org). While the app is in alpha (0.x), each minor version is a feature
 release. The version is shown in **Settings**, in the container log on start, and in every backup export.
 
+## 0.9.0: Tickets from other people and services (beta)
+
+- **Settings page** (Menu → Settings):
+  - ticket number format (e.g. `TT-{YYYY}{MM}{DD}-{N}`);
+  - the app's address;
+  - Claude model;
+  - blocked column;
+  - submit page, automation tokens, Discord, password.
+- **Submit page.** A shareable link (`/submit/<key>`) where people without your password file tickets. They pick a
+  request type and answer its questions; the answers are appended to their description, and the title follows the
+  type's pattern ("Plex – {title} – {summary}"). Also tags you allow, up to 3 screenshots, and their name.
+  - Starts with **General**, **Plex** and **Game servers**, based on your Discord support templates.
+  - Request types and their questions (short or long text, pick one or several, date and time, yes/no) are
+    editable in Settings.
+  - Rate limited, image-only screenshots, a bot trap, and a new link at any time.
+- **Automation.** API tokens and `POST /api/v1/cards`, with `dedupeKey` (repeat alerts add a note to the open
+  ticket) and `"event": "resolved"` (notes the recovery, and can mark it done). Includes an Uptime Kuma webhook
+  (`/api/v1/hooks/uptime-kuma`). Recipes in `docs/AUTOMATION.md`.
+- **Discord notifications** through a webhook:
+  - new tickets from the submit page or automation;
+  - blocked cards;
+  - a daily summary of overdue and due-today cards;
+  - urgent cards: created urgent or raised to urgent later. "Urgent" defaults to P0–P1 or S1 and can be changed;
+  - a **Send test** button, **Send summary now**, and the last delivery result.
+- Database schema 5 (`request_types`, `api_tokens`), included in backups.
+
 ## 0.8.0: Hardening (beta)
 
 No new features; this release is about upgrading and releasing safely.

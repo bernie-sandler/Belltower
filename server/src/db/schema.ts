@@ -215,11 +215,41 @@ ALTER TABLE cards ADD COLUMN parent_id INTEGER REFERENCES cards (id);
 CREATE INDEX ix_cards_parent ON cards (parent_id) WHERE parent_id IS NOT NULL;
 `;
 
+// 0.9: submit-page request types (questions and tags as validated JSON) and API tokens for
+// automation (only a SHA-256 hash of each token is stored). Default request types are seeded at
+// startup, not here, so a restored backup's rows never collide with seeded ones.
+const v5 = `
+CREATE TABLE request_types (
+  id            INTEGER PRIMARY KEY,
+  name          TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 60),
+  description   TEXT NOT NULL DEFAULT '',
+  title_pattern TEXT NOT NULL DEFAULT '{summary}',
+  fields        TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(fields)),
+  tag_label_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tag_label_ids)),
+  type_label_id INTEGER REFERENCES labels (id) ON DELETE SET NULL,
+  position      INTEGER NOT NULL DEFAULT 0,
+  enabled       INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  ${ts('created_at')},
+  ${ts('updated_at')}
+) STRICT;
+CREATE TABLE api_tokens (
+  id           INTEGER PRIMARY KEY,
+  name         TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 60),
+  token_hash   TEXT NOT NULL UNIQUE,
+  prefix       TEXT NOT NULL,
+  can_complete INTEGER NOT NULL DEFAULT 0 CHECK (can_complete IN (0, 1)),
+  ${ts('created_at')},
+  ${tsNull('last_used_at')},
+  ${tsNull('revoked_at')}
+) STRICT;
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
   { version: 3, name: 'ticket numbers', sql: v3 },
   { version: 4, name: 'work cards', sql: v4 },
+  { version: 5, name: 'submit page and API tokens', sql: v5 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

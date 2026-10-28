@@ -88,6 +88,12 @@ attachments       id PK, card_id → cards, original_name, stored_name (uuid, no
                   mime_type (server-sniffed), kind ('image'|'text'|'file'), size_bytes, sha256, created_at
                   -- file at /data/attachments/<card_id>/<stored_name>
 
+request_types     (schema 5) id, name, description, title_pattern, fields JSON, tag_label_ids JSON, type_label_id,
+                  position, enabled — the submit page's choices; defaults seeded once at startup
+api_tokens        (schema 5) id, name, token_hash (SHA-256), prefix, can_complete, created_at, last_used_at,
+                  revoked_at — bearer tokens for /api/v1
+settings keys     general_settings, submit_settings (incl. the page key), discord_settings, discord_last_delivery,
+                  discord_digest_last, request_types_seeded
 cards.kind        (schema 4) 'ticket' | 'work'
 cards.parent_id   (schema 4) → cards: the work card a ticket is filed under (one level; work cards only as parents)
 cards.ticket_no   (schema 3) 'YYMMDD-N': local creation date + per-day counter, unique, never reused;

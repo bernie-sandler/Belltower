@@ -34,6 +34,12 @@ and needs no internet (unless you turn on the optional Claude ticket drafting).
 - **Add ticket**: describe a problem in your own words and Claude drafts the card (priority, severity, details,
   checklist) for you to review. Optional: it needs an Anthropic API key, and without one the app stays fully
   offline.
+- **Submit page**: a link you can share so family, friends or players can file tickets without your password. They
+  pick a request type (General, Plex, Game servers… your own list) and answer its questions.
+- **Automation**: API tokens let Uptime Kuma, Unraid, Home Assistant or scripts open tickets. Repeat alerts update
+  the open ticket. See [docs/AUTOMATION.md](docs/AUTOMATION.md).
+- **Discord notifications**: new outside tickets, urgent cards (P0–P1 or S1 by default, when created or raised),
+  blocked cards and a daily summary, posted to a channel through a webhook.
 - **Card import**: without an API key, paste JSON written by any AI chat to create ready-made cards. See
   [docs/CARD-IMPORT.md](docs/CARD-IMPORT.md).
 
@@ -195,6 +201,64 @@ app keeps its own login, so sign in once there (tick **Remember this device**).
 
   Backups from older versions upgrade automatically; backups from a newer version are refused.
 - **Moving to a new server.** Export a ZIP, start a fresh container there, set its password, then restore the ZIP.
+
+## Settings
+
+**Menu → Settings** has everything that isn't about one card:
+
+- **General**:
+  - the ticket number format, with `{YY}` `{YYYY}` `{MM}` `{DD}` for the date and `{N}` for the day's counter (last);
+  - the app's address, used for links in Discord;
+  - the Claude model;
+  - where blocked cards go.
+- **Submit page**: turn it on, copy or replace its link, choose where its tickets land, and edit request types and
+  their questions.
+- **Automation**: API tokens.
+- **Discord notifications**: the webhook, which messages to send, and a test button.
+- **Password and version.**
+
+## Submit page (tickets from other people)
+
+**How it works:**
+1. Turn it on in **Settings → Submit page** and share the link it shows (`…/submit/<long random key>`).
+2. Anyone with the link sees a short form: pick what they need help with, then answer that type's questions.
+3. They give a title and "what's wrong", plus tags you allow, up to 3 screenshots, and their name.
+4. Their answers are added below the description, and the title follows the type's pattern, e.g.
+   "Plex – Interstellar – stutters".
+5. They only ever see the form and the new ticket's number.
+
+**Request types.** They start as **General**, **Plex** and **Game servers**, from your old Discord templates. You can
+edit, reorder, turn off or add types, and change each type's questions: short or long text, pick one or several,
+date and time, and yes/no.
+
+**Where tickets land.** In Triage, or the column you choose, as normal cards with history noting
+"submit page (*name*)". With Discord set up, you get a message for each.
+
+**Limits.**
+- A wrong or old link shows "This page doesn't exist".
+- **New link** replaces the address at once.
+- Each address can send 5 tickets per 10 minutes, and the page 30 per hour.
+- Screenshots must be images.
+
+**Sharing it outside your network.** If you share the link beyond your LAN or tailnet through Nginx Proxy Manager,
+allow only `/submit/` and `/api/public/` (plus the app's `/assets/`; the icons at the site root are optional) past your access list, and keep the rest of the
+app behind it. One way is a custom location for `/submit` and `/api/public` without the access list on the same
+proxy host.
+
+## Automation and Discord
+
+- **Automation.** API tokens (**Settings → Automation**) let monitoring tools and scripts open tickets with
+  `POST /api/v1/cards`, and Uptime Kuma has its own hook. Recipes for Uptime Kuma, Unraid notifications, Home
+  Assistant and curl are in [docs/AUTOMATION.md](docs/AUTOMATION.md).
+- **Discord** (**Settings → Discord notifications**). Paste a channel's webhook URL (Channel settings → Integrations
+  → Webhooks). Then choose what to announce:
+  - new tickets from the submit page or automation;
+  - urgent cards, whether created that way or raised later (P0–P1 or S1 by default; you can change what counts);
+  - a card getting blocked;
+  - a daily summary of overdue and due-today cards, at a time you choose.
+
+  **Send test** and **Send summary now** check it. If your network blocks access from other machines, see
+  [docs/AUTOMATION.md](docs/AUTOMATION.md#if-a-tool-cant-reach-it). Nothing is sent unless a webhook is set, and only Discord webhook addresses are accepted.
 
 ## Add ticket (Claude drafting)
 

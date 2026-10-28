@@ -28,8 +28,18 @@ Only the newest release gets fixes.
     plain text display in the page; everything else downloads.
   - Uploads and restores have size limits; ZIP restores accept only the expected files.
 - **History** can't be edited or deleted, not even through the database file: triggers block it.
-- **Outbound connections.** None, unless you set `ANTHROPIC_API_KEY`. Then only the text you type into "Describe
-  the issue", your label names and today's date are sent to Anthropic's API, from the server.
+- **Outbound connections.** None unless you turn something on:
+  - With `ANTHROPIC_API_KEY`, only the text you type into "Describe the issue", your label names and today's date
+    are sent to Anthropic's API, from the server.
+  - With a Discord webhook, card titles, ticket numbers and priorities go to that Discord channel. Only Discord
+    webhook addresses are accepted, so the server can't be pointed elsewhere.
+- **Submit page** (off by default).
+  - It's reachable without the password by anyone who has its long random link.
+  - It can only file tickets, and shows nothing from the board except your request types and the tags you chose.
+  - It's rate limited, rejects non-image screenshots, and has a hidden field that catches simple bots.
+  - **New link** cuts off the old address.
+- **API tokens** can only open and update tickets through `/api/v1`. Only a hash of each is stored. Revoke them in
+  Settings.
 - **Upgrades.**
   - The database is copied before every schema upgrade.
   - A nightly snapshot keeps the last 7 days.
@@ -41,6 +51,8 @@ Only the newest release gets fixes.
   reverse proxy (for example Nginx Proxy Manager), add an access list for your LAN and Tailscale ranges. The
   app's password should not be the only thing in the way.
 - **Use HTTPS** when it's reached through a proxy with a public name, so cookies get the Secure flag.
+- **Sharing the submit page publicly.** Let only `/submit/`, `/api/public/` and `/assets/` past your access
+  list. Treat the link like a guest key, and replace it if it ends up somewhere you don't want.
 - **Set `TRUST_PROXY`** only to your proxy's own address, and never to `true`.
 - **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD` and `ANTHROPIC_API_KEY`. A GitHub token used to
   pull images should only have the `read:packages` scope.

@@ -153,16 +153,19 @@ export function mapAnthropicError(err: unknown): AppError {
   return new AppError(502, 'ai_failed', 'Drafting with Claude failed.');
 }
 
-export function createClaudeDrafter(apiKey: string, model: string): TicketDrafter {
+/** `model` is read on every call, so a model chosen in Settings applies straight away. */
+export function createClaudeDrafter(apiKey: string, model: () => string): TicketDrafter {
   let client: Anthropic | null = null;
   return {
-    model,
+    get model() {
+      return model();
+    },
     async complete(system, user) {
       client ??= new Anthropic({ apiKey, timeout: 90_000, maxRetries: 1 });
       let msg;
       try {
         msg = await client.beta.messages.parse({
-          model,
+          model: model(),
           max_tokens: 8000,
           // On a policy decline, let the API retry on its default fallback model.
           betas: ['server-side-fallback-2026-07-01'],

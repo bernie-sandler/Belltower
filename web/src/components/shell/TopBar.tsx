@@ -39,6 +39,7 @@ const EXTRA_PAGES: Record<string, string> = {
   '/trash': 'Trash',
   '/import': 'Import',
   '/backup': 'Backup',
+  '/settings': 'Settings',
 };
 
 export function TopBar() {
@@ -148,7 +149,7 @@ export function TopBar() {
               ? []
               : [{ key: 'import', label: 'Import cards', icon: <FileUp size={16} />, onSelect: () => void navigate('/import') }]),
             { key: 'backup', label: 'Backup & restore', icon: <DatabaseBackup size={16} />, onSelect: () => void navigate('/backup') },
-            { key: 'settings', label: 'Settings', icon: <Settings size={16} />, onSelect: shell.openSettings },
+            { key: 'settings', label: 'Settings', icon: <Settings size={16} />, onSelect: () => void navigate('/settings') },
             'separator',
             {
               key: 'logout',

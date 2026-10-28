@@ -86,7 +86,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal title="Settings" onClose={onClose} size="md">
+    <Modal title="Password and version" onClose={onClose} size="md">
       <div className="modal-body settings">
         <section className="settings-section" aria-labelledby={`${ids}-password`}>
           <h3 id={`${ids}-password`} className="section-title">
