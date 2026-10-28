@@ -1,13 +1,14 @@
 # Publishes the Docker image to GHCR and a GitHub Release when a version tag is pushed:
-#   beta-v0.8.0   → :0.8.0, :beta                         (pre-release)
+#   v0.10.0-beta  → :0.10.0, :beta                        (pre-release)
 #   v1.0.0-rc.1   → :1.0.0-rc.1, :rc                      (pre-release)
 #   v1.0.0        → :1.0.0, :1.0, :1, :latest             (release)
-# The tag must match the version in package.json.
+# The tag must match the version in package.json. Tags are semver so GitHub lists releases in
+# version order (0.8.0-beta, 0.9.0-beta, 0.10.0-beta); before 0.11 the betas were tagged beta-v0.x.0.
 name: Release
 
 on:
   push:
-    tags: ['v*', 'beta-v*']
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -29,7 +30,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           case "$TAG" in
-            beta-v*)   VERSION="${TAG#beta-v}"; CHANNEL=beta ;;
+            v*-beta*)  VERSION="${TAG#v}"; VERSION="${VERSION%%-*}"; CHANNEL=beta ;;
             v*-rc.*)   VERSION="${TAG#v}";      CHANNEL=rc ;;
             v*)        VERSION="${TAG#v}";      CHANNEL=stable ;;
             *) echo "Unexpected tag $TAG"; exit 1 ;;
