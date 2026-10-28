@@ -12,7 +12,7 @@ import { seedDefaults } from './db/seed';
 import { createLogger } from './logger';
 import type { Ctx } from './services/context';
 import { createClaudeDrafter } from './services/aiDraft';
-import { dailySnapshot } from './services/backup';
+import { backupBeforeMigrate, dailySnapshot } from './services/backup';
 import { assignTicketNumbers } from './services/cards';
 import { runDueTemplates } from './services/recurring';
 import { localDateOf } from './lib/localdate';
@@ -47,6 +47,14 @@ async function main(): Promise<void> {
   const check = db.pragma('quick_check', { simple: true });
   if (check !== 'ok') {
     log.fatal(`Database integrity check failed: ${String(check)}. Restore from /data/backups or an export.`);
+    process.exit(1);
+  }
+  // Upgrades: keep a copy of the database as it was before changing it. No copy, no migration.
+  try {
+    const copy = await backupBeforeMigrate(db, config.backupsDir, new Date());
+    if (copy) log.info(`Saved a copy of the database before upgrading it: ${copy}`);
+  } catch (err) {
+    log.fatal(err as Error, `Couldn't save a copy of the database before upgrading it, so nothing was changed. Check free space and permissions in ${config.backupsDir}.`);
     process.exit(1);
   }
   const applied = migrate(db);

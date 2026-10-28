@@ -96,7 +96,8 @@ interface Props {
 export function TicketForm({ fields, onChange, suggestion, columns, labels, workCards, onSubmit }: Props) {
   const id = useId();
   const [preview, setPreview] = useState(false);
-  const listRef = useRef<HTMLOListElement>(null);
+  // The checklist row to focus as soon as it's rendered (a frame later would drop the first keys typed).
+  const focusRow = useRef<number | null>(null);
   const set = <K extends keyof TicketFields>(key: K, value: TicketFields[K]) => onChange({ ...fields, [key]: value });
   const submitOnCtrlEnter = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -111,7 +112,7 @@ export function TicketForm({ fields, onChange, suggestion, columns, labels, work
     const next = [...fields.checklist];
     next.splice(at, 0, '');
     set('checklist', next);
-    requestAnimationFrame(() => listRef.current?.querySelectorAll('input')[at]?.focus());
+    focusRow.current = at;
   }
 
   return (
@@ -289,12 +290,18 @@ export function TicketForm({ fields, onChange, suggestion, columns, labels, work
         <legend className="field-inline-label">
           <ListChecks size={14} aria-hidden /> Checklist
         </legend>
-        <ol ref={listRef} className="ticket-checklist">
+        <ol className="ticket-checklist">
           {fields.checklist.map((item, i) => (
             <li key={i}>
               <input
                 className="input"
                 aria-label={`Checklist item ${i + 1}`}
+                ref={(el) => {
+                  if (el && focusRow.current === i) {
+                    focusRow.current = null;
+                    el.focus();
+                  }
+                }}
                 value={item}
                 maxLength={LIMITS.checklistItem}
                 onChange={(e) => set('checklist', fields.checklist.map((x, j) => (j === i ? e.target.value : x)))}

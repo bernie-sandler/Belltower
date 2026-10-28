@@ -412,6 +412,29 @@ export async function dailySnapshot(ctx: Ctx, backupsDir: string, today: string)
   return file;
 }
 
+/**
+ * Before an upgrade changes the database: a consistent copy in /data/backups named
+ * pre-migrate-v<from>-to-v<to>-<timestamp>.db (last 5 kept). Returns null when nothing needs
+ * migrating (or for a brand-new database). Throws if the copy can't be made; the caller must not
+ * migrate then.
+ */
+export async function backupBeforeMigrate(db: DB, backupsDir: string, now: Date, latest = LATEST_SCHEMA_VERSION): Promise<string | null> {
+  const from = schemaVersion(db);
+  if (from === 0 || from >= latest) return null;
+  mkdirSync(backupsDir, { recursive: true });
+  const stamp = now.toISOString().replace(/[:.]/g, '-');
+  const file = path.join(backupsDir, `pre-migrate-v${from}-to-v${latest}-${stamp}.db`);
+  const tmp = `${file}.${randomUUID()}.part`;
+  try {
+    await db.backup(tmp);
+    renameSync(tmp, file);
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+  pruneBackups(backupsDir, /^pre-migrate-v\d+-to-v\d+-.*\.db$/, 5);
+  return file;
+}
+
 /** For tests and diagnostics: a content hash of a file. */
 export function sha256File(p: string): string {
   return createHash('sha256').update(readFileSync(p)).digest('hex');

@@ -44,23 +44,34 @@ each version in [CHANGELOG.md](CHANGELOG.md).
 
 ## Install on Unraid (Docker Compose Manager)
 
-1. **Get the code onto the server.** For example, clone the repo to `/mnt/user/appdata/tower-tracker-src`. Keep it
-   outside the data folder.
+Tower pulls a ready-made image from GitHub (`ghcr.io/bernie-sandler/tower-tracker`); nothing is built on the
+server.
+
+1. **Get the stack files onto the server.** For example, clone the repo to `/mnt/user/appdata/tower-tracker-src`.
+   Keep it outside the data folder. Only `docker-compose.yml` and `.env` are used.
    ```bash
    git clone https://github.com/bernie-sandler/tower-tracker.git /mnt/user/appdata/tower-tracker-src
    ```
-2. **Create your settings file.** In that folder, copy `.env.example` to `.env` and adjust it. The defaults suit
+2. **Allow Tower to pull the image (private repository only).** While the repository is private, its images
+   are too. Create a GitHub token: **Settings → Developer settings → Personal access tokens → Tokens
+   (classic)** with only the `read:packages` scope. Then log in once on Tower; Docker remembers it:
+   ```bash
+   docker login ghcr.io -u <your GitHub user name>
+   ```
+   Paste the token as the password. (Or make just the image public under the repository's **Packages** →
+   tower-tracker → **Package settings**; the code stays private.)
+3. **Create your settings file.** In that folder, copy `.env.example` to `.env` and adjust it. The defaults suit
    most setups.
    ```bash
    cp .env.example .env
    ```
-3. **Add the stack.** In **Docker → Compose → Add New Stack**, point the stack at that folder (its
+4. **Add the stack.** In **Docker → Compose → Add New Stack**, point the stack at that folder (its
    `docker-compose.yml`), then press **Compose Up**. From a terminal in the folder, this does the same:
    ```bash
-   docker compose up -d --build
+   docker compose up -d
    ```
-4. **Open the app.** Go to `http://tower:8080`, or `http://<server-ip>:8080`.
-5. **Set your password.** On the first run you're asked for a one-time **setup code**. Find it in the container
+5. **Open the app.** Go to `http://tower:8080`, or `http://<server-ip>:8080`.
+6. **Set your password.** On the first run you're asked for a one-time **setup code**. Find it in the container
    log (Docker tab → tower-tracker icon → **Logs**, or `docker logs tower-tracker`). Then choose a password of 12+
    characters. To skip this step, set `APP_PASSWORD` in `.env` instead.
 
@@ -75,11 +86,20 @@ To check this setting:
 2. Enable it under **Settings → Global Share Settings → Permit exclusive shares**.
 3. Make sure no stray `appdata` folder exists on an array disk.
 
-**Updating.** Pull the new code, then rebuild. The database upgrades itself on start.
+**Updating.** Pull the new image and recreate the container. The database upgrades itself on start, after
+saving a copy of itself as `/data/backups/pre-migrate-v<old>-to-v<new>-….db` (the last 5 are kept). If that copy
+can't be written, it doesn't upgrade, and the log says why.
 
 ```bash
-cd /mnt/user/appdata/tower-tracker-src && git pull && docker compose up -d --build
+cd /mnt/user/appdata/tower-tracker-src && docker compose pull && docker compose up -d
 ```
+
+**Which version.** `TT_VERSION` in `.env` picks it: `beta` follows the newest beta (the default until 1.0),
+`0.8.0` pins one, and after 1.0 `latest` follows stable releases. Every release is listed on GitHub with its
+changes ([CHANGELOG.md](CHANGELOG.md)).
+
+**Building from source instead** (no GitHub login needed): `git pull`, then
+`docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
 ## Configuration (`.env`)
 
@@ -93,6 +113,7 @@ Data is untouched by this.
 
 | Variable | Default | |
 |---|---|---|
+| `TT_VERSION` | `beta` | Which image to run: `beta`, an exact version like `0.8.0`, or `latest` after 1.0. |
 | `PORT` | `8080` | The port to open the app on. It's used both on Unraid and inside the container, so one setting changes both. |
 | `DATA_PATH` | `/mnt/cache/appdata/tower-tracker` | Host folder for the database, attachments and backups. |
 | `TZ` | `America/Chicago` | All dates, times, due badges, calendar days and schedules use this zone. |
@@ -255,11 +276,22 @@ In a second terminal, start the UI with hot reload (it proxies `/api` to the ser
 npm run dev:web
 ```
 
-Run the server tests:
+Run the server and web unit tests:
 
 ```bash
 npm test
 ```
+
+Run the end-to-end tests (desktop and iPhone sizes, in your installed Chrome) against a fresh build:
+
+```bash
+npm run build && npm run e2e
+```
+
+GitHub Actions runs all of these, plus a Docker build, on every push. Pushing a tag publishes an image:
+`beta-v0.8.0` → `:0.8.0` and `:beta`; `v1.0.0-rc.1` → `:rc`; `v1.0.0` → `:1.0.0`, `:1.0`, `:1` and `:latest`.
+The tag has to match the version in `package.json`, and `CHANGELOG.md` needs a section for it (it becomes the
+release notes).
 
 Typecheck everything:
 
@@ -278,7 +310,7 @@ In development the server keeps its data in `server/data/`. Set `DATA_DIR` to pu
 Try the container on a desktop. Data goes to a named volume instead of the Unraid path:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.local.yml up -d --build
 ```
 
 Layout:

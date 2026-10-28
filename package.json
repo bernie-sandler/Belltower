@@ -1,6 +1,6 @@
 {
   "name": "tower-tracker",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "description": "Self-hosted, single-user, Trello-style issue tracker for a homelab",
@@ -13,10 +13,14 @@
     "dev:server": "npm run dev -w @tt/server",
     "dev:web": "npm run dev -w @tt/web",
     "build": "npm run build -w @tt/web && npm run build -w @tt/server && node scripts/check-dist.mjs",
-    "test": "npm test -w @tt/server",
-    "typecheck": "npm run typecheck -w @tt/shared && npm run typecheck -w @tt/server && npm run typecheck -w @tt/web"
+    "test": "npm test -w @tt/server && npm test -w @tt/web",
+    "typecheck": "npm run typecheck -w @tt/shared && npm run typecheck -w @tt/server && npm run typecheck -w @tt/web",
+    "e2e": "playwright test"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
   }
 }

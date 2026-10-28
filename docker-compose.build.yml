@@ -1,0 +1,6 @@
+# Build the image from this folder instead of pulling it from GitHub:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  tower-tracker:
+    build: .
+    image: tower-tracker:local

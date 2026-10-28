@@ -3,6 +3,25 @@
 Versions follow [semver](https://semver.org). While the app is in alpha (0.x), each minor version is a feature
 release. The version is shown in **Settings**, in the container log on start, and in every backup export.
 
+## 0.8.0: Hardening (beta)
+
+No new features; this release is about upgrading and releasing safely.
+
+- **Safer upgrades.** Before the database is upgraded, the app saves a copy of it in `/data/backups`
+  (`pre-migrate-v<old>-to-v<new>-….db`, last 5 kept). If the copy can't be written, nothing is changed and the
+  container stops with an error explaining why.
+- **Prebuilt images.** Tagged releases are published to `ghcr.io/bernie-sandler/tower-tracker` by GitHub
+  Actions. `docker-compose.yml` now pulls the image (`TT_VERSION` in `.env`, default `beta`); building from source
+  is still possible with `docker-compose.build.yml`. Updating is `docker compose pull && docker compose up -d`.
+- **Tests.** Web unit tests (board grouping, filters, the Add ticket form, history text, Mark done dialog) and
+  end-to-end tests in Chrome at desktop and iPhone sizes (login, cards, dragging, blocked cards, links, work
+  cards, import, backup and restore, search). GitHub Actions runs everything on every push, plus a Docker build
+  and health check.
+- **Security.** Updated zod, fastify and fast-uri for published advisories (`npm audit` is clean). Dependabot
+  opens weekly update PRs. New `SECURITY.md`.
+- Fixed: after **Add item** in the Add ticket checklist, the first letters typed could be lost.
+- The link picker and the work-card picker are now one component.
+
 ## 0.7.0: Work cards
 
 - Two card types: **tickets** (an issue or finding) and **work cards** (what you're actually working on). Work
