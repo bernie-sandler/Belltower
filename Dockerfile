@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build: compile the web UI and bundle the server ----
-FROM node:24-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY shared/package.json shared/
@@ -14,7 +14,7 @@ COPY . .
 RUN npm run build
 
 # ---- deps: production node_modules only (the server's runtime dependencies) ----
-FROM node:24-bookworm-slim AS deps
+FROM node:26-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY shared/package.json shared/
@@ -23,7 +23,7 @@ COPY web/package.json web/
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
 # ---- runtime ----
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 ENV NODE_ENV=production \
     PORT=8080 \
     TZ=America/Chicago \
