@@ -13,8 +13,18 @@ import type { Ctx } from './context';
 export function reindexCard(ctx: Ctx, cardId: number): void {
   const db = ctx.db;
   stmt(db, 'DELETE FROM card_search WHERE rowid = ?').run(cardId);
-  const card = stmt(db, 'SELECT id, ticket_no, title, description_md, deleted_at FROM cards WHERE id = ?').get(cardId) as
-    | { id: number; ticket_no: string | null; title: string; description_md: string; deleted_at: string | null }
+  const card = stmt(db, 'SELECT id, ticket_no, title, description_md, resolution, resolution_md, deleted_at FROM cards WHERE id = ?').get(
+    cardId,
+  ) as
+    | {
+        id: number;
+        ticket_no: string | null;
+        title: string;
+        description_md: string;
+        resolution: string | null;
+        resolution_md: string;
+        deleted_at: string | null;
+      }
     | undefined;
   if (!card || card.deleted_at) return;
 
@@ -59,7 +69,13 @@ export function reindexCard(ctx: Ctx, cardId: number): void {
   stmt(
     db,
     'INSERT INTO card_search (rowid, title, description, checklists, worklogs, history) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run(cardId, card.title, card.description_md, checklistText.join('\n'), worklogs.join('\n\n'), [...new Set(history)].join('\n'));
+  ).run(cardId, card.title, withResolution(card), checklistText.join('\n'), worklogs.join('\n\n'), [...new Set(history)].join('\n'));
+}
+
+/** The description as indexed: plus the resolution, so "how did I fix this?" searches find it. */
+function withResolution(card: { description_md: string; resolution: string | null; resolution_md: string }): string {
+  if (!card.resolution && !card.resolution_md) return card.description_md;
+  return `${card.description_md}\n\nResolution: ${card.resolution ?? ''}\n${card.resolution_md}`;
 }
 
 /** Rebuilds the whole index (after a restore, a migration, or if the startup check finds drift). */

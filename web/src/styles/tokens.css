@@ -1,4 +1,6 @@
-/* Design tokens. Dark, Trello-inspired. Every color in the app comes from here. */
+/* Design tokens, Trello-inspired. Every color in the app comes from here.
+   Dark by default; light follows the system unless Settings → Appearance picks one
+   (<html data-theme="light|dark">, see lib/theme.ts). */
 :root {
   color-scheme: dark;
 
@@ -37,12 +39,35 @@
   --warning: #f5cd47;
   --success: #4bce97;
   --success-strong: #7ee2b8;
+  /* the accents as text on page surfaces (darker in light) */
+  --accent-text: var(--accent);
+  --danger-text: var(--danger);
+  --warning-text: var(--warning);
+  --success-text: var(--success);
+  /* hover fills for colored buttons */
+  --accent-hover: #85b8ff;
+  --danger-hover: #fd9891;
+  --success-hover: #7ee2b8;
 
   /* priority indicator */
   --prio-critical: #f87168;
   --prio-high: #fea362;
   --prio-medium: #f5cd47;
   --prio-low: #8c9bab;
+  --prio-critical-text: var(--prio-critical);
+  --prio-high-text: var(--prio-high);
+  --prio-medium-text: var(--prio-medium);
+  --prio-low-text: var(--prio-low);
+
+  /* wells (code, quoted text), veils over the board, misc */
+  --well: rgba(0, 0, 0, 0.3);
+  --well-strong: rgba(0, 0, 0, 0.4);
+  --veil: rgba(255, 255, 255, 0.06);
+  --veil-hover: rgba(255, 255, 255, 0.12);
+  --selection: rgba(87, 157, 255, 0.35);
+  --scrollbar: #454f59;
+  --toast-bg: #33393f;
+  --drop-bg: rgba(29, 33, 37, 0.88);
 
   /* shape */
   --radius-sm: 4px;
@@ -51,6 +76,7 @@
   --radius-col: 12px;
   --shadow-tile: 0 1px 1px rgba(0, 0, 0, 0.4);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-drag: 0 10px 20px rgba(0, 0, 0, 0.5);
 
   /* layout */
   --col-width: 272px;
@@ -67,6 +93,99 @@
   --fs-input: 14px;
 
   --dur: 120ms;
+}
+
+/* Light. Fills (buttons, badges, chips) keep the same mid-tones with dark text; only surfaces,
+   text and the accent colors used as text change. Listed twice: once for "follow the system",
+   once for an explicit choice. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+    --bg: #f7f8f9;
+    --header-bg: #ffffff;
+    --surface: #ebecf0;
+    --tile: #ffffff;
+    --tile-hover: #f1f2f4;
+    --raised: #ffffff;
+    --raised-hover: #f1f2f4;
+    --placeholder: #dcdfe4;
+    --overlay: rgba(9, 30, 66, 0.45);
+    --btn-bg: rgba(9, 30, 66, 0.06);
+    --btn-bg-hover: rgba(9, 30, 66, 0.13);
+    --input-bg: #ffffff;
+    --text: #44546f;
+    --text-strong: #172b4d;
+    --muted: #505f79;
+    --focus: #388bff;
+    --border: #dcdfe4;
+    --border-input: #8590a2;
+    --accent-strong: #0055cc;
+    --danger-strong: #ae2e24;
+    --success-strong: #216e4e;
+    --accent-text: #0055cc;
+    --danger-text: #c9372c;
+    --warning-text: #7f5f01;
+    --success-text: #216e4e;
+    --prio-critical-text: #c9372c;
+    --prio-high-text: #a54800;
+    --prio-medium-text: #7f5f01;
+    --prio-low-text: #505f79;
+    --well: rgba(9, 30, 66, 0.06);
+    --well-strong: rgba(9, 30, 66, 0.08);
+    --veil: rgba(9, 30, 66, 0.06);
+    --veil-hover: rgba(9, 30, 66, 0.12);
+    --selection: rgba(87, 157, 255, 0.3);
+    --scrollbar: #b3b9c4;
+    --toast-bg: #ffffff;
+    --drop-bg: rgba(255, 255, 255, 0.92);
+    --shadow-tile: 0 1px 1px rgba(9, 30, 66, 0.25), 0 0 1px rgba(9, 30, 66, 0.31);
+    --shadow-pop: 0 8px 24px rgba(9, 30, 66, 0.18), 0 0 0 1px rgba(9, 30, 66, 0.08);
+    --shadow-drag: 0 10px 20px rgba(9, 30, 66, 0.25);
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f7f8f9;
+  --header-bg: #ffffff;
+  --surface: #ebecf0;
+  --tile: #ffffff;
+  --tile-hover: #f1f2f4;
+  --raised: #ffffff;
+  --raised-hover: #f1f2f4;
+  --placeholder: #dcdfe4;
+  --overlay: rgba(9, 30, 66, 0.45);
+  --btn-bg: rgba(9, 30, 66, 0.06);
+  --btn-bg-hover: rgba(9, 30, 66, 0.13);
+  --input-bg: #ffffff;
+  --text: #44546f;
+  --text-strong: #172b4d;
+  --muted: #505f79;
+  --focus: #388bff;
+  --border: #dcdfe4;
+  --border-input: #8590a2;
+  --accent-strong: #0055cc;
+  --danger-strong: #ae2e24;
+  --success-strong: #216e4e;
+  --accent-text: #0055cc;
+  --danger-text: #c9372c;
+  --warning-text: #7f5f01;
+  --success-text: #216e4e;
+  --prio-critical-text: #c9372c;
+  --prio-high-text: #a54800;
+  --prio-medium-text: #7f5f01;
+  --prio-low-text: #505f79;
+  --well: rgba(9, 30, 66, 0.06);
+  --well-strong: rgba(9, 30, 66, 0.08);
+  --veil: rgba(9, 30, 66, 0.06);
+  --veil-hover: rgba(9, 30, 66, 0.12);
+  --selection: rgba(87, 157, 255, 0.3);
+  --scrollbar: #b3b9c4;
+  --toast-bg: #ffffff;
+  --drop-bg: rgba(255, 255, 255, 0.92);
+  --shadow-tile: 0 1px 1px rgba(9, 30, 66, 0.25), 0 0 1px rgba(9, 30, 66, 0.31);
+  --shadow-pop: 0 8px 24px rgba(9, 30, 66, 0.18), 0 0 0 1px rgba(9, 30, 66, 0.08);
+  --shadow-drag: 0 10px 20px rgba(9, 30, 66, 0.25);
 }
 
 /* Phones and touch screens: 44px touch targets, 16px inputs (stops iOS zoom-on-focus). */

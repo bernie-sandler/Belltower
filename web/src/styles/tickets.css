@@ -314,3 +314,91 @@
 .import-card-label {
   font-variant-numeric: tabular-nums;
 }
+
+/* Resolution (0.10): the Mark done dialog, the card view section, tile badge, Settings list */
+.resolve-dialog,
+.resolution-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.resolve-card {
+  margin: 0;
+}
+
+.resolution-reasons {
+  align-self: flex-start;
+}
+
+.resolution-badge {
+  background: var(--btn-bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.resolution-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.resolution-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resolve-clear {
+  margin-right: auto;
+}
+
+.reason-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reason-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reason-row .input {
+  flex: 1;
+  max-width: 320px;
+}
+
+.reason-row .tag {
+  min-width: var(--tap);
+  text-align: center;
+}
+
+/* Add ticket (0.10): links Claude suggested; "Describe several issues" preview header */
+.ticket-links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-links li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.import-preview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-weight: 600;
+}

@@ -244,12 +244,20 @@ CREATE TABLE api_tokens (
 ) STRICT;
 `;
 
+// 0.10: how a card was resolved (reason from Settings' list, kept as text so renaming a reason
+// doesn't rewrite history) and an optional note.
+const v6 = `
+ALTER TABLE cards ADD COLUMN resolution TEXT CHECK (resolution IS NULL OR length(resolution) BETWEEN 1 AND 40);
+ALTER TABLE cards ADD COLUMN resolution_md TEXT NOT NULL DEFAULT '';
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
   { version: 3, name: 'ticket numbers', sql: v3 },
   { version: 4, name: 'work cards', sql: v4 },
   { version: 5, name: 'submit page and API tokens', sql: v5 },
+  { version: 6, name: 'resolution notes', sql: v6 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

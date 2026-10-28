@@ -111,13 +111,13 @@
 @media (hover: hover) {
   .card-action-danger:hover:not(:disabled) {
     background: rgba(248, 113, 104, 0.18);
-    color: var(--danger);
+    color: var(--danger-text);
   }
 }
 
 .card-action-danger:active:not(:disabled) {
   background: rgba(248, 113, 104, 0.18);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .card-section-title {
@@ -163,27 +163,27 @@
 }
 
 .prio-text-critical {
-  color: var(--prio-critical);
+  color: var(--prio-critical-text);
 }
 
 .prio-text-high {
-  color: var(--prio-high);
+  color: var(--prio-high-text);
 }
 
 .prio-text-medium {
-  color: var(--prio-medium);
+  color: var(--prio-medium-text);
 }
 
 .prio-text-low {
-  color: var(--prio-low);
+  color: var(--prio-low-text);
 }
 
 .due-text-overdue {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .due-text-soon {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 /* Description (plain text in Phase 1) */
@@ -200,7 +200,7 @@
   padding: 8px 10px;
   overflow-y: auto;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--well);
 }
 
 .description-placeholder {
@@ -276,7 +276,7 @@
   margin-top: 4px;
   padding: 6px 10px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--well);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

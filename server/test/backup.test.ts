@@ -123,6 +123,8 @@ describe('backup round trip', () => {
       delete c.ticket_no;
       delete c.kind;
       delete c.parent_id;
+      delete c.resolution;
+      delete c.resolution_md;
     }
 
     const dst = await makeApp();

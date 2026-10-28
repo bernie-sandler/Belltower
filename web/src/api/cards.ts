@@ -336,15 +336,36 @@ export function stuckCards(err: unknown): StuckCard[] | null {
 export function useCompleteCard() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: number; includeChildren: boolean }) =>
+    mutationFn: (v: { id: number; includeChildren: boolean; resolution?: { reason: string; note: string } }) =>
       api.post<{ card: CardDetail; orders: Record<string, number[]>; completed: number[] }>(`/api/cards/${v.id}/complete`, {
         includeChildren: v.includeChildren,
+        ...(v.resolution ? { resolution: v.resolution } : {}),
       }),
     meta: { errorToast: false },
     onSuccess: (res) => {
       applyCardDetail(qc, res.card);
       for (const id of res.completed) invalidateActivity(qc, id);
       void qc.invalidateQueries({ queryKey: qk.board });
+      void qc.invalidateQueries({ queryKey: qk.cards });
+    },
+  });
+}
+
+/**
+ * Sets (or with null clears) how a done card was resolved. Opened from a toast or the card view,
+ * so it reads the card's current version first.
+ */
+export function useSetResolution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { cardId: number; resolution: { reason: string; note: string } | null }) => {
+      const current = await api.get<CardDetail>(`/api/cards/${v.cardId}`);
+      return api.patch<CardDetail>(`/api/cards/${v.cardId}`, { expectedVersion: current.version, resolution: v.resolution });
+    },
+    meta: { errorToast: false },
+    onSuccess: (card) => {
+      applyCardDetail(qc, card);
+      invalidateActivity(qc, card.id);
       void qc.invalidateQueries({ queryKey: qk.cards });
     },
   });

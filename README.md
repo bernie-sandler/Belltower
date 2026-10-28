@@ -20,6 +20,8 @@ and needs no internet (unless you turn on the optional Claude ticket drafting).
   - Mark a card as a **work card** (what you're working on) and file **tickets** under it, like a folder.
   - In every column a work card's tickets stack together under it; groups collapse.
   - **Mark done** on a work card can complete all its tickets at once (not while any of them is blocked).
+- **Resolutions**: **Mark done** asks how it was resolved (Fixed, Won't fix, Duplicate… your own list) with an
+  optional note. Notes are searchable, and the board shows anything other than the default.
 - **History**:
   - Every change is recorded automatically and can't be altered or deleted.
   - A **work log** for notes like "Swapped SATA power cable to drive 3", with backdating and edit history.
@@ -32,8 +34,10 @@ and needs no internet (unless you turn on the optional Claude ticket drafting).
   - Export to JSON or ZIP (with attachments) and restore with a preview.
   - Plus nightly snapshots.
 - **Add ticket**: describe a problem in your own words and Claude drafts the card (priority, severity, details,
-  checklist) for you to review. Optional: it needs an Anthropic API key, and without one the app stays fully
+  checklist, the work card it belongs to, related cards) for you to review, or paste notes describing several
+  issues and get several cards. Optional: it needs an Anthropic API key, and without one the app stays fully
   offline.
+- **Light and dark**: follows your device, or pick one per device in Settings.
 - **Submit page**: a link you can share so family, friends or players can file tickets without your password. They
   pick a request type (General, Plex, Game servers… your own list) and answer its questions.
 - **Automation**: API tokens let Uptime Kuma, Unraid, Home Assistant or scripts open tickets. Repeat alerts update
@@ -206,11 +210,13 @@ app keeps its own login, so sign in once there (tick **Remember this device**).
 
 **Menu → Settings** has everything that isn't about one card:
 
+- **Appearance**: Light, Dark or System (follows the device). Saved per device.
 - **General**:
   - the ticket number format, with `{YY}` `{YYYY}` `{MM}` `{DD}` for the date and `{N}` for the day's counter (last);
   - the app's address, used for links in Discord;
   - the Claude model;
   - where blocked cards go.
+- **Resolution reasons**: the list offered on Mark done. The first is the default.
 - **Submit page**: turn it on, copy or replace its link, choose where its tickets land, and edit request types and
   their questions.
 - **Automation**: API tokens.
@@ -269,9 +275,14 @@ Press **Add ticket** in the top bar (or `Shift+N`).
   - a title and a Markdown description (Symptoms / Details / Next steps);
   - priority from impact × urgency, and severity, each with a one-line reason;
   - matching labels from your existing ones;
-  - a checklist of next steps.
+  - a checklist of next steps;
+  - whether it's a ticket or a work card, an open work card it belongs under, and open cards it blocks, waits on or
+    relates to, each with a reason.
 
   Change anything you like, then **Create ticket**. Nothing is saved until you do.
+- **Describe several issues**: paste notes, a to-do list or logs. Claude makes one card per issue, groups steps
+  under a work card and links cards that depend on each other. You see the same preview as an import, then
+  **Create** them all.
 - **Blank ticket**: the same form, empty.
 
 **Setup.**
@@ -284,8 +295,9 @@ The container log then says "Claude drafting on".
 **Cost and privacy.**
 - A draft costs roughly 1–3 cents with the default model.
 - To limit spending, the app allows 20 drafts per 10 minutes.
-- Only the text you type, your label names and today's date are sent to Anthropic. Nothing from your board, history
-  or attachments is sent.
+- Only the text you type, your label names, today's date and the titles and ticket numbers of your open cards (up to
+  100, so Claude can suggest a work card and links) are sent to Anthropic. Descriptions, history and attachments are
+  never sent.
 
 If Claude can't be reached, or the key is wrong, the dialog says so and lets you fill in the ticket yourself.
 

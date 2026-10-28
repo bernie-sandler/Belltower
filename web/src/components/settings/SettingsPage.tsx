@@ -2,7 +2,7 @@
 // tokens, Discord notifications, and password/version.
 
 import { DEFAULT_TICKET_FORMAT, type SettingsResponse } from '@tt/shared';
-import { Bell, Bot, Copy, Globe, KeyRound, Lock, RefreshCw, Settings as SettingsIcon, Send } from 'lucide-react';
+import { Bell, Bot, Copy, Globe, KeyRound, Lock, Palette, RefreshCw, Settings as SettingsIcon, Send } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { sortedColumns, useBoard } from '../../api/board';
@@ -20,15 +20,17 @@ import {
   useTestDiscord,
 } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
+import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
 import { formatDateTime, todayLocal, useNow } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { useShell } from '../shell/ShellContext';
 import { RequestTypesEditor } from './RequestTypesEditor';
+import { ResolutionReasonsSection } from './ResolutionReasonsSection';
 import { TokensSection } from './TokensSection';
 
-function Section({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+export function Section({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
     <section className="settings-block">
       <h3 className="card-section-title">
@@ -49,12 +51,36 @@ export function SettingsPage() {
       <h2 className="list-page-title">
         <SettingsIcon size={20} aria-hidden /> Settings
       </h2>
+      <AppearanceSection />
       <GeneralSection s={s} />
+      <ResolutionReasonsSection s={s} />
       <SubmitSection s={s} />
       <TokensSection />
       <DiscordSection s={s} />
       <AccountSection />
     </div>
+  );
+}
+
+/** Per device (this browser), so a phone can follow the system while the desktop stays dark. */
+function AppearanceSection() {
+  const theme = useTheme();
+  const options: [ThemeChoice, string][] = [
+    ['system', 'System'],
+    ['light', 'Light'],
+    ['dark', 'Dark'],
+  ];
+  return (
+    <Section icon={<Palette size={16} aria-hidden />} title="Appearance">
+      <div className="segmented" role="radiogroup" aria-label="Theme">
+        {options.map(([value, label]) => (
+          <button key={value} type="button" role="radio" aria-checked={theme === value} className="segmented-item" onClick={() => setTheme(value)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="field-help">Saved on this device only. System follows your phone or computer’s light/dark setting.</p>
+    </Section>
   );
 }
 

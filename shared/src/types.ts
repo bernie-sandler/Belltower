@@ -63,6 +63,8 @@ export interface CardTile {
   /** Work cards: tickets filed under it (not in Trash), and how many of those are still open. */
   childCount: number;
   childOpen: number;
+  /** Done cards: the resolution reason (e.g. "Fixed"), or null when none was given. */
+  resolution: string | null;
   columnId: number;
   title: string;
   position: number;
@@ -96,6 +98,8 @@ export interface CardDetail extends CardTile {
   parent: CardSummary | null;
   /** Work cards: the tickets filed under it (not in Trash), open ones first. */
   children: CardSummary[];
+  /** Markdown note on how it was resolved ('' when none). */
+  resolutionNote: string;
 }
 
 export interface ChecklistItem {
@@ -173,6 +177,8 @@ export interface BoardResponse {
   cards: CardTile[];
   /** Where cards are moved when they become blocked; null = don't move them. */
   blockedColumnId: number | null;
+  /** Resolution reasons offered on Mark done; the first is the default. */
+  resolutionReasons: string[];
 }
 
 export interface MoveCardResponse {
@@ -323,7 +329,59 @@ export interface TicketDraft {
   labelIds: number[];
   checklist: string[];
   dueDate: LocalDateString | null;
+  /** Suggested type; 'work' when the text describes a piece of work with several steps. */
+  kind: CardKind;
+  kindReason: string;
+  /** An open work card this ticket belongs under, if one clearly fits. */
+  parent: DraftCardRef | null;
+  /** Open cards it clearly blocks, waits on, or relates to. */
+  links: { direction: LinkDirection; card: DraftCardRef; reason: string }[];
 }
+
+export interface DraftCardRef {
+  id: number;
+  ticketNo: string | null;
+  title: string;
+}
+
+/** "Describe several issues": the cards Claude wrote (card-import format) and their preview. */
+export interface BulkDraft {
+  cards: Record<string, unknown>[];
+  preview: ImportPreview;
+}
+
+/** POST /api/import/cards (and the bulk draft): what would be created, card by card. */
+export interface ImportPreview {
+  items: ImportPreviewItem[];
+  created: number[];
+}
+
+export interface ImportPreviewItem {
+  index: number;
+  /** "2" for a top-level card, "2.1" for a ticket nested under it. */
+  label: string;
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  card: {
+    kind: CardKind;
+    parent: ImportPreviewRef | null;
+    links: { direction: LinkDirection; target: ImportPreviewRef }[];
+    title: string;
+    description: string;
+    column: { id: number; name: string };
+    labels: { name: string; existing: boolean }[];
+    priority: Priority | null;
+    severity: Severity | null;
+    dueDate: string | null;
+    dueTime: string | null;
+    checklists: { title: string; items: string[] }[];
+    worklog: { bodyMd: string; occurredAt: string | null }[];
+    resolution: { reason: string; note: string } | null;
+  } | null;
+}
+
+export type ImportPreviewRef = { batchIndex: number; title: string } | { id: number; ticketNo: string | null; title: string };
 
 // ---- 0.9: settings, submit page, automation ----
 
@@ -388,4 +446,5 @@ export interface SettingsResponse {
     lastDelivery: { at: IsoTimestamp; ok: boolean; message: string } | null;
   };
   blockedColumnId: number | null;
+  resolutionReasons: string[];
 }

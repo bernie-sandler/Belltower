@@ -3,6 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { PRIORITY_CODES, PRIORITY_LABELS, SEVERITY_CODES, SEVERITY_LABELS, type CardTile, type Label } from '@tt/shared';
 import { Ban, Clock, Ellipsis, FolderOpen, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
 import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { useDefaultResolution } from '../../api/board';
 import { cls } from '../../lib/cls';
 import { isDragging as isBoardDragging, justDropped } from '../../lib/dragging';
 import { dueStatus, formatDue, type DueStatus } from '../../lib/time';
@@ -37,8 +38,12 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
   const due = dueStatus(tile, now);
   const blocked = tile.blockedBy > 0 && !tile.completedAt;
   const isWork = tile.kind === 'work';
+  // "Fixed" is the usual outcome; only the others (Won't fix, Duplicate…) are worth a badge.
+  const defaultResolution = useDefaultResolution();
+  const resolution = tile.completedAt && tile.resolution && tile.resolution !== defaultResolution ? tile.resolution : null;
   const hasFooter =
     isWork ||
+    resolution !== null ||
     blocked ||
     due !== null ||
     tile.attachmentCount > 0 ||
@@ -93,6 +98,12 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
                   {tile.childCount - tile.childOpen}/{tile.childCount}
                 </span>
               )}
+            </span>
+          )}
+          {resolution && (
+            <span className="badge resolution-badge" title={`Resolution: ${resolution}`}>
+              <span className="visually-hidden">Resolution: </span>
+              {resolution}
             </span>
           )}
           {blocked && (

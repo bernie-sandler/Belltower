@@ -112,9 +112,16 @@ function BoardView({ board }: { board: BoardResponse }) {
     const tile = board.cards.find((c) => c.id === move.cardId);
     const target = board.columns.find((c) => c.id === move.toColumnId);
     const offerTickets = tile?.kind === 'work' && tile.childOpen > 0 && target?.role === 'done' && tile.columnId !== target.id;
+    const intoDone = target?.role === 'done' && tile !== undefined && tile.columnId !== target.id;
     moveCard.mutate(move, {
       onSettled,
       onSuccess: () => {
+        if (intoDone && !offerTickets) {
+          toast(`“${tile.title}” is done.`, {
+            kind: 'success',
+            action: { label: 'Add resolution', onClick: () => shell.openResolution(tile.id) },
+          });
+        }
         if (!offerTickets) return;
         const n = tile.childOpen;
         toast(`“${tile.title}” is done. ${n} ticket${n === 1 ? '' : 's'} still open.`, {

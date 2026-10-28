@@ -18,7 +18,8 @@ import { Modal } from '../common/Modal';
 import { Spinner } from '../common/Status';
 import { emptyTicket, fromDraft, TicketForm, toCreateBody, type TicketFields } from './TicketForm';
 
-export type NewTicketMode = 'describe' | 'blank';
+/** 'many' is "Describe several issues" (BulkTicketsDialog). */
+export type NewTicketMode = 'describe' | 'blank' | 'many';
 
 /** Fields to start from, e.g. "Add ticket here" on a work card. */
 export interface NewTicketPreset {
@@ -43,8 +44,12 @@ export function NewTicketDialog({ mode, preset, onClose }: { mode: NewTicketMode
     parentId: preset?.parentId ?? null,
     columnId: preset?.columnId ?? null,
   }));
-  // What a Claude draft doesn't decide: kept from the form as it was.
-  const keep = (f: TicketFields) => ({ kind: f.kind, parentId: f.parentId, columnId: f.columnId });
+  // What a Claude draft doesn't decide: kept from the form as it was. "Add ticket here" on a work
+  // card also keeps that work card over Claude's suggestion.
+  const keep = (f: TicketFields) => ({
+    columnId: f.columnId,
+    ...(preset?.parentId !== undefined ? { kind: 'ticket' as const, parentId: preset.parentId } : {}),
+  });
   const [suggestion, setSuggestion] = useState<TicketDraft | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +72,7 @@ export function NewTicketDialog({ mode, preset, onClose }: { mode: NewTicketMode
       onError: (err) => {
         // Fall back to filling it in by hand, starting from what was typed.
         setSuggestion(null);
-        setFields((f) => ({ ...emptyTicket(), ...keep(f), title: firstLine(text), description: text.trim() }));
+        setFields((f) => ({ ...emptyTicket(), kind: f.kind, parentId: f.parentId, ...keep(f), title: firstLine(text), description: text.trim() }));
         setNotice(`${errorMessage(err)} Fill in the ticket yourself below.`);
         setStep('form');
       },
@@ -130,8 +135,9 @@ export function NewTicketDialog({ mode, preset, onClose }: { mode: NewTicketMode
               </p>
             ) : (
               <p className="muted small">
-                Claude suggests a title, details, priority, severity, labels and a checklist; you can change anything before
-                the card is created. What you type here and your label names are sent to Anthropic.
+                Claude suggests a title, details, priority, severity, labels, a checklist, and any open work card or cards it
+                relates to; you can change anything before the card is created. What you type here, your label names and your
+                open cards’ titles are sent to Anthropic.
               </p>
             )}
           </div>

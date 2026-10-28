@@ -72,7 +72,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 | `POST /api/cards` | `CreateCardBody` | `201 CardDetail` | Defaults to the Triage column and `position: 'bottom'`. Logs `created`. |
 | `GET /api/cards/:id` | — | `CardDetail` | Also works for archived and deleted cards (check `archivedAt` / `deletedAt`). |
 | `PATCH /api/cards/:id` | `UpdateCardBody {expectedVersion, …fields}` | `CardDetail` | Send only the fields that changed. `409 version_conflict` (body includes the current `card`) if the card changed elsewhere; `409 card_deleted` if it is in the Trash. Each changed field logs one event. |
-| `POST /api/cards/:id/complete` | `{includeChildren?: boolean = false}` | `{card, orders, completed}` | Mark done: moves the card (and, with `includeChildren` on a work card, every open ticket filed under it) to the top of Done. All or nothing: `409 blocked` with `stuck: [{id, ticketNo, title, blockers}]` if any of them is blocked by an open card outside the set. `completed` lists the ids moved. |
+| `POST /api/cards/:id/complete` | `{includeChildren?: boolean = false, resolution?: {reason, note?}}` | `{card, orders, completed}` | Mark done: moves the card (and, with `includeChildren` on a work card, every open ticket filed under it) to the top of Done, and records `resolution` on every card moved. All or nothing: `409 blocked` with `stuck: [{id, ticketNo, title, blockers}]` if any of them is blocked by an open card outside the set. `completed` lists the ids moved. |
 | `POST /api/cards/:id/move` | `MoveCardBody {toColumnId, afterCardId}` | `MoveCardResponse {card, orders}` | `afterCardId: null` puts the card at the top. To put it at the bottom, pass the id of the column's last visible card (if that is the card itself, nothing moves). Anchoring on a card id keeps the move correct while the board is filtered. `400 anchor_not_found` means the client is stale: refetch the board. Moving to another column logs `moved`. Entering the Done column sets `completedAt`; leaving it clears it. A card with open blockers (cards that block it and aren't done or in the Trash; `CardTile.blockedBy` counts them) can't enter Done: `409 blocked` with `blockers: [{id, title}]`. Reordering within a column logs nothing. `orders` holds the authoritative order for the affected column(s); apply it to the cache. |
 | `DELETE /api/cards/:id` | — | `204` | Soft delete (moves the card to Trash). Logs `deleted`. |
 | `POST /api/cards/:id/undelete` | — | `CardDetail` | Restores the card from Trash to the bottom of its column. |
@@ -117,6 +117,14 @@ cards. `GET /api/cards?kind=work` lists only work cards.
 `PATCH /api/cards/:id` also accepts `completedAt` (an ISO instant) to backdate when a card in Done was completed
 (`409 not_done` otherwise; it can't be in the future).
 
+**Resolutions (0.10).** A done card can say how it was resolved: `CardTile.resolution` (a reason such as "Fixed",
+or null) and `CardDetail.resolutionNote` (Markdown, `''` when none). Set them with Mark done
+(`POST /api/cards/:id/complete` with `resolution`) or later with `PATCH /api/cards/:id`
+`{resolution: {reason, note} | null}` (`409 not_done` unless the card is done). Leaving Done clears them. Each
+change logs `resolved` `{reason, note, from}`. The reasons offered are in `BoardResponse.resolutionReasons` and
+`SettingsResponse.resolutionReasons` (first = default); any reason up to 40 characters is accepted, so renaming one
+in Settings doesn't touch history. The note is included in search.
+
 ## Phase 3: search, calendar, recurring maintenance
 
 | Method & path | Body | Success | Notes |
@@ -151,8 +159,9 @@ occurrence.
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
 | `GET /api/ai/status` | — | `{enabled, model}` | `enabled` when `ANTHROPIC_API_KEY` is set. |
-| `POST /api/ai/draft` | `{text}` (1–8000 chars) | `TicketDraft` | Asks Claude for `{title, description, impact, urgency, priority, severity, priorityReason, severityReason, labelIds, checklist, dueDate}`. Nothing is saved. `priority` is always `PRIORITY_MATRIX[impact][urgency]`; only existing labels are returned. 20 drafts per 10 minutes (`429 ai_draft_limit`). Errors: `503 ai_disabled`, `502 ai_bad_key`, `503 ai_rate_limited`, `503 ai_unreachable`, `503 ai_unavailable`, `422 ai_refused`, `502 ai_failed`. |
-| `POST /api/tickets` | `CreateCardBody` + `{checklist?: string[], aiDrafted?: boolean}` | `201 CardDetail` | Creates the reviewed card (one checklist named "Checklist"). History records `via: "Add ticket"` or `"Add ticket (Claude draft)"`. |
+| `POST /api/ai/draft` | `{text}` (1–8000 chars) | `TicketDraft` | Asks Claude for `{title, description, impact, urgency, priority, severity, priorityReason, severityReason, labelIds, checklist, dueDate, kind, kindReason, parent, links}`. `parent` (an open work card) and `links` (`[{direction, card, reason}]`, open cards only, at most 5) are checked against the board; the prompt lists up to 50 open work cards and 100 recently updated open cards. Nothing is saved. `priority` is always `PRIORITY_MATRIX[impact][urgency]`; only existing labels are returned. 20 drafts per 10 minutes (`429 ai_draft_limit`). Errors: `503 ai_disabled`, `502 ai_bad_key`, `503 ai_rate_limited`, `503 ai_unreachable`, `503 ai_unavailable`, `422 ai_refused`, `502 ai_failed`. |
+| `POST /api/ai/draft-many` | `{text}` (1–8000 chars) | `BulkDraft {cards, preview}` | "Describe several issues": Claude splits the text into cards in the [card-import format](CARD-IMPORT.md) (`cards`) and `preview` is the import's dry run. Nothing is saved; create them with `POST /api/import/cards {data: {cards}, dryRun: false}`. Counts as one draft; `422 ai_empty` when Claude finds nothing. |
+| `POST /api/tickets` | `CreateCardBody` + `{checklist?: string[], links?: [{direction, cardId}], aiDrafted?: boolean}` | `201 CardDetail` | Creates the reviewed card (one checklist named "Checklist") and its links (all or nothing). History records `via: "Add ticket"` or `"Add ticket (Claude draft)"`. |
 
 ## Settings, submit page, automation (0.9)
 
@@ -162,6 +171,7 @@ occurrence.
 | `PUT /api/settings/general` | `GeneralSettingsBody {ticketFormat, appUrl, claudeModel}` | `SettingsResponse` | `ticketFormat` must end with `{N}` and can't contain `%` or `_`. |
 | `PUT /api/settings/submit` | `SubmitSettingsBody {enabled, columnId, pageTitle, intro}` | `SettingsResponse` | Turning the page on the first time creates its key. |
 | `POST /api/settings/submit/new-link` | — | `SettingsResponse` | A new key; the old link stops working. |
+| `PUT /api/settings/resolutions` | `ResolutionReasonsBody {reasons}` | `SettingsResponse` | 1–12 reasons, each 1–40 characters, no duplicates (ignoring case). The first is the default. |
 | `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime}` | `SettingsResponse` | `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. |
 | `POST /api/settings/discord/test` | — | `{ok, message, settings}` | Sends a test message. |
 | `GET /api/request-types` | — | `RequestType[]` | |

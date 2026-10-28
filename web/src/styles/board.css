@@ -281,7 +281,7 @@
 /* The copy that follows the pointer while dragging. */
 .tile.is-overlay {
   background: var(--tile-hover);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-drag);
   transform: rotate(2deg);
   cursor: grabbing;
 }
@@ -406,7 +406,7 @@
   padding: 10px 12px;
   border: 0;
   border-radius: var(--radius-col);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--veil);
   color: var(--text-strong);
   font-weight: 600;
   text-align: left;
@@ -415,12 +415,12 @@
 
 @media (hover: hover) {
   .add-column-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--veil-hover);
   }
 }
 
 .add-column-btn:active {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--veil-hover);
 }
 
 .add-column-form {

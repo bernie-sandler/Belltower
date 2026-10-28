@@ -4,7 +4,8 @@ import { loadConfig } from '../src/config';
 import { AppError } from '../src/errors';
 import { DRAFT_LIMIT } from '../src/http/routes/tickets';
 import { listActivity } from '../src/services/activity';
-import { mapAnthropicError, type DraftOutput, type TicketDrafter } from '../src/services/aiDraft';
+import { mapAnthropicError, type BulkOutput, type DraftOutput, type TicketDrafter } from '../src/services/aiDraft';
+import { createCard } from '../src/services/cards';
 import { client, columnId, labelId, makeApp, setupAndLogin, type TestApp } from './helpers';
 
 const OUTPUT: DraftOutput = {
@@ -18,16 +19,20 @@ const OUTPUT: DraftOutput = {
   labels: ['array/storage', 'Hardware', 'Made Up Label'],
   checklist: ['Check SMART on disk 3', '  ', 'Reseat the SATA cable'],
   dueDate: 'not a date',
+  kind: 'ticket',
+  kindReason: 'One problem.',
+  partOf: null,
+  links: [],
 };
 
 class FakeDrafter implements TicketDrafter {
   readonly model = 'claude-test';
   calls: { system: string; user: string }[] = [];
-  constructor(private result: DraftOutput | Error = OUTPUT) {}
-  async complete(system: string, user: string) {
+  constructor(private result: DraftOutput | BulkOutput | Error = OUTPUT) {}
+  async complete<T>(system: string, user: string): Promise<T> {
     this.calls.push({ system, user });
     if (this.result instanceof Error) throw this.result;
-    return this.result;
+    return this.result as T;
   }
 }
 
@@ -141,6 +146,109 @@ describe('Add ticket: drafting', () => {
     expect((await client(t.app)('POST', '/api/tickets', { title: 'x' })).statusCode).toBe(401);
     const noCsrf = await t.app.inject({ method: 'POST', url: '/api/tickets', payload: { title: 'x' } });
     expect(noCsrf.statusCode).toBe(403);
+  });
+});
+
+describe('Add ticket: type, work card and links', () => {
+  it('lists open cards for Claude and keeps only suggestions that point at them', async () => {
+    const fake = new FakeDrafter();
+    const c = await setup(fake);
+    const work = createCard(t.ctx, { title: 'Plex upgrade', kind: 'work' });
+    const nas = createCard(t.ctx, { title: 'NAS fan noise' });
+    const doneCard = createCard(t.ctx, { title: 'Old thing', columnId: columnId(t.ctx, 'Done') });
+    (fake as unknown as { result: DraftOutput }).result = {
+      ...OUTPUT,
+      kind: 'Ticket',
+      partOf: `${work.ticketNo} Plex upgrade`,
+      links: [
+        { type: 'blockedBy', card: nas.ticketNo!, reason: 'Needs the NAS first.' },
+        { type: 'relatedTo', card: doneCard.ticketNo!, reason: 'Done cards are not offered.' },
+        { type: 'relatedTo', card: '999999-9', reason: 'Made up.' },
+        { type: 'sort of', card: nas.ticketNo!, reason: 'Unknown type.' },
+      ],
+    };
+    const draft = (await c('POST', '/api/ai/draft', { text: 'Plex transcodes stutter' })).json();
+    expect(draft).toMatchObject({
+      kind: 'ticket',
+      parent: { id: work.id, ticketNo: work.ticketNo, title: 'Plex upgrade' },
+      links: [{ direction: 'blocked_by', card: { id: nas.id }, reason: 'Needs the NAS first.' }],
+    });
+    const { user } = fake.calls[0]!;
+    expect(user).toContain(`${work.ticketNo} [Triage, work card] Plex upgrade`);
+    expect(user).toContain(`${nas.ticketNo} [Triage] NAS fan noise`);
+    expect(user).not.toContain('Old thing');
+  });
+
+  it('suggests a work card without a parent', async () => {
+    const c = await setup(new FakeDrafter({ ...OUTPUT, kind: 'work', kindReason: 'Several steps.', partOf: 'anything' }));
+    expect((await c('POST', '/api/ai/draft', { text: 'migrate to ZFS' })).json()).toMatchObject({ kind: 'work', parent: null });
+  });
+
+  it('creates the ticket with its links, or not at all', async () => {
+    const c = await setup();
+    const nas = createCard(t.ctx, { title: 'NAS' });
+    const res = await c('POST', '/api/tickets', { title: 'Plex', links: [{ direction: 'blocked_by', cardId: nas.id }] });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().links).toHaveLength(1);
+    const before = (await c('GET', '/api/board')).json().cards.length;
+    const bad = await c('POST', '/api/tickets', { title: 'Self', links: [{ direction: 'relates', cardId: 99999 }] });
+    expect(bad.statusCode).toBe(404);
+    expect((await c('GET', '/api/board')).json().cards.length).toBe(before);
+  });
+});
+
+describe('Describe several issues', () => {
+  const card = (over: Partial<BulkOutput['cards'][number]>): BulkOutput['cards'][number] => ({
+    ref: 'a',
+    type: 'ticket',
+    title: 'Issue',
+    description: '### Symptoms',
+    impact: 'medium',
+    urgency: 'low',
+    severity: 'minor',
+    labels: [],
+    checklist: [],
+    dueDate: null,
+    partOf: null,
+    blocks: [],
+    blockedBy: [],
+    relatedTo: [],
+    ...over,
+  });
+
+  it('turns Claude’s cards into an import preview without saving anything', async () => {
+    const fake = new FakeDrafter();
+    const c2 = await setup(fake);
+    const nas2 = createCard(t.ctx, { title: 'NAS' });
+    (fake as unknown as { result: BulkOutput }).result = {
+      cards: [
+        card({ ref: 'w', type: 'work', title: 'Move to 10GbE' }),
+        card({ ref: 'a', title: 'Buy a 10GbE switch', partOf: 'w', labels: ['hardware', 'Invented'], checklist: ['Pick one', ' '] }),
+        card({ ref: 'b', title: 'Re-cable rack', partOf: 'w', blockedBy: ['a', nas2.ticketNo!], impact: 'high', urgency: 'high', severity: 'S2' }),
+      ],
+    };
+    const before = (await c2('GET', '/api/board')).json().cards.length;
+    const res = await c2('POST', '/api/ai/draft-many', { text: 'switch, cables, waiting on the NAS' });
+    expect(res.statusCode).toBe(200);
+    const { cards, preview } = res.json();
+    expect(cards[1]).toMatchObject({ type: 'ticket', partOf: 'w', labels: ['Hardware'], checklist: ['Pick one'], priority: 'low' });
+    expect(cards[2]).toMatchObject({ priority: 'critical', severity: 'major', blockedBy: ['a', nas2.ticketNo] });
+    expect(preview.items.map((i: { ok: boolean }) => i.ok)).toEqual([true, true, true]);
+    expect(preview.items[2].card.parent).toMatchObject({ batchIndex: 0 });
+    expect((await c2('GET', '/api/board')).json().cards.length).toBe(before);
+    expect(fake.calls[0]!.user).toContain(`${nas2.ticketNo} [Triage] NAS`);
+
+    // Creating them is a normal import of the returned cards.
+    const made = await c2('POST', '/api/import/cards', { data: { cards }, dryRun: false });
+    expect(made.statusCode).toBe(201);
+    expect(made.json().created).toHaveLength(3);
+  });
+
+  it('counts as one draft and says so when Claude finds nothing', async () => {
+    const c = await setup(new FakeDrafter({ cards: [] }));
+    const res = await c('POST', '/api/ai/draft-many', { text: 'all good' });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe('ai_empty');
   });
 });
 

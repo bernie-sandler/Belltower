@@ -1,21 +1,4 @@
-import {
-  Archive,
-  CalendarDays,
-  Columns3,
-  DatabaseBackup,
-  FilePlus2,
-  FileUp,
-  KanbanSquare,
-  LogOut,
-  Menu as MenuIcon,
-  Plus,
-  Repeat,
-  Search,
-  Settings,
-  Sparkles,
-  Tag,
-  Trash2,
-} from 'lucide-react';
+import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2 } from 'lucide-react';
 import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
@@ -100,6 +83,13 @@ export function TopBar() {
                     hint: 'Claude drafts the ticket for you to review',
                     icon: <Sparkles size={16} />,
                     onSelect: () => shell.openNewTicket('describe'),
+                  },
+                  {
+                    key: 'many',
+                    label: 'Describe several issues',
+                    hint: 'Paste notes or logs; Claude splits them into cards',
+                    icon: <ListPlus size={16} />,
+                    onSelect: () => shell.openNewTicket('many'),
                   },
                 ]
               : []),

@@ -16,6 +16,16 @@ export function useBoard() {
   });
 }
 
+/** The default resolution reason (first in Settings' list); tiles re-render only when it changes. */
+export function useDefaultResolution(): string | undefined {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.board,
+    queryFn: async ({ signal }) => withQueuedBoardOps(qc, await api.get<BoardResponse>('/api/board', signal)),
+    select: (b) => b.resolutionReasons?.[0],
+  }).data;
+}
+
 /** Updates the cached board if it is loaded. */
 export function setBoard(qc: QueryClient, fn: (b: BoardResponse) => BoardResponse): void {
   qc.setQueryData<BoardResponse>(qk.board, (b) => (b ? fn(b) : b));
@@ -78,6 +88,7 @@ export function toTile(card: CardTile | CardDetail): CardTile {
     parentId: card.parentId,
     childCount: card.childCount,
     childOpen: card.childOpen,
+    resolution: card.resolution,
     columnId: card.columnId,
     title: card.title,
     position: card.position,
@@ -263,6 +274,7 @@ export function tempTile(board: BoardResponse, v: CreateCardVars): CardTile {
     parentId: null,
     childCount: 0,
     childOpen: 0,
+    resolution: null,
     columnId: v.columnId,
     title: v.title,
     position: last ? last.position + 1 : 0,

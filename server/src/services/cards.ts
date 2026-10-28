@@ -18,7 +18,7 @@ import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
 import { reindexCard } from './search';
 import { localDateOf } from '../lib/localdate';
-import { getGeneralSettings } from './settings';
+import { getGeneralSettings, getResolutionReasons } from './settings';
 
 export interface CardRow {
   id: number;
@@ -40,6 +40,8 @@ export interface CardRow {
   ticket_no: string | null;
   kind: CardKind;
   parent_id: number | null;
+  resolution: string | null;
+  resolution_md: string;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +88,7 @@ function toTile(r: TileRow): CardTile {
     parentId: r.eff_parent_id,
     childCount: r.child_count,
     childOpen: r.child_open,
+    resolution: r.resolution,
     columnId: r.column_id,
     title: r.title,
     position: r.position,
@@ -118,7 +121,32 @@ function toDetail(ctx: Ctx, r: TileRow): CardDetail {
     links: listLinks(ctx, r.id),
     parent: r.parent_id !== null ? visibleSummary(ctx, r.parent_id) : null,
     children: r.kind === 'work' ? listChildren(ctx, r.id) : [],
+    resolutionNote: r.resolution_md,
   };
+}
+
+/** setResolution for other services (import): the card must already be done. */
+export function resolveCard(ctx: Ctx, id: number, res: { reason: string; note: string }): void {
+  const row = getCardRow(ctx, id);
+  if (row.completed_at) setResolution(ctx, row, res);
+}
+
+/**
+ * Records how a done card was resolved (null clears it). Logged as `resolved`; history keeps every
+ * version, so reopening a card and resolving it again never loses the earlier note.
+ */
+function setResolution(ctx: Ctx, card: CardRow, res: { reason: string; note: string } | null): void {
+  const reason = res?.reason.trim() ?? null;
+  const note = res?.note.trim() ?? '';
+  if (reason === card.resolution && note === card.resolution_md) return;
+  stmt(ctx.db, 'UPDATE cards SET resolution = ?, resolution_md = ?, version = version + 1, updated_at = ? WHERE id = ?').run(
+    reason,
+    note,
+    nowIso(ctx),
+    card.id,
+  );
+  recordEvent(ctx, card.id, 'resolved', { reason, note, from: card.resolution });
+  reindexCard(ctx, card.id);
 }
 
 function visibleSummary(ctx: Ctx, id: number) {
@@ -190,6 +218,7 @@ export function getBoard(ctx: Ctx): BoardResponse {
     labels: listLabels(ctx),
     cards: rows.map(toTile),
     blockedColumnId: getBlockedColumnId(ctx),
+    resolutionReasons: getResolutionReasons(ctx),
   };
 }
 
@@ -403,6 +432,7 @@ export interface UpdateCardInput {
   completedAt?: string;
   kind?: CardKind;
   parentId?: number | null;
+  resolution?: { reason: string; note: string } | null;
 }
 
 function assertEditable(card: CardRow): void {
@@ -521,6 +551,11 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       }
     }
 
+    if (patch.resolution !== undefined) {
+      if (!card.completed_at) throw conflict('not_done', 'Only a done card has a resolution');
+      setResolution(ctx, getCardRow(ctx, id), patch.resolution);
+    }
+
     if (patch.completedAt !== undefined && patch.completedAt !== card.completed_at) {
       if (!card.completed_at) {
         throw conflict('not_done', 'Only a completed card (in the Done column) has a completion date');
@@ -596,7 +631,13 @@ export function moveCard(
         if (!opts.skipBlockCheck) assertNotBlocked(ctx, card);
         completedAt = now;
       }
-      if (from.role === 'done' && target.role !== 'done') completedAt = null;
+      if (from.role === 'done' && target.role !== 'done') {
+        completedAt = null;
+        // Reopened: the old resolution no longer applies (it stays in the history).
+        if (card.resolution !== null || card.resolution_md !== '') {
+          stmt(ctx.db, "UPDATE cards SET resolution = NULL, resolution_md = '' WHERE id = ?").run(id);
+        }
+      }
       stmt(ctx.db, 'UPDATE cards SET column_id = ?, completed_at = ?, updated_at = ? WHERE id = ?').run(
         target.id,
         completedAt,
@@ -624,7 +665,7 @@ export function moveCard(
 export function completeCard(
   ctx: Ctx,
   id: number,
-  opts: { includeChildren: boolean },
+  opts: { includeChildren: boolean; resolution?: { reason: string; note: string } },
 ): { card: CardDetail; orders: Record<string, number[]>; completed: number[] } {
   return tx(ctx, () => {
     const card = getCardRow(ctx, id);
@@ -659,6 +700,9 @@ export function completeCard(
     const orders: Record<string, number[]> = {};
     for (const t of targets) {
       Object.assign(orders, moveCard(ctx, t.id, { toColumnId: done.id, afterCardId: null }, { skipBlockCheck: true }).orders);
+    }
+    if (opts.resolution) {
+      for (const t of targets) setResolution(ctx, getCardRow(ctx, t.id), opts.resolution);
     }
     return { card: getCard(ctx, id), orders, completed: targets.map((t) => t.id) };
   });

@@ -61,7 +61,7 @@
 .markdown code {
   padding: 1px 4px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--well);
   font-family: var(--mono);
   font-size: 0.92em;
 }
@@ -70,7 +70,7 @@
   padding: 8px 10px;
   overflow-x: auto;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--well);
 }
 
 .markdown pre code {
@@ -205,7 +205,7 @@
 }
 
 .field-status.is-done {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 /* Progress bars (checklists, uploads) */
@@ -400,7 +400,7 @@
 }
 
 .link-btn.danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .drop-overlay {
@@ -413,7 +413,7 @@
   gap: 10px;
   border: 2px dashed var(--accent);
   border-radius: var(--radius-md);
-  background: rgba(29, 33, 37, 0.88);
+  background: var(--drop-bg);
   color: var(--text-strong);
   font-size: 16px;
   font-weight: 600;
@@ -464,7 +464,7 @@
   padding: 10px 12px;
   overflow: auto;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--well-strong);
   color: var(--text-strong);
   font-family: var(--mono);
   font-size: 12px;
@@ -849,12 +849,12 @@ a.topnav-item {
 
 .sev-badge-major,
 .sev-text-major {
-  --sev: var(--prio-high);
+  --sev: var(--prio-high-text);
 }
 
 .sev-badge-minor,
 .sev-text-minor {
-  --sev: var(--prio-medium);
+  --sev: var(--prio-medium-text);
 }
 
 .sev-badge-trivial,
@@ -1030,7 +1030,7 @@ a.topnav-item {
   align-items: center;
   gap: 6px;
   margin: 0 0 6px;
-  color: var(--warning);
+  color: var(--warning-text);
   font-size: 13px;
 }
 

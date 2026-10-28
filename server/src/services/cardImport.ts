@@ -9,6 +9,8 @@
 //    "partOf": an existing work card's ticket number, or the "ref" (or title) of one in the batch
 //  - links: "blocks", "blockedBy" and "relatedTo" name other cards the same way (ticket number on
 //    the board, or "ref"/title in the batch); links are created once all the cards exist
+//  - cards going into Done can say how they were resolved: "resolution" (a reason, or
+//    { "reason", "note" }) and "resolutionNote"
 // A preview (dryRun) reports exactly what would be created, per card, before anything is saved.
 
 import {
@@ -22,10 +24,11 @@ import {
 import { stmt } from '../db/connection';
 import { badRequest } from '../errors';
 import { zonedToInstant } from '../lib/tz';
-import { createCard, FUTURE_SLACK_MS } from './cards';
+import { createCard, FUTURE_SLACK_MS, resolveCard } from './cards';
 import { getBlockedColumnId } from './columns';
 import { createLink } from './links';
 import { tx, type Ctx } from './context';
+import { getResolutionReasons } from './settings';
 import { addWorklog } from './worklog';
 
 export const CARD_IMPORT_FORMAT = 'tower-tracker/cards@1';
@@ -57,6 +60,8 @@ export interface ImportCard {
   dueTime: string | null;
   checklists: { title: string; items: string[] }[];
   worklog: { bodyMd: string; occurredAt: string | null }[];
+  /** Only for cards created in Done. */
+  resolution: { reason: string; note: string } | null;
 }
 
 export interface ImportItemResult {
@@ -259,8 +264,26 @@ function normalizeOne(
     worklog.push({ bodyMd: text.slice(0, LIMITS.worklog), occurredAt });
   }
 
+  let resolution: ImportCard['resolution'] = null;
+  const rawRes = pick(o, 'resolution');
+  const resObj = rawRes && typeof rawRes === 'object' && !Array.isArray(rawRes) ? (rawRes as Record<string, unknown>) : null;
+  const reason = resObj ? str(pick(resObj, 'reason')) : str(rawRes);
+  const resNote = (resObj ? str(pick(resObj, 'note')) : null) ?? str(pick(o, 'resolutionNote', 'resolution_note')) ?? '';
+  if (reason || resNote) {
+    const known = getResolutionReasons(ctx);
+    const r = reason ?? known[0]!;
+    if (r.length > 40) errors.push('"resolution" must be at most 40 characters');
+    else if (resNote.length > LIMITS.description) errors.push('"resolutionNote" is too long');
+    else if (column.role !== 'done') warnings.push(`"resolution" is only kept for cards in ${columns.find((c) => c.role === 'done')?.name ?? 'Done'}; ignored`);
+    else {
+      const match = known.find((k) => k.toLowerCase() === r.toLowerCase());
+      if (!match) warnings.push(`Resolution "${r}" isn't in your list of reasons; kept as written`);
+      resolution = { reason: match ?? r, note: resNote };
+    }
+  }
+
   const card: ImportCard | null = title
-    ? { kind, ref, parent: null, links: [], title, description, column, labels, priority, severity, dueDate, dueTime, checklists, worklog }
+    ? { kind, ref, parent: null, links: [], title, description, column, labels, priority, severity, dueDate, dueTime, checklists, worklog, resolution }
     : null;
   return { index, label, ok: errors.length === 0 && card !== null, card, errors, warnings, partOf, nestedUnder: null, linkRefs };
 }
@@ -473,6 +496,7 @@ export function createImported(
         { source: 'api', via: opts.via, ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}), external: opts.external ?? false },
       );
       for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) });
+      if (c.resolution) resolveCard(ctx, detail.id, c.resolution);
       createdIds.set(item.index, detail.id);
     }
     // Links once every card exists (a blocked card then moves to the blocked column, as usual).

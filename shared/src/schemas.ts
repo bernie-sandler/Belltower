@@ -116,6 +116,14 @@ export const UpdateCardBody = z.object({
   kind: z.enum(CARD_KINDS).optional(),
   /** File the ticket under a work card (null takes it out). */
   parentId: id.nullable().optional(),
+  /** Set or change how a done card was resolved (null clears it). */
+  resolution: z
+    .object({
+      reason: z.string().trim().min(1).max(40).refine(noNul, NUL_MESSAGE),
+      note: z.string().max(LIMITS.description).refine(noNul, NUL_MESSAGE).default(''),
+    })
+    .nullable()
+    .optional(),
 });
 export type UpdateCardBody = z.infer<typeof UpdateCardBody>;
 
@@ -159,8 +167,27 @@ export const CardListQuery = z.object({
 });
 export type CardListQuery = z.infer<typeof CardListQuery>;
 
-/** Mark done, optionally together with the open tickets filed under a work card. */
-export const CompleteCardBody = z.object({ includeChildren: z.boolean().default(false) });
+/** How a card was resolved: a reason from Settings' list and an optional Markdown note. */
+export const ResolutionBody = z.object({
+  reason: z.string().trim().min(1).max(40).refine(noNul, NUL_MESSAGE),
+  note: z.string().max(LIMITS.description).refine(noNul, NUL_MESSAGE).default(''),
+});
+export type ResolutionBody = z.infer<typeof ResolutionBody>;
+
+/** Mark done, optionally together with the open tickets filed under a work card, and how it was resolved. */
+export const CompleteCardBody = z.object({
+  includeChildren: z.boolean().default(false),
+  resolution: ResolutionBody.optional(),
+});
+
+export const ResolutionReasonsBody = z.object({
+  reasons: z
+    .array(z.string().trim().min(1).max(40).refine(noNul, NUL_MESSAGE))
+    .min(1)
+    .max(12)
+    .refine((r) => new Set(r.map((x) => x.toLowerCase())).size === r.length, 'Each reason only once'),
+});
+export type ResolutionReasonsBody = z.infer<typeof ResolutionReasonsBody>;
 export type CompleteCardBody = z.infer<typeof CompleteCardBody>;
 
 // ---- work log ----
@@ -260,9 +287,14 @@ export const DraftTicketBody = z.object({
 });
 export type DraftTicketBody = z.infer<typeof DraftTicketBody>;
 
-/** A card from the Add ticket form: CreateCardBody plus one checklist and where it came from. */
+/** A card from the Add ticket form: CreateCardBody plus one checklist, links and where it came from. */
 export const CreateTicketBody = CreateCardBody.extend({
   checklist: z.array(ItemText).max(50).optional(),
+  /** Links to existing cards, from this card's point of view (e.g. ones Claude suggested). */
+  links: z
+    .array(z.object({ direction: z.enum(['relates', 'blocks', 'blocked_by']), cardId: id }))
+    .max(20)
+    .optional(),
   /** True when the fields started as a Claude draft (recorded in the card's history). */
   aiDrafted: z.boolean().optional(),
 });

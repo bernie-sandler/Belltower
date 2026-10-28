@@ -56,6 +56,8 @@ Nothing is created until every card in the batch is valid.
 | `blockedBy` | no | Cards blocking this one. (`dependsOn`, `waitingOn` also work.) A blocked card goes to the blocked column (Blocked/Waiting) like one linked by hand. |
 | `relatedTo` | no | Related cards. (`related` also works.) |
 | `worklog` | no | `[{ "text", "at"? }]` or plain strings. `at` is `YYYY-MM-DD HH:MM` in your time zone, or an ISO timestamp, and can't be in the future. |
+| `resolution` | no | Cards created in Done only: how it was resolved, e.g. `"Fixed"`, or `{ "reason", "note" }`. Matched to your reasons ignoring case; other text is kept as written, with a warning. Ignored (with a warning) for cards in other columns. |
+| `resolutionNote` | no | Markdown note for `resolution`. Without a `resolution`, the default reason is used. |
 
 You can also paste:
 - a single card object `{ "title": ... }`, or

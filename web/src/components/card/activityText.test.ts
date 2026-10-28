@@ -39,6 +39,9 @@ describe('activityText', () => {
   });
 
   it('describes work-card changes', () => {
+    expect(activityText(entry('resolved', { reason: 'Fixed', note: 'New cable', from: null }))).toBe('Resolved: Fixed — ‘New cable’');
+    expect(activityText(entry('resolved', { reason: 'Duplicate', note: '', from: 'Fixed' }))).toBe('Resolution changed to Duplicate');
+    expect(activityText(entry('resolved', { reason: null, note: '', from: 'Fixed' }))).toBe('Resolution cleared');
     expect(activityText(entry('kind_changed', { from: 'ticket', to: 'work' }))).toBe('Made a work card');
     expect(activityText(entry('parent_changed', { from: null, to: { ticketNo: '261027-1', title: 'Plex' } }))).toMatch(/^Filed under work card/);
     expect(activityText(entry('parent_changed', { from: { title: 'Plex' }, to: null }))).toMatch(/^Taken out of work card/);

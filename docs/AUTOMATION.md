@@ -34,7 +34,7 @@ Two more fields:
 | Field | |
 |---|---|
 | `dedupeKey` | Any text that identifies *this* problem, e.g. `nas-offline` or `backup:nightly`. While a ticket opened with this key is still open, sending it again adds a "Seen again" note to that ticket instead of opening another. |
-| `event` | `"problem"` (default) or `"resolved"`. `"resolved"` with the same `dedupeKey` adds a "Recovered" note. If the token may complete tickets, it also marks the ticket done (unless an open card still blocks it). |
+| `event` | `"problem"` (default) or `"resolved"`. `"resolved"` with the same `dedupeKey` adds a "Recovered" note. If the token may complete tickets, it also marks the ticket done (unless an open card still blocks it), with the default resolution reason and a "Recovered (reported by …)" note. |
 
 ```bash
 curl -X POST https://tower.example.com/api/v1/cards \
