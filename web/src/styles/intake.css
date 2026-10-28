@@ -1,0 +1,208 @@
+/* 0.9: Settings page, request-type editor, API tokens, and the public submit page. */
+
+.settings-page {
+  max-width: 820px;
+}
+
+.settings-page .settings-block + .settings-block {
+  margin-top: 16px;
+}
+
+.settings-inline {
+  flex-wrap: wrap;
+}
+
+.settings-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-link-url {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 8px !important;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Request types */
+.request-types {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.request-type-list,
+.token-list,
+.question-list,
+.submit-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.request-type-list li,
+.token-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+}
+
+.request-type-list li.is-off .request-type-main,
+.token-list li.is-revoked {
+  opacity: 0.55;
+}
+
+.request-type-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.request-type-toggle {
+  min-height: 0;
+}
+
+.request-type-editor .field-row {
+  flex-wrap: wrap;
+}
+
+.request-type-editor .field-row > .field {
+  flex: 1 1 220px;
+}
+
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.question-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.question-row > .input:not(.select) {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.question-key {
+  white-space: nowrap;
+}
+
+/* Tokens */
+.token-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.token-fresh {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: rgba(245, 205, 71, 0.08);
+}
+
+.token-example {
+  margin: 0;
+  padding: 8px;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.token-new {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Public submit page: a wider card than sign-in. */
+.auth-card:has(.submit-form) {
+  max-width: 560px;
+}
+
+.submit-form {
+  gap: 14px;
+}
+
+.submit-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.submit-type {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--tile);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.submit-type.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--tile));
+  color: var(--text-strong);
+}
+
+.submit-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.submit-files li > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.submit-add-file {
+  align-self: flex-start;
+  cursor: pointer;
+}
+
+.submit-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}

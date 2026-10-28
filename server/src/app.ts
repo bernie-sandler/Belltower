@@ -13,8 +13,12 @@ import { registerBoardRoutes } from './http/routes/board';
 import { registerCardPartRoutes } from './http/routes/cardParts';
 import { registerPhase3Routes } from './http/routes/phase3';
 import { registerPhase4Routes } from './http/routes/phase4';
+import { registerSettingsRoutes } from './http/routes/settings';
+import { registerSubmitRoutes } from './http/routes/submit';
 import { registerTicketRoutes } from './http/routes/tickets';
+import { registerV1Routes } from './http/routes/v1';
 import type { TicketDrafter } from './services/aiDraft';
+import type { DiscordNotifier } from './services/notify';
 import type { Ctx } from './services/context';
 
 export interface AppDeps {
@@ -25,6 +29,8 @@ export interface AppDeps {
   limiter: LoginRateLimiter;
   /** Claude ticket drafting; null when ANTHROPIC_API_KEY isn't set. */
   ai: TicketDrafter | null;
+  /** Discord notifications (Settings → Send test uses it). Optional in tests. */
+  notifier?: DiscordNotifier;
 }
 
 // Explicit CSP rather than helmet defaults: those add upgrade-insecure-requests and HSTS, which
@@ -116,6 +122,9 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   registerPhase3Routes(app, deps);
   registerPhase4Routes(app, deps);
   registerTicketRoutes(app, deps);
+  registerSettingsRoutes(app, deps);
+  registerSubmitRoutes(app, deps);
+  registerV1Routes(app, deps);
 
   if (config.webDistDir) {
     await app.register(fastifyStatic, {

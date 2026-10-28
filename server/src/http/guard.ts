@@ -1,6 +1,7 @@
 import { CSRF_HEADER, CSRF_VALUE, SESSION_COOKIE } from '@tt/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { lookupSession, type SessionRow } from '../auth/sessions';
+import { authenticateToken } from '../services/tokens';
 import { AppError } from '../errors';
 import type { AppDeps } from '../app';
 
@@ -16,7 +17,13 @@ const PUBLIC_ROUTES = new Set([
   'POST /api/auth/login',
   'POST /api/auth/setup',
   'POST /api/auth/logout',
+  // The submit page: its secret key is checked by the route (wrong key → 404).
+  'GET /api/public/submit/:key',
+  'POST /api/public/submit/:key',
 ]);
+
+/** Automation API: bearer tokens only (no cookies, no CSRF header, which tools like Uptime Kuma can't send). */
+const isV1Route = (req: FastifyRequest) => req.routeOptions.url?.startsWith('/api/v1/') ?? false;
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -88,12 +95,21 @@ export function isApiRequest(req: FastifyRequest): boolean {
  * CSRF + authentication. Every state-changing request (there are none outside /api) must carry the
  * custom X-Requested-With header (a cross-site form or fetch can't add it without a CORS preflight we
  * never answer) and, when the browser sends Origin, the Origin host must match the Host we were
- * reached as. Every API route except the public auth endpoints then needs a valid session.
+ * reached as. Every API route except the public auth endpoints and the submit page then needs a valid
+ * session. /api/v1/* is different: an API token in the Authorization header, nothing else.
  */
 export function installGuard(app: FastifyInstance, deps: AppDeps): void {
   app.decorateRequest('session', null);
+  app.decorateRequest('apiToken', null);
 
   app.addHook('onRequest', async (req, reply) => {
+    if (isV1Route(req)) {
+      const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
+      req.apiToken = m ? authenticateToken(deps.ctx, m[1]!) : null;
+      if (!req.apiToken) throw new AppError(401, 'unauthenticated', 'Send a valid API token: Authorization: Bearer tt_…');
+      return;
+    }
+
     if (!SAFE_METHODS.has(req.method)) {
       if (req.headers[CSRF_HEADER] !== CSRF_VALUE) {
         throw new AppError(403, 'csrf', `Missing ${CSRF_HEADER} header`);

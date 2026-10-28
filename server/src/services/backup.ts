@@ -25,6 +25,7 @@ import { LATEST_SCHEMA_VERSION } from '../db/schema';
 import { AppError, badRequest } from '../errors';
 import type { Ctx } from './context';
 import { assignTicketNumbers } from './cards';
+import { seedRequestTypes } from './requestTypes';
 import { rebuildSearch } from './search';
 
 export const BACKUP_FORMAT = 'tower-tracker-backup';
@@ -45,6 +46,8 @@ export const BACKUP_TABLES = [
   'activity',
   'activity_revisions',
   'template_runs',
+  'request_types',
+  'api_tokens',
 ] as const;
 
 /** Settings that belong to this installation, not to the data. */
@@ -378,6 +381,7 @@ export function confirmRestore(
   }
   ctx.db = openDatabase(opts.dbPath);
   migrate(ctx.db);
+  seedRequestTypes(ctx); // a backup from before 0.9 has none
   staged.delete(token);
   pruneBackups(opts.backupsDir, /^pre-restore-.*\.db$/, 5, /-attachments$/);
   return { previousDb };

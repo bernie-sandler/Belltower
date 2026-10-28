@@ -14,7 +14,9 @@ import type { Ctx } from './services/context';
 import { createClaudeDrafter } from './services/aiDraft';
 import { backupBeforeMigrate, dailySnapshot } from './services/backup';
 import { assignTicketNumbers } from './services/cards';
+import { DiscordNotifier } from './services/notify';
 import { runDueTemplates } from './services/recurring';
+import { getGeneralSettings } from './services/settings';
 import { localDateOf } from './lib/localdate';
 import { rebuildSearch, searchIndexLooksConsistent } from './services/search';
 
@@ -61,6 +63,13 @@ async function main(): Promise<void> {
   if (applied.length) log.info(`Applied database migration(s): ${applied.join(', ')}`);
 
   const ctx: Ctx = { db, clock: systemClock, tz: config.timeZone };
+  // Discord: events are handled after the change commits (and never break the request).
+  const notifier = new DiscordNotifier();
+  ctx.emit = (event) => {
+    setImmediate(() => {
+      notifier.handle(ctx, event).catch((err) => log.warn(`Discord notification failed: ${(err as Error).message}`));
+    });
+  };
   if (seedDefaults(ctx)) log.info('Seeded default columns, labels and maintenance templates');
   const numbered = assignTicketNumbers(ctx);
   if (numbered) log.info(`Gave ticket numbers to ${numbered} existing card(s)`);
@@ -68,9 +77,11 @@ async function main(): Promise<void> {
 
   const auth: AuthState = await bootstrapAuth(ctx, config.appPassword, log);
   const limiter = new LoginRateLimiter(systemClock);
-  const ai = config.anthropicApiKey ? createClaudeDrafter(config.anthropicApiKey, config.aiModel) : null;
+  const ai = config.anthropicApiKey
+    ? createClaudeDrafter(config.anthropicApiKey, () => getGeneralSettings(ctx).claudeModel || config.aiModel)
+    : null;
   log.info(ai ? `Add ticket: Claude drafting on (${ai.model})` : 'Add ticket: Claude drafting off (no ANTHROPIC_API_KEY)');
-  const app = await buildApp({ ctx, config, auth, limiter, ai }, log);
+  const app = await buildApp({ ctx, config, auth, limiter, ai, notifier }, log);
 
   purgeExpiredSessions(ctx);
 
@@ -93,6 +104,11 @@ async function main(): Promise<void> {
   runTemplates();
   const scheduler = setInterval(runTemplates, 10 * 60 * 1000);
   scheduler.unref();
+  // Discord daily summary: checked every minute, sent once a day at or after the chosen time.
+  const digest = setInterval(() => {
+    notifier.dailyDigest(ctx, new Date()).catch((err) => log.warn(`Discord daily summary failed: ${(err as Error).message}`));
+  }, 60 * 1000);
+  digest.unref();
   const housekeeping = setInterval(() => {
     purgeExpiredSessions(ctx);
     limiter.prune();
@@ -106,6 +122,7 @@ async function main(): Promise<void> {
     log.info(`${signal} received; shutting down`);
     clearInterval(housekeeping);
     clearInterval(scheduler);
+    clearInterval(digest);
     try {
       await app.close();
     } catch (err) {

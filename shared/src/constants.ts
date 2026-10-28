@@ -81,6 +81,13 @@ export const LIMITS = {
   checklistItem: 1000,
   /** Add ticket: the problem description sent to Claude. */
   draftText: 8000,
+  /** Submit page. */
+  requestTypeName: 60,
+  requestFieldLabel: 120,
+  requestFields: 20,
+  requestChoices: 30,
+  submitAnswer: 4000,
+  submitFiles: 3,
   worklog: 50_000,
   /** Text attachments preview this much (head or tail) before "Load full". */
   textPreviewBytes: 256 * 1024,
@@ -123,3 +130,10 @@ export const ACTIVITY_EVENT_TYPES = [
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 export type ActivityType = ActivityEventType | 'worklog';
+
+/** Submit page: the kinds of question a request type can ask. */
+export const REQUEST_FIELD_KINDS = ['short', 'long', 'choice', 'multi', 'datetime', 'yesno'] as const;
+export type RequestFieldKind = (typeof REQUEST_FIELD_KINDS)[number];
+
+/** Ticket number format tokens; {N} (the per-day counter) must come last. */
+export const DEFAULT_TICKET_FORMAT = '{YY}{MM}{DD}-{N}';

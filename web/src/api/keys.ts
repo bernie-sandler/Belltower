@@ -15,4 +15,7 @@ export const qk = {
   calendar: (from: string, to: string) => ['calendar', from, to] as const,
   templates: ['templates'] as const,
   aiStatus: ['aiStatus'] as const,
+  settings: ['settings'] as const,
+  requestTypes: ['requestTypes'] as const,
+  tokens: ['tokens'] as const,
 };

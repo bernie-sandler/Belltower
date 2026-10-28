@@ -412,6 +412,15 @@ function resolveRelations(ctx: Ctx, items: Pending[], columns: ColumnInfo[]): vo
 
 /** Validates (and, unless dryRun, creates) the cards. All-or-nothing: nothing is created if any card has errors. */
 export function importCards(ctx: Ctx, input: unknown, dryRun: boolean): ImportResult {
+  const items = prepareImport(ctx, input);
+  const result: ImportResult = { format: CARD_IMPORT_FORMAT, items, created: [] };
+  if (dryRun || items.some((i) => !i.ok)) return result;
+  result.created = createImported(ctx, items, { via: 'card import' });
+  return result;
+}
+
+/** Parses and checks cards in the import format (nothing is saved). */
+export function prepareImport(ctx: Ctx, input: unknown): ImportItemResult[] {
   const data = typeof input === 'string' ? parseImportText(input) : input;
   let list: unknown[];
   if (Array.isArray(data)) list = data;
@@ -430,11 +439,16 @@ export function importCards(ctx: Ctx, input: unknown, dryRun: boolean): ImportRe
   const pending = flatten(ctx, list, columns);
   if (pending.length > 200) throw badRequest('validation', 'Import at most 200 cards at a time (including nested tickets)');
   resolveRelations(ctx, pending, columns);
-  const items: ImportItemResult[] = pending.map(({ partOf: _p, nestedUnder: _n, linkRefs: _l, ...item }) => item);
-  const result: ImportResult = { format: CARD_IMPORT_FORMAT, items, created: [] };
-  if (dryRun || items.some((i) => !i.ok)) return result;
+  return pending.map(({ partOf: _p, nestedUnder: _n, linkRefs: _l, ...item }) => item);
+}
 
-  tx(ctx, () => {
+/** Creates checked cards (every item must be ok). Returns their ids in the batch order. */
+export function createImported(
+  ctx: Ctx,
+  items: ImportItemResult[],
+  opts: { via: string; sourceRef?: string; external?: boolean },
+): number[] {
+  return tx(ctx, () => {
     // Work cards first, so tickets can be filed under them; `created` keeps the batch order.
     const createdIds = new Map<number, number>();
     const order = [...items.filter((i) => i.card!.kind === 'work'), ...items.filter((i) => i.card!.kind !== 'work')];
@@ -456,7 +470,7 @@ export function importCards(ctx: Ctx, input: unknown, dryRun: boolean): ImportRe
           kind: c.kind,
           parentId,
         },
-        { source: 'api', via: 'card import' },
+        { source: 'api', via: opts.via, ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}), external: opts.external ?? false },
       );
       for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) });
       createdIds.set(item.index, detail.id);
@@ -468,7 +482,6 @@ export function importCards(ctx: Ctx, input: unknown, dryRun: boolean): ImportRe
         createLink(ctx, from, 'batchIndex' in l.target ? createdIds.get(l.target.batchIndex)! : l.target.id, l.direction);
       }
     }
-    result.created = items.map((i) => createdIds.get(i.index)!);
+    return items.map((i) => createdIds.get(i.index)!);
   });
-  return result;
 }

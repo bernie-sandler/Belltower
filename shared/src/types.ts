@@ -1,4 +1,4 @@
-import type { ActivityType, CardKind, CardSource, ColumnRole, Level, Priority, Severity } from './constants';
+import type { ActivityType, CardKind, CardSource, ColumnRole, Level, Priority, RequestFieldKind, Severity } from './constants';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
 export type IsoTimestamp = string;
@@ -323,4 +323,69 @@ export interface TicketDraft {
   labelIds: number[];
   checklist: string[];
   dueDate: LocalDateString | null;
+}
+
+// ---- 0.9: settings, submit page, automation ----
+
+export interface RequestFieldDef {
+  key: string;
+  label: string;
+  help: string;
+  kind: RequestFieldKind;
+  required: boolean;
+  options: string[];
+}
+
+export interface RequestType {
+  id: number;
+  name: string;
+  description: string;
+  titlePattern: string;
+  fields: RequestFieldDef[];
+  tagLabelIds: number[];
+  typeLabelId: number | null;
+  position: number;
+  enabled: boolean;
+}
+
+/** What the public submit page gets: enabled types only, with tag names (not your whole label list). */
+export interface PublicSubmitConfig {
+  pageTitle: string;
+  intro: string;
+  types: (Omit<RequestType, 'tagLabelIds' | 'typeLabelId' | 'position' | 'enabled'> & {
+    tags: { id: number; name: string; color: string }[];
+  })[];
+  maxFiles: number;
+  maxUploadBytes: number;
+}
+
+export interface SubmitResult {
+  ticketNo: string | null;
+}
+
+export interface ApiTokenInfo {
+  id: number;
+  name: string;
+  /** First characters, to tell tokens apart ("tt_a1b2…"). */
+  prefix: string;
+  canComplete: boolean;
+  createdAt: IsoTimestamp;
+  lastUsedAt: IsoTimestamp | null;
+  revokedAt: IsoTimestamp | null;
+}
+
+export interface SettingsResponse {
+  general: { ticketFormat: string; appUrl: string; claudeModel: string; claudeModelFromEnv: string | null; claudeEnabled: boolean };
+  submit: { enabled: boolean; columnId: number | null; pageTitle: string; intro: string; key: string | null };
+  discord: {
+    webhookSet: boolean;
+    /** "…/webhooks/1234…/abcd…" with the secret part hidden. */
+    webhookHint: string | null;
+    events: { external: boolean; critical: boolean; digest: boolean; blocked: boolean };
+    digestTime: string;
+    alertPriority: 'critical' | 'high' | 'medium';
+    alertSeverity: 'blocker' | 'major' | 'minor';
+    lastDelivery: { at: IsoTimestamp; ok: boolean; message: string } | null;
+  };
+  blockedColumnId: number | null;
 }

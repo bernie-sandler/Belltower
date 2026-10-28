@@ -23,6 +23,7 @@ const BackupPage = lazy(() => import('../tools/BackupPage').then((m) => ({ defau
 const TemplatesPage = lazy(() => import('../templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })));
 const LabelsManager = lazy(() => import('../labels/LabelsManager').then((m) => ({ default: m.LabelsManager })));
 const NewTicketDialog = lazy(() => import('../tickets/NewTicketDialog').then((m) => ({ default: m.NewTicketDialog })));
+const SettingsPage = lazy(() => import('../settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
 
 /** Signed-in app: needs /api/config (time zone, version) before rendering any dates. */
@@ -115,6 +116,7 @@ function AppRoutes({ aiEnabled, onNewTicket }: { aiEnabled: boolean; onNewTicket
         {/* With Claude drafting on, Add ticket replaces the paste-JSON import. */}
         <Route path="/import" element={aiEnabled ? <Navigate to="/" replace /> : <Lazy><ImportCardsPage /></Lazy>} />
         <Route path="/backup" element={<Lazy><BackupPage /></Lazy>} />
+        <Route path="/settings" element={<Lazy><SettingsPage /></Lazy>} />
         <Route
           path="/trash"
           element={

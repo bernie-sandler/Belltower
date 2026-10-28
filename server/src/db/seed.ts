@@ -1,6 +1,7 @@
 import { getSetting, setSetting, stmt } from './connection';
 import { addDays, addMonths, dayOfWeek, localDateOf, parseLocalDate, formatLocalDate } from '../lib/localdate';
 import { nowIso, tx, type Ctx } from '../services/context';
+import { seedRequestTypes } from '../services/requestTypes';
 
 const COLUMNS: { name: string; role: 'triage' | 'done' | null }[] = [
   { name: 'Triage', role: 'triage' },
@@ -111,6 +112,8 @@ const TEMPLATES: SeedTemplate[] = [
  * than "table is empty" so deleting the defaults or restoring a backup never brings them back.
  */
 export function seedDefaults(ctx: Ctx): boolean {
+  // Its own flag: existing installs get the submit page's request types on upgrade too.
+  seedRequestTypes(ctx);
   if (getSetting(ctx.db, 'seeded')) return false;
   tx(ctx, () => {
     const now = nowIso(ctx);

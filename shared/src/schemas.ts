@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CARD_KINDS, LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, SEVERITIES } from './constants';
+import { CARD_KINDS, LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES } from './constants';
 
 const id = z.number().int().positive();
 
@@ -267,3 +267,123 @@ export const CreateTicketBody = CreateCardBody.extend({
   aiDrafted: z.boolean().optional(),
 });
 export type CreateTicketBody = z.infer<typeof CreateTicketBody>;
+
+// ---- 0.9: settings, submit page, automation ----
+
+/** A question on the submit page. `key` names it in the title pattern, e.g. "Plex – {title} – {summary}". */
+export const RequestField = z
+  .object({
+    key: z.string().regex(/^[a-z][a-z0-9_]{0,29}$/, 'Use lowercase letters, digits and _ (start with a letter)'),
+    label: z.string().trim().min(1).max(LIMITS.requestFieldLabel).refine(noNul, NUL_MESSAGE),
+    help: z.string().trim().max(200).default(''),
+    kind: z.enum(REQUEST_FIELD_KINDS),
+    required: z.boolean().default(false),
+    options: z.array(z.string().trim().min(1).max(80)).max(LIMITS.requestChoices).default([]),
+  })
+  .superRefine((f, c) => {
+    if ((f.kind === 'choice' || f.kind === 'multi') && f.options.length < 2) {
+      c.addIssue({ code: 'custom', path: ['options'], message: 'Give at least two choices' });
+    }
+    if (f.key === 'summary' || f.key === 'description') {
+      c.addIssue({ code: 'custom', path: ['key'], message: `"${f.key}" is built in` });
+    }
+  });
+export type RequestField = z.infer<typeof RequestField>;
+
+export const RequestTypeBody = z
+  .object({
+    name: z.string().trim().min(1).max(LIMITS.requestTypeName).refine(noNul, NUL_MESSAGE),
+    description: z.string().trim().max(300).default(''),
+    titlePattern: z.string().trim().min(1).max(200).default('{summary}'),
+    fields: z.array(RequestField).max(LIMITS.requestFields).default([]),
+    /** Labels submitters may pick as tags. */
+    tagLabelIds: z.array(id).max(30).default([]),
+    /** A label every ticket of this type gets (optional). */
+    typeLabelId: id.nullable().default(null),
+    enabled: z.boolean().default(true),
+  })
+  .superRefine((t, c) => {
+    const keys = t.fields.map((f) => f.key);
+    keys.forEach((k, i) => {
+      if (keys.indexOf(k) !== i) c.addIssue({ code: 'custom', path: ['fields', i, 'key'], message: `Duplicate key "${k}"` });
+    });
+    for (const m of t.titlePattern.matchAll(/\{([a-z0-9_]+)\}/g)) {
+      if (m[1] !== 'summary' && !keys.includes(m[1]!)) {
+        c.addIssue({ code: 'custom', path: ['titlePattern'], message: `{${m[1]}} isn't one of this type's question keys` });
+      }
+    }
+  });
+export type RequestTypeBody = z.infer<typeof RequestTypeBody>;
+export const UpdateRequestTypeBody = RequestTypeBody;
+
+export const GeneralSettingsBody = z.object({
+  /** Tokens {YY} {YYYY} {MM} {DD} and {N} (the per-day counter, last). */
+  ticketFormat: z
+    .string()
+    .trim()
+    .max(40)
+    .refine((s) => /\{N\}$/.test(s) && s.split('{N}').length === 2, 'Must end with {N}, once')
+    .refine((s) => !/[%_]/.test(s.replace(/\{(YYYY|YY|MM|DD|N)\}/g, '')), "Can't contain % or _")
+    .refine((s) => /^[A-Za-z0-9 \-./#{}]*$/.test(s), 'Use letters, digits, spaces and - . / #'),
+  /** The address this app is reached at, for links in notifications. */
+  appUrl: z
+    .string()
+    .trim()
+    .max(200)
+    .refine((s) => s === '' || /^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(s), 'Start with http:// or https://')
+    .transform((s) => s.replace(/\/+$/, '')),
+  /** Overrides ANTHROPIC_MODEL ('' = use that). */
+  claudeModel: z.string().trim().max(80).regex(/^[a-z0-9.\-]*$/, 'A model id like claude-opus-5-5'),
+});
+export type GeneralSettingsBody = z.infer<typeof GeneralSettingsBody>;
+
+export const SubmitSettingsBody = z.object({
+  enabled: z.boolean(),
+  /** Where submitted tickets land; null = Triage. */
+  columnId: id.nullable(),
+  pageTitle: z.string().trim().min(1).max(80),
+  intro: z.string().trim().max(1000),
+});
+export type SubmitSettingsBody = z.infer<typeof SubmitSettingsBody>;
+
+export const NOTIFY_EVENTS = ['external', 'critical', 'digest', 'blocked'] as const;
+export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
+
+/** Discord webhook URLs only (so the server can't be pointed at arbitrary addresses). */
+const DISCORD_WEBHOOK = /^https:\/\/(?:ptb\.|canary\.)?(?:discord\.com|discordapp\.com)\/api\/webhooks\/\d+\/[\w-]+$/;
+
+export const DiscordSettingsBody = z.object({
+  /** null = keep the saved one; '' = remove it. */
+  webhookUrl: z
+    .string()
+    .trim()
+    .refine((s) => s === '' || DISCORD_WEBHOOK.test(s), 'Paste a Discord webhook URL (https://discord.com/api/webhooks/…)')
+    .nullable(),
+  events: z.object({ external: z.boolean(), critical: z.boolean(), digest: z.boolean(), blocked: z.boolean() }),
+  digestTime: LocalTime,
+  /** "Urgent" means this priority or higher… */
+  alertPriority: z.enum(['critical', 'high', 'medium']).default('high'),
+  /** …or this severity or worse. */
+  alertSeverity: z.enum(['blocker', 'major', 'minor']).default('blocker'),
+});
+export type DiscordSettingsBody = z.infer<typeof DiscordSettingsBody>;
+
+export const ApiTokenBody = z.object({
+  name: z.string().trim().min(1).max(60).refine(noNul, NUL_MESSAGE),
+  /** Lets "event": "resolved" mark the matching ticket done. */
+  canComplete: z.boolean().default(false),
+});
+export type ApiTokenBody = z.infer<typeof ApiTokenBody>;
+
+/** What the submit page sends (the "data" part of the multipart form). */
+export const SubmitBody = z.object({
+  typeId: id,
+  summary: Title,
+  description: z.string().trim().min(1).max(LIMITS.submitAnswer * 2).refine(noNul, NUL_MESSAGE),
+  answers: z.record(z.string(), z.union([z.string().max(LIMITS.submitAnswer), z.array(z.string().max(200)).max(LIMITS.requestChoices), z.boolean()])).default({}),
+  tagLabelIds: z.array(id).max(30).default([]),
+  name: z.string().trim().max(60).refine(noNul, NUL_MESSAGE).default(''),
+  /** Honeypot: people never see it, bots fill it in. */
+  website: z.string().max(200).optional(),
+});
+export type SubmitBody = z.infer<typeof SubmitBody>;

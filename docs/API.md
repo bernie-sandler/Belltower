@@ -154,6 +154,25 @@ occurrence.
 | `POST /api/ai/draft` | `{text}` (1–8000 chars) | `TicketDraft` | Asks Claude for `{title, description, impact, urgency, priority, severity, priorityReason, severityReason, labelIds, checklist, dueDate}`. Nothing is saved. `priority` is always `PRIORITY_MATRIX[impact][urgency]`; only existing labels are returned. 20 drafts per 10 minutes (`429 ai_draft_limit`). Errors: `503 ai_disabled`, `502 ai_bad_key`, `503 ai_rate_limited`, `503 ai_unreachable`, `503 ai_unavailable`, `422 ai_refused`, `502 ai_failed`. |
 | `POST /api/tickets` | `CreateCardBody` + `{checklist?: string[], aiDrafted?: boolean}` | `201 CardDetail` | Creates the reviewed card (one checklist named "Checklist"). History records `via: "Add ticket"` or `"Add ticket (Claude draft)"`. |
 
+## Settings, submit page, automation (0.9)
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/settings` | — | `SettingsResponse` | General, submit page (including its `key`), Discord (the webhook is never returned, only `webhookSet` and a masked `webhookHint`), and `blockedColumnId`. |
+| `PUT /api/settings/general` | `GeneralSettingsBody {ticketFormat, appUrl, claudeModel}` | `SettingsResponse` | `ticketFormat` must end with `{N}` and can't contain `%` or `_`. |
+| `PUT /api/settings/submit` | `SubmitSettingsBody {enabled, columnId, pageTitle, intro}` | `SettingsResponse` | Turning the page on the first time creates its key. |
+| `POST /api/settings/submit/new-link` | — | `SettingsResponse` | A new key; the old link stops working. |
+| `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime}` | `SettingsResponse` | `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. |
+| `POST /api/settings/discord/test` | — | `{ok, message, settings}` | Sends a test message. |
+| `GET /api/request-types` | — | `RequestType[]` | |
+| `POST /api/request-types` · `PUT /api/request-types/:id` | `RequestTypeBody` | `201` / `RequestType` | Questions: `{key, label, help, kind: short\|long\|choice\|multi\|datetime\|yesno, required, options}`; the title pattern may use `{summary}` and question keys. |
+| `PUT /api/request-types/order` · `DELETE /api/request-types/:id` | `{ids}` / — | `RequestType[]` / `204` | |
+| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` | — / `{name, canComplete}` / — | `ApiTokenInfo[]` / `201 {token, info}` / `204` | The token is only in the create response. Delete revokes. |
+| `GET /api/public/submit/:key` | — | `PublicSubmitConfig` | **No session.** `404` when the page is off or the key is wrong. |
+| `POST /api/public/submit/:key` | multipart: `data` (JSON `SubmitBody`) + up to 3 `screenshots` | `201 {ticketNo}` | **No session**, but needs `X-Requested-With`. `429 rate_limited` (5 per 10 min per address, 30 per hour overall). |
+| `POST /api/v1/cards` | one card in the import format + `dedupeKey?`, `event?` | `201`/`200 {status, card}` | **API token only** (`Authorization: Bearer tt_…`). See [AUTOMATION.md](AUTOMATION.md). |
+| `POST /api/v1/hooks/uptime-kuma` | Uptime Kuma's webhook JSON | `{status, card}` | Query: `labels`, `priority`, `severity`, `column`. |
+
 ## Health
 
 `GET /health` returns `200 {"status":"ok"}`, or `503` if the DB or `/data` is unusable. No auth.

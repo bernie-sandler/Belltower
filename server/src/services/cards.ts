@@ -18,6 +18,7 @@ import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
 import { reindexCard } from './search';
 import { localDateOf } from '../lib/localdate';
+import { getGeneralSettings } from './settings';
 
 export interface CardRow {
   id: number;
@@ -257,19 +258,34 @@ export interface CreateCardOptions {
   templateTitle?: string;
   /** How a card from outside arrived, e.g. 'card import' (recorded on the 'created' event). */
   via?: string;
+  /** Filed by someone or something else (submit page, API token): may trigger a notification. */
+  external?: boolean;
 }
 
 /**
- * The next ticket number for a card created at `at`: "YYMMDD-N", where YYMMDD is the local date
- * (app time zone) and N counts up from 1 each day. Numbers are never reused, not even after a card
+ * The next ticket number for a card created at `at`, in the format set in Settings (default
+ * "YYMMDD-N": the local date in the app time zone, and N counting up from 1 each day). Numbers are never reused, not even after a card
  * is deleted from the Trash view (cards are never really deleted).
  */
 export function nextTicketNo(ctx: Ctx, at: Date): string {
-  const prefix = localDateOf(at, ctx.tz).slice(2).replace(/-/g, '');
-  const max = stmt(ctx.db, "SELECT max(CAST(substr(ticket_no, 8) AS INTEGER)) FROM cards WHERE ticket_no LIKE ? || '-%'")
+  const prefix = ticketPrefix(getGeneralSettings(ctx).ticketFormat, localDateOf(at, ctx.tz));
+  // The format can't contain % or _ (Settings refuses them), so the prefix is a literal LIKE pattern.
+  const numbers = stmt(ctx.db, "SELECT substr(ticket_no, ?) FROM cards WHERE ticket_no LIKE ? || '%'")
     .pluck()
-    .get(prefix) as number | null;
-  return `${prefix}-${(max ?? 0) + 1}`;
+    .all(prefix.length + 1, prefix) as string[];
+  const max = numbers.reduce((m, n) => (/^\d+$/.test(n) ? Math.max(m, Number(n)) : m), 0);
+  return `${prefix}${max + 1}`;
+}
+
+/** The ticket number up to the counter, e.g. "{YY}{MM}{DD}-{N}" on 2026-10-24 → "261024-". */
+export function ticketPrefix(format: string, localDate: string): string {
+  const [yyyy, mm, dd] = localDate.split('-') as [string, string, string];
+  return format
+    .replace(/\{N\}$/, '')
+    .replace(/\{YYYY\}/g, yyyy)
+    .replace(/\{YY\}/g, yyyy.slice(2))
+    .replace(/\{MM\}/g, mm)
+    .replace(/\{DD\}/g, dd);
 }
 
 /** Numbers cards that don't have a ticket number yet (from before 0.6, or an older backup), oldest first. */
@@ -366,6 +382,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       touchCard(ctx, parent.id);
     }
     reindexCard(ctx, id);
+    ctx.emit?.({ type: 'card_created', cardId: id, external: opts.external ?? false, ...(opts.via ? { via: opts.via } : {}) });
     return getCard(ctx, id);
   });
 }
@@ -524,6 +541,10 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
         id,
       );
       if (reindex) reindexCard(ctx, id);
+      const now = stmt(ctx.db, 'SELECT priority, severity FROM cards WHERE id = ?').get(id) as { priority: Priority | null; severity: Severity | null };
+      if (now.priority !== card.priority || now.severity !== card.severity) {
+        ctx.emit?.({ type: 'card_raised', cardId: id, from: { priority: card.priority, severity: card.severity }, to: now });
+      }
     }
     return getCard(ctx, id);
   });
