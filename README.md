@@ -365,7 +365,7 @@ npm run build && npm run e2e
 ```
 
 GitHub Actions runs all of these, plus a Docker build, on every push. Pushing a tag publishes an image:
-`beta-v0.8.0` → `:0.8.0` and `:beta`; `v1.0.0-rc.1` → `:rc`; `v1.0.0` → `:1.0.0`, `:1.0`, `:1` and `:latest`.
+`v0.10.0-beta` → `:0.10.0` and `:beta`; `v1.0.0-rc.1` → `:rc`; `v1.0.0` → `:1.0.0`, `:1.0`, `:1` and `:latest`.
 The tag has to match the version in `package.json`, and `CHANGELOG.md` needs a section for it (it becomes the
 release notes).
 
