@@ -2,12 +2,18 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { CardTile, Column as ColumnType, Label } from '@tt/shared';
 import { ChevronDown, ChevronRight, FolderOpen, Plus } from 'lucide-react';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { cls } from '../../lib/cls';
 import { AddCardComposer } from './AddCardComposer';
 import { ColumnHeader } from './ColumnHeader';
 import { cardDndId, columnDndId } from './dnd';
 import { SortableTile, TileView } from './Tile';
+
+/**
+ * Done keeps every card ever finished, so it only shows the most recent ones until asked. Hidden
+ * cards stay in cardIds (like a collapsed group), so drops still land in the right place.
+ */
+export const DONE_SHOWN = 50;
 
 interface Props {
   column: ColumnType;
@@ -76,7 +82,18 @@ export const Column = memo(function Column({
     }
     return out;
   }, [cardIds, tilesById, collapsed]);
-  const sortableIds = useMemo(() => rows.flatMap((r) => (r.kind === 'card' ? [cardDndId(r.id)] : [])), [rows]);
+  const [showAll, setShowAll] = useState(false);
+  const { shownRows, hidden } = useMemo(() => {
+    const cards = rows.filter((r) => r.kind === 'card').length;
+    if (column.role !== 'done' || showAll || cards <= DONE_SHOWN) return { shownRows: rows, hidden: 0 };
+    let n = 0;
+    const cut = rows.findIndex((r) => r.kind === 'card' && ++n > DONE_SHOWN);
+    // A group header with nothing shown under it goes too.
+    const shown = rows.slice(0, cut);
+    while (shown.length && shown[shown.length - 1]!.kind === 'header') shown.pop();
+    return { shownRows: shown, hidden: cards - DONE_SHOWN };
+  }, [rows, column.role, showAll]);
+  const sortableIds = useMemo(() => shownRows.flatMap((r) => (r.kind === 'card' ? [cardDndId(r.id)] : [])), [shownRows]);
   const count = cardIds.length + pendingTiles.length;
   const nameId = `column-name-${column.id}`;
 
@@ -99,7 +116,7 @@ export const Column = memo(function Column({
 
       <div className="column-cards">
         <SortableContext id={columnDndId(column.id)} items={sortableIds} strategy={verticalListSortingStrategy}>
-          {rows.map((row) => {
+          {shownRows.map((row) => {
             if (row.kind === 'header') {
               const parent = tilesById.get(row.parentId);
               const isCollapsed = collapsed.has(row.parentId);
@@ -151,6 +168,11 @@ export const Column = memo(function Column({
             );
           })}
         </SortableContext>
+        {hidden > 0 && (
+          <button type="button" className="btn btn-sm btn-subtle column-show-older" onClick={() => setShowAll(true)}>
+            Show {hidden} older card{hidden === 1 ? '' : 's'}
+          </button>
+        )}
         {pendingTiles.map((tile) => (
           <div key={tile.id} className="tile-slot" aria-busy="true">
             <TileView tile={tile} labelsById={labelsById} now={now} pending />

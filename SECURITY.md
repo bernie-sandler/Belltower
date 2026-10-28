@@ -8,7 +8,7 @@ it relies on you for, and how to report a problem.
 Open a private security advisory on GitHub (**Security → Report a vulnerability**) rather than a public issue.
 Please include the version (Settings, or the container log) and steps to reproduce.
 
-Only the newest release gets fixes.
+Fixes go into the newest 1.x release.
 
 ## What the app does
 
@@ -29,8 +29,8 @@ Only the newest release gets fixes.
   - Uploads and restores have size limits; ZIP restores accept only the expected files.
 - **History** can't be edited or deleted, not even through the database file: triggers block it.
 - **Outbound connections.** None unless you turn something on:
-  - With `ANTHROPIC_API_KEY`, only the text you type into "Describe the issue", your label names and today's date
-    are sent to Anthropic's API, from the server.
+  - With `ANTHROPIC_API_KEY`, only the text you type or paste into Add ticket, your label names, today's date and
+    the ticket numbers and titles of your open cards are sent to Anthropic's API, from the server.
   - With a Discord webhook, card titles, ticket numbers and priorities go to that Discord channel. Only Discord
     webhook addresses are accepted, so the server can't be pointed elsewhere.
 - **Submit page** (off by default).
@@ -58,3 +58,5 @@ Only the newest release gets fixes.
   pull images should only have the `read:packages` scope.
 - **Back up `/data`** (or use the export). The pre-upgrade copies and nightly snapshots live in the same folder,
   so they don't protect against losing the disk.
+- **Keep exports private.** They don't contain your password, but they do contain the submit page's link, the
+  Discord webhook address and API token hashes. See [docs/BACKUP-FORMAT.md](docs/BACKUP-FORMAT.md).

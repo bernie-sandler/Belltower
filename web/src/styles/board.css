@@ -527,3 +527,9 @@
     display: none;
   }
 }
+
+/* Done shows its most recent cards; the rest on request. */
+.column-show-older {
+  align-self: center;
+  margin: 4px 0;
+}
