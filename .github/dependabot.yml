@@ -10,6 +10,11 @@ updates:
       # Minor and patch updates in one PR per week; majors get their own.
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Node's type definitions follow the Node version the app runs on (24, the LTS release in the
+      # Docker image and CI). Move all three together on purpose, not through a weekly PR.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -18,3 +23,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Same: stay on the Node LTS release the app is tested on (see @types/node above).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
