@@ -3,16 +3,14 @@
 //  - Tickets: "Part of" the work card they're filed under, which can be changed or cleared
 //  - Work cards: the tickets filed under them, plus "Add ticket here" and "File a ticket"
 
-import type { CardDetail, CardKind, CardSummary } from '@tt/shared';
-import { CircleCheck, FilePlus2, FolderInput, FolderOpen, Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useCardList } from '../../api/cardParts';
+import type { CardDetail, CardKind } from '@tt/shared';
+import { CircleCheck, FilePlus2, FolderInput, FolderOpen, X } from 'lucide-react';
+import { useState } from 'react';
 import { useSetParent, useUpdateCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
 import { useOpenCard } from '../../lib/navigation';
 import { toast } from '../../lib/toast';
-import { Modal } from '../common/Modal';
-import { Spinner } from '../common/Status';
+import { CardPicker } from '../common/CardPicker';
 import { TicketTitle } from '../common/TicketTitle';
 import { useShell } from '../shell/ShellContext';
 
@@ -166,6 +164,8 @@ export function Family({ card, readOnly }: { card: CardDetail; readOnly: boolean
         <CardPicker
           title="Part of which work card?"
           kind="work"
+          status="board"
+          empty="No work cards found. Make one with the Type switch on any card."
           exclude={[card.id, ...(card.parent ? [card.parent.id] : [])]}
           onClose={() => setPicking(null)}
           onPick={(p) =>
@@ -183,6 +183,8 @@ export function Family({ card, readOnly }: { card: CardDetail; readOnly: boolean
         <CardPicker
           title="File a ticket here"
           kind="ticket"
+          status="board"
+          empty="No tickets found."
           exclude={[card.id, ...card.children.map((c) => c.id)]}
           onClose={() => setPicking(null)}
           onPick={(c) =>
@@ -197,65 +199,5 @@ export function Family({ card, readOnly }: { card: CardDetail; readOnly: boolean
         />
       )}
     </section>
-  );
-}
-
-/** Search for a card of one type (by title or ticket number) and pick it. */
-function CardPicker({
-  title,
-  kind,
-  exclude,
-  onPick,
-  onClose,
-}: {
-  title: string;
-  kind: CardKind;
-  exclude: number[];
-  onPick: (card: CardSummary) => void;
-  onClose: () => void;
-}) {
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
-  useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(q), 200);
-    return () => window.clearTimeout(t);
-  }, [q]);
-  const { data, isPending, error } = useCardList('board', debounced, true, kind);
-  const results = (data ?? []).filter((c) => !exclude.includes(c.id));
-
-  return (
-    <Modal title={title} variant="sheet" size="md" onClose={onClose}>
-      <div className="modal-body link-picker">
-        <label className="search-field">
-          <Search size={16} aria-hidden />
-          <input
-            className="input"
-            type="search"
-            placeholder="Search titles or ticket numbers"
-            aria-label="Search cards"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            autoFocus
-          />
-        </label>
-        {isPending && <Spinner label="Searching…" />}
-        {error && <p className="form-error">{errorMessage(error)}</p>}
-        <ul className="pick-list">
-          {results.map((c) => (
-            <li key={c.id}>
-              <button type="button" className="pick-item" onClick={() => onPick(c)}>
-                <span className="pick-title">
-                  <TicketTitle ticketNo={c.ticketNo}>{c.title}</TicketTitle>
-                </span>
-                <span className="muted small">{c.columnName}</span>
-              </button>
-            </li>
-          ))}
-          {data && results.length === 0 && (
-            <li className="muted pick-empty">{kind === 'work' ? 'No work cards found. Make one with the Type switch on any card.' : 'No tickets found.'}</li>
-          )}
-        </ul>
-      </div>
-    </Modal>
   );
 }

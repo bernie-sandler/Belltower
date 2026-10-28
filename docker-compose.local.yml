@@ -1,5 +1,6 @@
 # For trying Tower Tracker on a desktop with Docker Desktop (no /mnt/cache there):
-#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.local.yml up -d --build
+# (or leave out docker-compose.build.yml to pull the published image)
 # Data goes to a named Docker volume instead of the Unraid pool path.
 services:
   tower-tracker:

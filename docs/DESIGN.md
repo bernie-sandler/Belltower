@@ -253,6 +253,9 @@ event's `clipboardData.files`, which works over plain HTTP. Pasted screenshots a
      `/data/backups/pre-restore-<ts>.db` and the old `attachments/` folder alongside it; rename the new DB and
      files into place; reopen.
   6. Your current password hash and sessions carry over, so you stay logged in.
+- **Before a migration**: `backupBeforeMigrate` copies the DB (`db.backup()`) to
+  `/data/backups/pre-migrate-v<from>-to-v<to>-<ts>.db` (last 5 kept) before `migrate()` runs at startup; if the
+  copy fails, startup stops without touching the DB.
 - **Nightly snapshot**: `db.backup()` to `/data/backups/tower-YYYY-MM-DD.db`, keeping 7. A copy of `/data` taken
   while the container is running then still contains a consistent DB.
 - **README wording**: copying `/data` with the container stopped is a full backup (Unraid's Appdata Backup

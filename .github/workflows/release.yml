@@ -1,0 +1,91 @@
+# Publishes the Docker image to GHCR and a GitHub Release when a version tag is pushed:
+#   beta-v0.8.0   → :0.8.0, :beta                         (pre-release)
+#   v1.0.0-rc.1   → :1.0.0-rc.1, :rc                      (pre-release)
+#   v1.0.0        → :1.0.0, :1.0, :1, :latest             (release)
+# The tag must match the version in package.json.
+name: Release
+
+on:
+  push:
+    tags: ['v*', 'beta-v*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Work out the version and image tags
+        id: v
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            beta-v*)   VERSION="${TAG#beta-v}"; CHANNEL=beta ;;
+            v*-rc.*)   VERSION="${TAG#v}";      CHANNEL=rc ;;
+            v*)        VERSION="${TAG#v}";      CHANNEL=stable ;;
+            *) echo "Unexpected tag $TAG"; exit 1 ;;
+          esac
+          PKG=$(node -p "require('./package.json').version")
+          BASE="${VERSION%%-*}"
+          if [ "$PKG" != "$BASE" ]; then
+            echo "Tag $TAG is version $BASE but package.json says $PKG"; exit 1
+          fi
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          MAJOR="${BASE%%.*}"; MINOR="${BASE#*.}"; MINOR="${MINOR%%.*}"
+          TAGS="$IMAGE:$VERSION"
+          case "$CHANNEL" in
+            stable) TAGS="$TAGS,$IMAGE:$MAJOR.$MINOR,$IMAGE:$MAJOR,$IMAGE:latest" ;;
+            beta)   TAGS="$TAGS,$IMAGE:beta" ;;
+            rc)     TAGS="$TAGS,$IMAGE:rc" ;;
+          esac
+          {
+            echo "version=$VERSION"
+            echo "base=$BASE"
+            echo "channel=$CHANNEL"
+            echo "tags=$TAGS"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.v.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=Tower Tracker
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="${{ steps.v.outputs.base }}" '
+            $0 ~ "^## " v "([^0-9.]|$)" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then echo "No CHANGELOG.md section for ${{ steps.v.outputs.base }}"; exit 1; fi
+          cat release-notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Tower Tracker ${{ steps.v.outputs.version }}
+          body_path: release-notes.md
+          prerelease: ${{ steps.v.outputs.channel != 'stable' }}

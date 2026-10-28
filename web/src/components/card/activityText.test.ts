@@ -1,0 +1,52 @@
+import type { ActivityEntry } from '@tt/shared';
+import { describe, expect, it } from 'vitest';
+import { activityText } from './activityText';
+
+const entry = (type: ActivityEntry['type'], data: Record<string, unknown>): ActivityEntry => ({
+  id: 1,
+  cardId: 1,
+  kind: 'event',
+  type,
+  data,
+  bodyMd: null,
+  occurredAt: '2026-10-27T15:00:00.000Z',
+  createdAt: '2026-10-27T15:00:00.000Z',
+  editedAt: null,
+  retractedAt: null,
+  revisionCount: 0,
+});
+
+describe('activityText', () => {
+  it('describes creation, including work cards and filing', () => {
+    expect(activityText(entry('created', { column: { name: 'Triage' } }))).toBe('Created in Triage');
+    expect(activityText(entry('created', { column: { name: 'Backlog' }, kind: 'work' }))).toBe('Created as a work card in Backlog');
+    expect(activityText(entry('created', { column: { name: 'Triage' }, parent: { ticketNo: '261027-1', title: 'Plex' } }))).toMatch(
+      /filed under .*261027-1 — Plex/,
+    );
+  });
+
+  it('explains automatic and column-deletion moves', () => {
+    const blocked = activityText(
+      entry('moved', {
+        from: { name: 'Triage' },
+        to: { name: 'Blocked/Waiting' },
+        reason: 'blocked',
+        blockedBy: [{ id: 2, title: 'Order part' }],
+      }),
+    );
+    expect(blocked).toMatch(/^Moved from Triage → Blocked\/Waiting: blocked by .*Order part/);
+    expect(activityText(entry('moved', { from: { name: 'A' }, to: { name: 'B' }, reason: 'column_deleted' }))).toMatch(/column was deleted/);
+  });
+
+  it('describes work-card changes', () => {
+    expect(activityText(entry('kind_changed', { from: 'ticket', to: 'work' }))).toBe('Made a work card');
+    expect(activityText(entry('parent_changed', { from: null, to: { ticketNo: '261027-1', title: 'Plex' } }))).toMatch(/^Filed under work card/);
+    expect(activityText(entry('parent_changed', { from: { title: 'Plex' }, to: null }))).toMatch(/^Taken out of work card/);
+    expect(activityText(entry('child_added', { child: { title: 'Back up DB' } }))).toMatch(/^Ticket .*Back up DB.* filed here$/);
+  });
+
+  it('never throws on unknown or malformed data', () => {
+    expect(() => activityText(entry('moved', {}))).not.toThrow();
+    expect(() => activityText(entry('child_removed', { child: 'nope' }))).not.toThrow();
+  });
+});

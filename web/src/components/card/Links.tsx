@@ -2,15 +2,13 @@
 // Clicking a linked card opens it (over the same background page).
 
 import type { CardDetail, CardLink, LinkDirection } from '@tt/shared';
-import { Ban, CircleCheck, Link2, Search, X } from 'lucide-react';
+import { Ban, CircleCheck, Link2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useBoard } from '../../api/board';
-import { useCardList, useLinkActions } from '../../api/cardParts';
-import { errorMessage } from '../../api/errors';
+import { useLinkActions } from '../../api/cardParts';
 import { useOpenCard } from '../../lib/navigation';
 import { toast } from '../../lib/toast';
-import { Modal } from '../common/Modal';
-import { Spinner } from '../common/Status';
+import { CardPicker } from '../common/CardPicker';
 import { TicketTitle } from '../common/TicketTitle';
 
 const GROUPS: { direction: LinkDirection; title: string }[] = [
@@ -126,99 +124,57 @@ function LinkRow({
 
 function LinkPicker({ card, onClose }: { card: CardDetail; onClose: () => void }) {
   const [direction, setDirection] = useState<LinkDirection>('relates');
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
   const { link } = useLinkActions(card.id);
   const { data: board } = useBoard();
-  useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(q), 200);
-    return () => window.clearTimeout(t);
-  }, [q]);
-  const { data, isPending, error } = useCardList('live', debounced);
-
   const linked = new Set(card.links.filter((l) => l.direction === direction).map((l) => l.card.id));
-  const results = (data ?? []).filter((c) => c.id !== card.id);
 
   return (
-    <Modal title="Link a card" variant="sheet" size="md" onClose={onClose}>
-      <div className="modal-body link-picker">
-        <div className="segmented" role="radiogroup" aria-label="Link type">
-          {(
-            [
-              ['relates', 'Related to'],
-              ['blocks', 'Blocks'],
-              ['blocked_by', 'Blocked by'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={direction === value}
-              className="segmented-item"
-              onClick={() => setDirection(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="muted small">
-          {direction === 'blocks' && 'This card blocks the card you pick.'}
-          {direction === 'blocked_by' && 'This card is waiting on the card you pick.'}
-          {direction === 'relates' && 'The two cards are related.'}
-        </p>
-        <label className="search-field">
-          <Search size={16} aria-hidden />
-          <input
-            className="input"
-            type="search"
-            placeholder="Search titles or ticket numbers"
-            aria-label="Search cards"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            autoFocus
-          />
-        </label>
-        {isPending && <Spinner label="Searching…" />}
-        {error && <p className="form-error">{errorMessage(error)}</p>}
-        <ul className="pick-list">
-          {results.map((c) => {
-            const already = linked.has(c.id);
-            return (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  className="pick-item"
-                  disabled={already || link.isPending}
-                  onClick={() =>
-                    link.mutate(
-                      { otherCardId: c.id, direction },
-                      {
-                        onSuccess: (updated) => {
-                          onClose();
-                          if (updated.columnId !== card.columnId) {
-                            const name = board?.columns.find((col) => col.id === updated.columnId)?.name ?? 'another column';
-                            toast(`Blocked, so moved to ${name}`, { kind: 'info', durationMs: 3000 });
-                          }
-                        },
-                      },
-                    )
-                  }
-                >
-                  <span className="pick-title">
-                    <TicketTitle ticketNo={c.ticketNo}>{c.title}</TicketTitle>
-                  </span>
-                  <span className="muted small">
-                    {c.archivedAt ? 'Archived' : c.columnName}
-                    {already && ' · already linked'}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-          {data && results.length === 0 && <li className="muted pick-empty">No cards found.</li>}
-        </ul>
+    <CardPicker
+      title="Link a card"
+      exclude={[card.id]}
+      unavailable={(c) => (linked.has(c.id) ? 'already linked' : null)}
+      busy={link.isPending}
+      onClose={onClose}
+      onPick={(c) =>
+        link.mutate(
+          { otherCardId: c.id, direction },
+          {
+            onSuccess: (updated) => {
+              onClose();
+              if (updated.columnId !== card.columnId) {
+                const name = board?.columns.find((col) => col.id === updated.columnId)?.name ?? 'another column';
+                toast(`Blocked, so moved to ${name}`, { kind: 'info', durationMs: 3000 });
+              }
+            },
+          },
+        )
+      }
+    >
+      <div className="segmented" role="radiogroup" aria-label="Link type">
+        {(
+          [
+            ['relates', 'Related to'],
+            ['blocks', 'Blocks'],
+            ['blocked_by', 'Blocked by'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={direction === value}
+            className="segmented-item"
+            onClick={() => setDirection(value)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-    </Modal>
+      <p className="muted small">
+        {direction === 'blocks' && 'This card blocks the card you pick.'}
+        {direction === 'blocked_by' && 'This card is waiting on the card you pick.'}
+        {direction === 'relates' && 'The two cards are related.'}
+      </p>
+    </CardPicker>
   );
 }
