@@ -16,12 +16,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
-import { useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
+import { useDeleteCard, useCompleteCard,
+  useMoveCard, useRestoreCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
 import { cls } from '../../lib/cls';
 import { useShortcut } from '../../lib/keyboard';
 import { useOpenCard } from '../../lib/navigation';
 import { useNow } from '../../lib/time';
+import { useCollapsedGroups } from '../../lib/groups';
 import { toast } from '../../lib/toast';
 import { scrollBehavior, useIsMobile } from '../../lib/useMediaQuery';
 import { MoveToSheet } from '../card/MoveToSheet';
@@ -69,6 +71,7 @@ function BoardView({ board }: { board: BoardResponse }) {
   const openCard = useCallback((id: number) => navigateRef.current(id), []);
   const isMobile = useIsMobile();
   const moveCard = useMoveCard();
+  const completeCard = useCompleteCard();
   const deleteCard = useDeleteCard();
   const undelete = useRestoreCard('undelete');
   const archive = useArchiveCard();
@@ -78,6 +81,7 @@ function BoardView({ board }: { board: BoardResponse }) {
   const tilesById = useMemo(() => new Map(board.cards.map((c) => [c.id, c] as const)), [board.cards]);
   const labelsById = useMemo(() => new Map(board.labels.map((l) => [l.id, l] as const)), [board.labels]);
   const { filter, setFilter, active: filtering } = useBoardFilter();
+  const [collapsed, toggleGroup] = useCollapsedGroups();
   // What the board shows (and drags over): everything, or just the cards that pass the filter.
   const visibleBoard = useMemo(
     () =>
@@ -105,7 +109,30 @@ function BoardView({ board }: { board: BoardResponse }) {
       onSettled();
       return;
     }
-    moveCard.mutate(move, { onSettled });
+    const tile = board.cards.find((c) => c.id === move.cardId);
+    const target = board.columns.find((c) => c.id === move.toColumnId);
+    const offerTickets = tile?.kind === 'work' && tile.childOpen > 0 && target?.role === 'done' && tile.columnId !== target.id;
+    moveCard.mutate(move, {
+      onSettled,
+      onSuccess: () => {
+        if (!offerTickets) return;
+        const n = tile.childOpen;
+        toast(`“${tile.title}” is done. ${n} ticket${n === 1 ? '' : 's'} still open.`, {
+          kind: 'info',
+          action: {
+            label: `Complete ${n === 1 ? 'it' : `all ${n}`}`,
+            onClick: () =>
+              completeCard.mutate(
+                { id: tile.id, includeChildren: true },
+                {
+                  onSuccess: (res) => toast(`Completed ${res.completed.length} ticket${res.completed.length === 1 ? '' : 's'}`, { kind: 'success' }),
+                  onError: (err) => toast(errorMessage(err), { kind: 'warning' }),
+                },
+              ),
+          },
+        });
+      },
+    });
   });
 
   const [composerColumn, setComposerColumn] = useState<number | null>(null);
@@ -298,6 +325,8 @@ function BoardView({ board }: { board: BoardResponse }) {
               cardIds={dnd.items.get(col.id) ?? NO_IDS}
               pendingTiles={pendingByColumn.get(col.id) ?? NO_TILES}
               tilesById={tilesById}
+              collapsed={collapsed}
+              onToggleGroup={toggleGroup}
               labelsById={labelsById}
               now={now}
               composerOpen={composerColumn === col.id}

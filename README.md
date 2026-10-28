@@ -16,6 +16,10 @@ and needs no internet (unless you turn on the optional Claude ticket drafting).
   - Checklists, plus attachments: drag and drop, pasted screenshots, inline images, and a log viewer.
   - Links between cards ("related to", "blocks / blocked by"). A blocked card moves to Blocked/Waiting
     automatically and can't be marked done until every card blocking it is done.
+- **Work cards**:
+  - Mark a card as a **work card** (what you're working on) and file **tickets** under it, like a folder.
+  - In every column a work card's tickets stack together under it; groups collapse.
+  - **Mark done** on a work card can complete all its tickets at once (not while any of them is blocked).
 - **History**:
   - Every change is recorded automatically and can't be altered or deleted.
   - A **work log** for notes like "Swapped SATA power cable to drive 3", with backdating and edit history.

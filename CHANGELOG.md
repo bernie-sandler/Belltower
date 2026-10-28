@@ -3,6 +3,26 @@
 Versions follow [semver](https://semver.org). While the app is in alpha (0.x), each minor version is a feature
 release. The version is shown in **Settings**, in the container log on start, and in every backup export.
 
+## 0.7.0: Work cards
+
+- Two card types: **tickets** (an issue or finding) and **work cards** (what you're actually working on). Work
+  cards have a purple accent and a "Work 2/3" badge counting their finished tickets. Switch type in the card.
+- File tickets under a work card (**Part of** in the ticket, or **Add ticket here** / **File a ticket…** in the
+  work card). One level only; a work card can't be part of another card.
+- On the board, a work card's tickets stack together in every column, indented under the work card, or under a
+  "▾ 261027-1 Plex upgrade" header when the work card is in another column. Groups collapse; that's
+  remembered per browser.
+- **Mark done** on a work card with open tickets asks: **Complete with N tickets** or **Only this card**. All or
+  nothing: if any ticket is blocked by an open card outside the group, nothing moves and the stuck tickets are
+  listed. Dragging a work card into Done offers to complete its tickets from the toast.
+- A trashed or archived work card stops grouping its tickets until it's restored.
+- Board filter **Type** (Work cards / Tickets). Add ticket has Type and Part of fields.
+- Card import: `"type": "work"`, nested `"tickets": [...]`, and `"partOf"` (a ticket number, or a `"ref"`/title
+  in the same import). The preview shows the tree, and **Copy AI prompt** lists your open work cards.
+- Card import links: `"blocks"`, `"blockedBy"` and `"relatedTo"` by ticket number or by `"ref"`/title within the
+  import. Same rules as links made by hand (blocked cards move to Blocked/Waiting; no blocking a done card).
+- API: `kind`/`parentId` on cards, `POST /api/cards/:id/complete`, `GET /api/cards?kind=`. Database schema 4.
+
 ## 0.6.0: Ticket numbers
 
 - Every card gets a ticket number when it's created, shown with its title as **"261024-1 — Title"** on the board,

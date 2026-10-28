@@ -44,6 +44,10 @@ export const PRIORITY_MATRIX: Record<Level, Record<Level, Priority>> = {
 export const COLUMN_ROLES = ['triage', 'done'] as const;
 export type ColumnRole = (typeof COLUMN_ROLES)[number];
 
+/** A ticket records an issue; a work card is what you're actually working on, and tickets can be filed under it. */
+export const CARD_KINDS = ['ticket', 'work'] as const;
+export type CardKind = (typeof CARD_KINDS)[number];
+
 export const CARD_SOURCES = ['manual', 'recurring', 'api'] as const;
 export type CardSource = (typeof CARD_SOURCES)[number];
 
@@ -112,6 +116,10 @@ export const ACTIVITY_EVENT_TYPES = [
   'undeleted',
   'completion_changed',
   'recurrence_skipped',
+  'kind_changed',
+  'parent_changed',
+  'child_added',
+  'child_removed',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 export type ActivityType = ActivityEventType | 'worklog';

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import yazl from 'yazl';
 import { afterEach, describe, expect, it } from 'vitest';
+import { LATEST_SCHEMA_VERSION } from '../src/db/schema';
 import { client, makeApp, PASSWORD, sessionCookie, setupAndLogin, type TestApp } from './helpers';
 
 function multipart(filename: string, content: Buffer) {
@@ -64,7 +65,7 @@ describe('backup round trip', () => {
     const api = client(src.app, srcCookie);
 
     const json1 = (await api('GET', '/api/backup/export.json')).json();
-    expect(json1).toMatchObject({ format: 'tower-tracker-backup', schemaVersion: 3, appTz: 'America/Chicago' });
+    expect(json1).toMatchObject({ format: 'tower-tracker-backup', schemaVersion: LATEST_SCHEMA_VERSION, appTz: 'America/Chicago' });
     expect(json1.tables.sessions).toBeUndefined();
     expect(json1.tables.settings.some((s: { key: string }) => s.key === 'password_hash')).toBe(false);
     const zipRes = await api('GET', '/api/backup/export.zip');
@@ -112,11 +113,13 @@ describe('backup round trip', () => {
     await api('POST', '/api/cards', { title: 'Old card', priority: 'low' });
     const json = (await api('GET', '/api/backup/export.json')).json();
 
-    // Pretend it came from schema 1 (no severity column or ticket numbers yet).
+    // Pretend it came from schema 1 (no severity, ticket numbers or work cards yet).
     json.schemaVersion = 1;
     for (const c of json.tables.cards) {
       delete c.severity;
       delete c.ticket_no;
+      delete c.kind;
+      delete c.parent_id;
     }
 
     const dst = await makeApp();

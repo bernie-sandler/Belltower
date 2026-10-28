@@ -151,7 +151,13 @@ export function useUpdateCard(id: number) {
       qc.setQueryData<CardDetail>(qk.card(id), (c) => (c ? { ...c, ...fields } : c));
       setBoard(qc, (b) => ({ ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, ...fields } : c)) }));
     },
-    onSuccess: (card) => {
+    onSuccess: (card, patch) => {
+      if (patch.parentId !== undefined || patch.kind !== undefined) {
+        // Filing under (or out of) a work card changes that card's ticket list and the board groups.
+        void qc.invalidateQueries({ queryKey: qk.cards });
+        void qc.invalidateQueries({ queryKey: qk.activities });
+        void qc.invalidateQueries({ queryKey: qk.board });
+      }
       // If more edits to this card are queued, keep their optimistic values and only take the
       // new version (the next request needs it); the last response wins in full.
       const pending = qc.isMutating({ mutationKey });
@@ -306,6 +312,61 @@ export function useMoveCard() {
     onSettled: (_d, _e, v) => {
       invalidateActivity(qc, v.cardId);
       flushBoardRefetch(qc, v);
+    },
+  });
+}
+
+// ---- work cards ----
+
+export interface StuckCard {
+  id: number;
+  ticketNo: string | null;
+  title: string;
+  blockers: { id: number; title: string }[];
+}
+
+/** Cards a 409 `blocked` from /complete says couldn't be completed (and why). */
+export function stuckCards(err: unknown): StuckCard[] | null {
+  if (!isApiError(err, 'blocked')) return null;
+  const stuck = (err.body as { stuck?: StuckCard[] } | null)?.stuck;
+  return Array.isArray(stuck) ? stuck : null;
+}
+
+/** Mark done, optionally with every open ticket filed under the work card. */
+export function useCompleteCard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: number; includeChildren: boolean }) =>
+      api.post<{ card: CardDetail; orders: Record<string, number[]>; completed: number[] }>(`/api/cards/${v.id}/complete`, {
+        includeChildren: v.includeChildren,
+      }),
+    meta: { errorToast: false },
+    onSuccess: (res) => {
+      applyCardDetail(qc, res.card);
+      for (const id of res.completed) invalidateActivity(qc, id);
+      void qc.invalidateQueries({ queryKey: qk.board });
+      void qc.invalidateQueries({ queryKey: qk.cards });
+    },
+  });
+}
+
+/**
+ * Files a card under a work card (or takes it out with null). Used from the other card's view, so
+ * it reads that card's current version first instead of relying on a cached copy.
+ */
+export function useSetParent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { cardId: number; parentId: number | null }) => {
+      const current = await api.get<CardDetail>(`/api/cards/${v.cardId}`);
+      return api.patch<CardDetail>(`/api/cards/${v.cardId}`, { expectedVersion: current.version, parentId: v.parentId });
+    },
+    onSuccess: (card, v) => {
+      applyCardDetail(qc, card);
+      invalidateActivity(qc, card.id);
+      if (v.parentId !== null) invalidateActivity(qc, v.parentId);
+      void qc.invalidateQueries({ queryKey: qk.board });
+      void qc.invalidateQueries({ queryKey: qk.cards });
     },
   });
 }

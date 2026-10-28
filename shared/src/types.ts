@@ -1,4 +1,4 @@
-import type { ActivityType, CardSource, ColumnRole, Level, Priority, Severity } from './constants';
+import type { ActivityType, CardKind, CardSource, ColumnRole, Level, Priority, Severity } from './constants';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
 export type IsoTimestamp = string;
@@ -57,6 +57,12 @@ export interface CardTile {
   id: number;
   /** "YYMMDD-N": local creation date plus a per-day counter, e.g. 261024-1. Shown as "261024-1 — Title". */
   ticketNo: string | null;
+  kind: CardKind;
+  /** The work card this ticket is part of; null when it has none, or that card is archived or in Trash. */
+  parentId: number | null;
+  /** Work cards: tickets filed under it (not in Trash), and how many of those are still open. */
+  childCount: number;
+  childOpen: number;
   columnId: number;
   title: string;
   position: number;
@@ -86,6 +92,10 @@ export interface CardDetail extends CardTile {
   attachments: Attachment[];
   /** Links to cards that aren't in the Trash, from this card's point of view. */
   links: CardLink[];
+  /** Tickets: the work card it's part of (shown even when archived; null when none or in Trash). */
+  parent: CardSummary | null;
+  /** Work cards: the tickets filed under it (not in Trash), open ones first. */
+  children: CardSummary[];
 }
 
 export interface ChecklistItem {
@@ -136,6 +146,7 @@ export interface CardLink {
 export interface CardSummary {
   id: number;
   ticketNo: string | null;
+  kind: CardKind;
   title: string;
   columnId: number;
   columnName: string;
@@ -228,6 +239,7 @@ export interface SearchMatch {
 export interface SearchResult {
   id: number;
   ticketNo: string | null;
+  kind: CardKind;
   title: string;
   columnId: number;
   columnName: string;

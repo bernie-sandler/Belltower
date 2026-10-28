@@ -9,7 +9,7 @@ import {
   type Severity,
 } from '@tt/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CircleCheck, ClipboardCopy, FileUp, Sparkles, Upload, XCircle } from 'lucide-react';
+import { AlertTriangle, CircleCheck, ClipboardCopy, FileUp, FolderOpen, Sparkles, Upload, XCircle } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { sortedColumns, useBoard } from '../../api/board';
 import { api, isApiError } from '../../api/client';
@@ -23,12 +23,22 @@ import { formatDue, todayLocal } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { AutoGrowTextarea } from '../common/AutoGrowTextarea';
 
+/** Another card in this import (by position) or one already on the board. */
+type ImportRef = { batchIndex: number; title: string } | { id: number; ticketNo: string | null; title: string };
+
+const LINK_WORDS = { blocks: 'blocks', blocked_by: 'blocked by', relates: 'related to' } as const;
+
 interface ImportItem {
   index: number;
+  /** "2" for a top-level card, "2.1" for a ticket nested under it. */
+  label: string;
   ok: boolean;
   errors: string[];
   warnings: string[];
   card: {
+    kind: 'ticket' | 'work';
+    parent: ImportRef | null;
+    links: { direction: 'blocks' | 'blocked_by' | 'relates'; target: ImportRef }[];
     title: string;
     description: string;
     column: { id: number; name: string };
@@ -48,6 +58,12 @@ interface ImportResult {
 }
 
 const DRAFT = 'import:cards';
+
+/** "card 1.2 “Title”" for a card in this import, "261027-1 “Title”" for one on the board. */
+function refText(ref: ImportRef, items: { label: string }[]): string {
+  const where = 'batchIndex' in ref ? `card ${items[ref.batchIndex]?.label ?? ''}` : (ref.ticketNo ?? '');
+  return `${where} “${ref.title}”`;
+}
 
 /** Copy that also works over plain HTTP (no secure context, so no navigator.clipboard). */
 function copyText(text: string): boolean {
@@ -80,7 +96,15 @@ export function ImportCardsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const prompt = useMemo(
-    () => (board ? buildAiPrompt(sortedColumns(board.columns), board.labels, todayLocal()) : ''),
+    () =>
+      board
+        ? buildAiPrompt(
+            sortedColumns(board.columns),
+            board.labels,
+            todayLocal(),
+            board.cards.filter((c) => c.kind === 'work' && c.id > 0 && !c.completedAt),
+          )
+        : '',
     [board],
   );
 
@@ -234,10 +258,16 @@ export function ImportCardsPage() {
           </h3>
           <ol className="import-cards">
             {items.map((it) => (
-              <li key={it.index} className={cls('import-card', !it.ok && 'has-errors')}>
+              <li key={it.index} className={cls('import-card', !it.ok && 'has-errors', it.label.includes('.') && 'is-nested')}>
                 {it.card ? (
                   <>
                     <div className="import-card-head">
+                      <span className="muted small import-card-label">{it.label}</span>
+                      {it.card.kind === 'work' && (
+                        <span className="badge work-badge">
+                          <FolderOpen size={12} aria-hidden /> Work
+                        </span>
+                      )}
                       {it.card.priority && (
                         <span className={cls('badge level-badge', `prio-badge-${it.card.priority}`)}>{PRIORITY_CODES[it.card.priority]}</span>
                       )}
@@ -248,6 +278,8 @@ export function ImportCardsPage() {
                     </div>
                     <span className="muted small">
                       → {it.card.column.name}
+                      {it.card.parent && ` · part of ${refText(it.card.parent, items)}`}
+                      {it.card.links.map((l) => ` · ${LINK_WORDS[l.direction]} ${refText(l.target, items)}`).join('')}
                       {it.card.labels.length > 0 && ` · ${it.card.labels.map((l) => l.name + (l.existing ? '' : ' (new)')).join(', ')}`}
                       {it.card.dueDate && ` · due ${formatDue(it.card.dueDate, it.card.dueTime)}`}
                       {it.card.checklists.length > 0 && ` · ${it.card.checklists.reduce((n, c) => n + c.items.length, 0)} checklist items`}
@@ -256,7 +288,7 @@ export function ImportCardsPage() {
                     {it.card.description && <p className="import-card-desc">{it.card.description.slice(0, 280)}{it.card.description.length > 280 && '…'}</p>}
                   </>
                 ) : (
-                  <strong>Card {it.index + 1}</strong>
+                  <strong>Card {it.label}</strong>
                 )}
                 {it.errors.map((e) => (
                   <p key={e} className="form-error small">

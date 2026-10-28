@@ -29,6 +29,8 @@ export interface BoardFilter {
   priorities: string[];
   severities: string[];
   due: DueFilter[];
+  /** 'work' and/or 'ticket'; empty = both. */
+  kinds: string[];
 }
 
 const DUE_LABELS: Record<DueFilter, string> = {
@@ -49,6 +51,7 @@ export function useBoardFilter() {
       priorities: list(params.get('prio')),
       severities: list(params.get('sev')),
       due: list(params.get('due')) as DueFilter[],
+      kinds: list(params.get('type')),
     }),
     [params],
   );
@@ -60,15 +63,18 @@ export function useBoardFilter() {
     put('prio', next.priorities.join(','));
     put('sev', next.severities.join(','));
     put('due', next.due.join(','));
+    put('type', next.kinds.join(','));
     setParams(p, { replace: true });
   };
   const active =
-    filter.text.trim() !== '' || filter.labels.length + filter.priorities.length + filter.severities.length + filter.due.length > 0;
+    filter.text.trim() !== '' ||
+    filter.labels.length + filter.priorities.length + filter.severities.length + filter.due.length + filter.kinds.length > 0;
   return { filter, setFilter, active };
 }
 
 /** Whether a tile passes the filter. Within a group any choice matches; groups combine with AND. */
 export function matchesFilter(tile: CardTile, f: BoardFilter, labelsById: Map<number, Label>, now: number): boolean {
+  if (f.kinds.length && !f.kinds.includes(tile.kind)) return false;
   if (f.labels.length && !tile.labelIds.some((id) => f.labels.includes(id))) return false;
   if (f.priorities.length && !f.priorities.includes(tile.priority ?? 'none')) return false;
   if (f.severities.length && !f.severities.includes(tile.severity ?? 'none')) return false;
@@ -81,7 +87,7 @@ export function matchesFilter(tile: CardTile, f: BoardFilter, labelsById: Map<nu
   }
   const text = f.text.trim().toLowerCase();
   if (text) {
-    const hay = [tile.title, ...tile.labelIds.map((id) => labelsById.get(id)?.name ?? '')].join(' ').toLowerCase();
+    const hay = [tile.ticketNo ?? '', tile.title, ...tile.labelIds.map((id) => labelsById.get(id)?.name ?? '')].join(' ').toLowerCase();
     if (!text.split(/\s+/).every((w) => hay.includes(w))) return false;
   }
   return true;
@@ -103,9 +109,9 @@ export function FilterBar({
   total: number;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const count = filter.labels.length + filter.priorities.length + filter.severities.length + filter.due.length;
+  const count = filter.labels.length + filter.priorities.length + filter.severities.length + filter.due.length + filter.kinds.length;
 
-  function toggle<K extends 'labels' | 'priorities' | 'severities' | 'due'>(key: K, value: BoardFilter[K][number]) {
+  function toggle<K extends 'labels' | 'priorities' | 'severities' | 'due' | 'kinds'>(key: K, value: BoardFilter[K][number]) {
     const cur = filter[key] as (typeof value)[];
     const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
     setFilter({ ...filter, [key]: next });
@@ -141,7 +147,7 @@ export function FilterBar({
           <button
             type="button"
             className="btn btn-subtle"
-            onClick={() => setFilter({ text: '', labels: [], priorities: [], severities: [], due: [] })}
+            onClick={() => setFilter({ text: '', labels: [], priorities: [], severities: [], due: [], kinds: [] })}
           >
             <X size={14} aria-hidden /> Clear
           </button>
@@ -150,6 +156,14 @@ export function FilterBar({
 
       {anchor && (
         <Popover anchor={anchor} onClose={() => setAnchor(null)} role="dialog" ariaLabel="Filters" className="filter-popover">
+          <FilterGroup title="Type">
+            <Toggle on={filter.kinds.includes('work')} onClick={() => toggle('kinds', 'work')}>
+              Work cards
+            </Toggle>
+            <Toggle on={filter.kinds.includes('ticket')} onClick={() => toggle('kinds', 'ticket')}>
+              Tickets
+            </Toggle>
+          </FilterGroup>
           <FilterGroup title="Labels">
             {labels.map((l) => (
               <Toggle key={l.id} on={filter.labels.includes(l.id)} onClick={() => toggle('labels', l.id)}>

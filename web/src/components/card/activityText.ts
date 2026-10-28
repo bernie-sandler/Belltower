@@ -57,7 +57,12 @@ export function activityText(entry: ActivityEntry): string {
     case 'created': {
       const column = nameOf(d.column);
       const template = str(d.templateTitle);
-      return template ? `Created in ${column} from template ${quoted(template)}` : `Created in ${column}`;
+      const what = d.kind === 'work' ? 'Created as a work card' : 'Created';
+      const parent = d.parent as { ticketNo?: unknown; title?: unknown } | undefined;
+      const under = parent
+        ? `, filed under ${quoted(`${typeof parent.ticketNo === 'string' ? `${parent.ticketNo} — ` : ''}${str(parent.title) ?? ''}`)}`
+        : '';
+      return template ? `${what} in ${column} from template ${quoted(template)}${under}` : `${what} in ${column}${under}`;
     }
     case 'moved': {
       const base = `Moved from ${nameOf(d.from)} → ${nameOf(d.to)}`;
@@ -67,6 +72,23 @@ export function activityText(entry: ActivityEntry): string {
         return by.length ? `${base}: blocked by ${by.join(', ')}` : `${base}: blocked`;
       }
       return base;
+    }
+    case 'kind_changed':
+      return d.to === 'work' ? 'Made a work card' : 'Made a ticket';
+    case 'parent_changed': {
+      const ref = (v: unknown) => {
+        const r = v as { ticketNo?: unknown; title?: unknown } | null;
+        return r ? quoted(`${typeof r.ticketNo === 'string' ? `${r.ticketNo} — ` : ''}${str(r.title) ?? ''}`) : null;
+      };
+      const from = ref(d.from);
+      const to = ref(d.to);
+      return to ? (from ? `Moved from work card ${from} to ${to}` : `Filed under work card ${to}`) : `Taken out of work card ${from ?? ''}`;
+    }
+    case 'child_added':
+    case 'child_removed': {
+      const c = d.child as { ticketNo?: unknown; title?: unknown } | undefined;
+      const name = quoted(`${typeof c?.ticketNo === 'string' ? `${c.ticketNo} — ` : ''}${str(c?.title) ?? ''}`);
+      return entry.type === 'child_added' ? `Ticket ${name} filed here` : `Ticket ${name} taken out`;
     }
     case 'title_changed':
       return `Renamed from ${quoted(str(d.from))} to ${quoted(str(d.to))}`;

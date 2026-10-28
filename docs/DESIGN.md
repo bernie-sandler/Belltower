@@ -88,6 +88,8 @@ attachments       id PK, card_id → cards, original_name, stored_name (uuid, no
                   mime_type (server-sniffed), kind ('image'|'text'|'file'), size_bytes, sha256, created_at
                   -- file at /data/attachments/<card_id>/<stored_name>
 
+cards.kind        (schema 4) 'ticket' | 'work'
+cards.parent_id   (schema 4) → cards: the work card a ticket is filed under (one level; work cards only as parents)
 cards.ticket_no   (schema 3) 'YYMMDD-N': local creation date + per-day counter, unique, never reused;
                   backfilled by assignTicketNumbers() at startup and after a restore
 card_links        id PK, from_card_id → cards, to_card_id → cards, type ('relates'|'blocks'), created_at
