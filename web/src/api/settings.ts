@@ -6,6 +6,7 @@ import type {
   ApiTokenInfo,
   DiscordSettingsBody,
   GeneralSettingsBody,
+  ResolutionReasonsBody,
   RequestType,
   RequestTypeBody,
   SettingsResponse,
@@ -35,6 +36,7 @@ function useSettingsMutation<V>(method: 'put' | 'post', path: string) {
 export const useSaveGeneral = () => useSettingsMutation<GeneralSettingsBody>('put', '/api/settings/general');
 export const useSaveSubmit = () => useSettingsMutation<SubmitSettingsBody>('put', '/api/settings/submit');
 export const useNewSubmitLink = () => useSettingsMutation<void>('post', '/api/settings/submit/new-link');
+export const useSaveResolutions = () => useSettingsMutation<ResolutionReasonsBody>('put', '/api/settings/resolutions');
 export const useSaveDiscord = () => useSettingsMutation<DiscordSettingsBody>('put', '/api/settings/discord');
 
 export function useTestDiscord() {

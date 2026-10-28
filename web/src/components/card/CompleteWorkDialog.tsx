@@ -1,6 +1,6 @@
 // Mark done on a work card that still has open tickets: complete it alone, or together with its
 // tickets. All or nothing: if any ticket is blocked by an open card outside the set, nothing moves
-// and the dialog lists what's stuck.
+// and the dialog lists what's stuck. The resolution chosen here applies to every card completed.
 
 import { Ban, CircleCheck } from 'lucide-react';
 import { useState } from 'react';
@@ -10,6 +10,7 @@ import { errorMessage } from '../../api/errors';
 import { toast } from '../../lib/toast';
 import { Modal } from '../common/Modal';
 import { TicketTitle } from '../common/TicketTitle';
+import { ResolutionFields, useResolutionReasons, type ResolutionValue } from './ResolutionFields';
 
 interface Props {
   card: { id: number; title: string; ticketNo: string | null };
@@ -21,6 +22,9 @@ export function CompleteWorkDialog({ card, onClose }: Props) {
   const complete = useCompleteCard();
   const [stuck, setStuck] = useState<StuckCard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const reasons = useResolutionReasons();
+  const [chosen, setChosen] = useState<ResolutionValue | null>(null);
+  const resolution = chosen ?? { reason: reasons[0]!, note: '' };
 
   const open = (board?.cards ?? []).filter((c) => c.parentId === card.id && !c.completedAt && c.id > 0);
   // The board knows which tickets are blocked; blockers inside the set are fine, so the server has
@@ -28,10 +32,11 @@ export function CompleteWorkDialog({ card, onClose }: Props) {
   const likelyStuck = open.filter((c) => c.blockedBy > 0);
   const shownStuck = stuck ?? (likelyStuck.length ? likelyStuck.map((c) => ({ id: c.id, ticketNo: c.ticketNo, title: c.title, blockers: [] })) : null);
 
-  function run(includeChildren: boolean) {
+  function run(includeChildren: boolean, res: ResolutionValue = resolution) {
+    if (complete.isPending) return;
     setError(null);
     complete.mutate(
-      { id: card.id, includeChildren },
+      { id: card.id, includeChildren, resolution: { reason: res.reason, note: res.note.trim() } },
       {
         onSuccess: (res) => {
           onClose();
@@ -80,6 +85,12 @@ export function CompleteWorkDialog({ card, onClose }: Props) {
             </span>
           </div>
         )}
+        <ResolutionFields
+          value={resolution}
+          onChange={setChosen}
+          onSubmit={(v) => run(!(stuck !== null && stuck.length > 0), v)}
+          disabled={complete.isPending}
+        />
         {error && (
           <p className="form-error" role="alert">
             {error}

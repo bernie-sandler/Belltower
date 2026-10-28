@@ -90,6 +90,13 @@ export function activityText(entry: ActivityEntry): string {
       const name = quoted(`${typeof c?.ticketNo === 'string' ? `${c.ticketNo} — ` : ''}${str(c?.title) ?? ''}`);
       return entry.type === 'child_added' ? `Ticket ${name} filed here` : `Ticket ${name} taken out`;
     }
+    case 'resolved': {
+      const reason = str(d.reason);
+      if (!reason) return 'Resolution cleared';
+      const note = str(d.note)?.trim();
+      const verb = str(d.from) ? 'Resolution changed to' : 'Resolved:';
+      return note ? `${verb} ${reason} — ${quoted(note, 80)}` : `${verb} ${reason}`;
+    }
     case 'title_changed':
       return `Renamed from ${quoted(str(d.from))} to ${quoted(str(d.to))}`;
     case 'description_changed': {

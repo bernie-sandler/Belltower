@@ -6,12 +6,14 @@ import {
   type CardTile,
   type Column,
   type CreateTicketBody,
+  type DraftCardRef,
   type Label,
+  type LinkDirection,
   type Priority,
   type Severity,
   type TicketDraft,
 } from '@tt/shared';
-import { CalendarDays, Columns3, Flag, FolderInput, FolderOpen, ListChecks, OctagonAlert, Plus, Tag, X } from 'lucide-react';
+import { CalendarDays, Columns3, Flag, FolderInput, FolderOpen, Link2, ListChecks, OctagonAlert, Plus, Tag, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { sortedColumns } from '../../api/board';
 import { sortedLabels } from '../../api/labels';
@@ -20,6 +22,7 @@ import { Markdown } from '../common/Markdown';
 import { PriorityHelper } from '../card/CardFields';
 import { LevelPicker } from '../card/LevelPicker';
 import { PRIORITY_OPTIONS, SEVERITY_OPTIONS } from '../card/levelOptions';
+import { TicketTitle } from '../common/TicketTitle';
 import { LabelChip } from '../labels/LabelChip';
 
 export interface TicketFields {
@@ -35,7 +38,15 @@ export interface TicketFields {
   kind: CardKind;
   /** The work card a ticket is filed under. */
   parentId: number | null;
+  /** Links to existing cards (Claude's suggestions; more can be added on the card afterwards). */
+  links: { direction: LinkDirection; card: DraftCardRef }[];
 }
+
+export const LINK_WORDS: Record<LinkDirection, string> = {
+  blocks: 'Blocks',
+  blocked_by: 'Blocked by',
+  relates: 'Related to',
+};
 
 export const emptyTicket = (): TicketFields => ({
   title: '',
@@ -48,6 +59,7 @@ export const emptyTicket = (): TicketFields => ({
   checklist: [],
   kind: 'ticket',
   parentId: null,
+  links: [],
 });
 
 export const fromDraft = (d: TicketDraft): TicketFields => ({
@@ -59,8 +71,9 @@ export const fromDraft = (d: TicketDraft): TicketFields => ({
   labelIds: d.labelIds,
   dueDate: d.dueDate ?? '',
   checklist: d.checklist,
-  kind: 'ticket',
-  parentId: null,
+  kind: d.kind,
+  parentId: d.kind === 'ticket' ? (d.parent?.id ?? null) : null,
+  links: d.links.map((l) => ({ direction: l.direction, card: l.card })),
 });
 
 export function toCreateBody(f: TicketFields, aiDrafted: boolean): CreateTicketBody {
@@ -76,6 +89,7 @@ export function toCreateBody(f: TicketFields, aiDrafted: boolean): CreateTicketB
     ...(checklist.length ? { checklist } : {}),
     kind: f.kind,
     ...(f.kind === 'ticket' && f.parentId !== null ? { parentId: f.parentId } : {}),
+    ...(f.links.length ? { links: f.links.map((l) => ({ direction: l.direction, cardId: l.card.id })) } : {}),
     aiDrafted,
   };
 }
@@ -193,7 +207,46 @@ export function TicketForm({ fields, onChange, suggestion, columns, labels, work
           <li>
             <strong>Severity:</strong> {suggestion.severityReason}
           </li>
+          {suggestion.kind === 'work' && suggestion.kindReason && (
+            <li>
+              <strong>Work card:</strong> {suggestion.kindReason}
+            </li>
+          )}
+          {suggestion.parent && (
+            <li>
+              <strong>Part of:</strong> <TicketTitle ticketNo={suggestion.parent.ticketNo}>{suggestion.parent.title}</TicketTitle>
+            </li>
+          )}
+          {suggestion.links.map((l) => (
+            <li key={l.card.id}>
+              <strong>{LINK_WORDS[l.direction]}:</strong> <TicketTitle ticketNo={l.card.ticketNo}>{l.card.title}</TicketTitle>. {l.reason}
+            </li>
+          ))}
         </ul>
+      )}
+
+      {fields.links.length > 0 && (
+        <fieldset className="ticket-fieldset">
+          <legend className="field-inline-label">
+            <Link2 size={14} aria-hidden /> Linked cards
+          </legend>
+          <ul className="ticket-links">
+            {fields.links.map((l) => (
+              <li key={l.card.id}>
+                <span className="muted">{LINK_WORDS[l.direction]}</span>{' '}
+                <TicketTitle ticketNo={l.card.ticketNo}>{l.card.title}</TicketTitle>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Remove link to ${l.card.title}`}
+                  onClick={() => set('links', fields.links.filter((x) => x.card.id !== l.card.id))}
+                >
+                  <X size={16} aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </fieldset>
       )}
 
       <div className="field-row">

@@ -4,6 +4,7 @@
 import {
   ApiTokenBody,
   DiscordSettingsBody,
+  ResolutionReasonsBody,
   GeneralSettingsBody,
   ReorderBody,
   RequestTypeBody,
@@ -21,6 +22,7 @@ import {
 } from '../../services/requestTypes';
 import {
   regenerateSubmitKey,
+  setResolutionReasons,
   settingsResponse,
   updateDiscordSettings,
   updateGeneralSettings,
@@ -40,6 +42,10 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps): voi
   });
   app.put('/api/settings/submit', async (req) => {
     updateSubmitSettings(ctx, parse(SubmitSettingsBody, req.body));
+    return current();
+  });
+  app.put('/api/settings/resolutions', async (req) => {
+    setResolutionReasons(ctx, parse(ResolutionReasonsBody, req.body).reasons);
     return current();
   });
   app.post('/api/settings/submit/new-link', async () => {

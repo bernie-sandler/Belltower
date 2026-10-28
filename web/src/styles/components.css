@@ -37,12 +37,12 @@
 
 @media (hover: hover) {
   .btn-primary:hover:not(:disabled) {
-    background: var(--accent-strong);
+    background: var(--accent-hover);
   }
 }
 
 .btn-primary:active:not(:disabled) {
-  background: var(--accent-strong);
+  background: var(--accent-hover);
 }
 
 .btn-danger {
@@ -52,12 +52,12 @@
 
 @media (hover: hover) {
   .btn-danger:hover:not(:disabled) {
-    background: var(--danger-strong);
+    background: var(--danger-hover);
   }
 }
 
 .btn-danger:active:not(:disabled) {
-  background: var(--danger-strong);
+  background: var(--danger-hover);
 }
 
 .btn-success {
@@ -67,12 +67,12 @@
 
 @media (hover: hover) {
   .btn-success:hover:not(:disabled) {
-    background: var(--success-strong);
+    background: var(--success-hover);
   }
 }
 
 .btn-success:active:not(:disabled) {
-  background: var(--success-strong);
+  background: var(--success-hover);
 }
 
 .btn-subtle {
@@ -121,12 +121,12 @@
 
 @media (hover: hover) {
   .icon-btn.is-danger:hover:not(:disabled) {
-    color: var(--danger);
+    color: var(--danger-text);
   }
 }
 
 .icon-btn.is-danger:active:not(:disabled) {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .link-btn {
@@ -134,7 +134,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -212,7 +212,7 @@ textarea.input {
 
 .field-help.is-error,
 .form-error {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .form-error {
@@ -306,7 +306,7 @@ textarea.input {
 
 .tag-success {
   background: rgba(75, 206, 151, 0.18);
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .section-title {
@@ -435,7 +435,7 @@ textarea.input {
 }
 
 .menu-item.is-danger:not([aria-disabled='true']) {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .menu-item-icon {
@@ -647,7 +647,7 @@ textarea.input {
   padding: 6px 6px 6px 12px;
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
-  background: #33393f;
+  background: var(--toast-bg);
   color: var(--text-strong);
   box-shadow: var(--shadow-pop);
   pointer-events: auto;
@@ -655,7 +655,7 @@ textarea.input {
 
 .toast-icon {
   flex: none;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .toast-success {
@@ -663,7 +663,7 @@ textarea.input {
 }
 
 .toast-success .toast-icon {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .toast-warning {
@@ -671,7 +671,7 @@ textarea.input {
 }
 
 .toast-warning .toast-icon {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .toast-error {
@@ -679,7 +679,7 @@ textarea.input {
 }
 
 .toast-error .toast-icon {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .toast-message {
@@ -696,7 +696,7 @@ textarea.input {
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -747,7 +747,7 @@ textarea.input {
 }
 
 .status-icon {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .status-title {

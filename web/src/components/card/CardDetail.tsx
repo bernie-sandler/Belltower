@@ -42,6 +42,8 @@ import { Checklists } from './Checklists';
 import { Links } from './Links';
 import { DescriptionEditor, descriptionDraftKey } from './DescriptionEditor';
 import { CompleteWorkDialog } from './CompleteWorkDialog';
+import { ResolutionSection } from './ResolutionSection';
+import { ResolveDialog } from './ResolveDialog';
 import { Family } from './Family';
 import { LabelPicker } from './LabelPicker';
 import { MoveToSheet } from './MoveToSheet';
@@ -290,6 +292,7 @@ function CardDetailBody({
             </div>
           </section>
 
+          {card.completedAt && <ResolutionSection card={card} readOnly={deleted} />}
           <Family card={card} readOnly={deleted} />
           <CardFields card={card} readOnly={deleted} />
 
@@ -387,13 +390,12 @@ function CardDetailBody({
 }
 
 /**
- * One tap: move to the top of the Done column (not while open cards still block it). A work card
- * with open tickets asks whether to complete them too.
+ * Mark done (not while open cards still block it): a quick dialog for the resolution, then to the
+ * top of the Done column. A work card with open tickets also asks whether to complete them too.
  */
 function MarkDoneButton({ card }: { card: CardDetailType }) {
   const cardId = card.id;
   const { data: board } = useBoard();
-  const moveCard = useMoveCard();
   const [asking, setAsking] = useState(false);
   const done = board ? sortedColumns(board.columns).find((c) => c.role === 'done') : undefined;
   if (!done || !board) return null;
@@ -401,7 +403,12 @@ function MarkDoneButton({ card }: { card: CardDetailType }) {
   const openTickets = card.kind === 'work' ? card.children.filter((c) => !c.completedAt && !c.archivedAt).length : 0;
   return (
     <>
-    {asking && <CompleteWorkDialog card={card} onClose={() => setAsking(false)} />}
+    {asking &&
+      (openTickets > 0 ? (
+        <CompleteWorkDialog card={card} onClose={() => setAsking(false)} />
+      ) : (
+        <ResolveDialog cardId={cardId} mode="complete" onClose={() => setAsking(false)} />
+      ))}
     <button
       type="button"
       className="btn btn-block card-action"
@@ -412,12 +419,7 @@ function MarkDoneButton({ card }: { card: CardDetailType }) {
           toast(blocked, { kind: 'warning' });
           return;
         }
-        if (openTickets > 0) {
-          setAsking(true);
-          return;
-        }
-        moveCard.mutate({ cardId, toColumnId: done.id, afterCardId: null });
-        toast(`Moved to ${done.name}`, { kind: 'success', durationMs: 2500 });
+        setAsking(true);
       }}
     >
       <CircleCheck size={16} aria-hidden /> Mark done

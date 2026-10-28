@@ -43,7 +43,7 @@ describe('CompleteWorkDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('/api/cards/100/complete');
-    expect(JSON.parse(String(init.body))).toEqual({ includeChildren: true });
+    expect(JSON.parse(String(init.body))).toEqual({ includeChildren: true, resolution: { reason: 'Fixed', note: '' } });
   });
 
   it('shows what the server says is stuck and stops offering "with tickets"', async () => {
@@ -67,6 +67,6 @@ describe('CompleteWorkDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Only this card' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toEqual({ includeChildren: false });
+    expect(JSON.parse(String(init.body))).toEqual({ includeChildren: false, resolution: { reason: 'Fixed', note: '' } });
   });
 });

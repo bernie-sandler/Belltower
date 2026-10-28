@@ -41,15 +41,23 @@ describe('ticket form', () => {
       labelIds: [3],
       checklist: ['Check upstream'],
       dueDate: null,
+      kind: 'ticket',
+      kindReason: '',
+      parent: { id: 9, ticketNo: '261027-1', title: 'Proxy work' },
+      links: [{ direction: 'blocked_by', card: { id: 4, ticketNo: '261027-2', title: 'DNS' }, reason: 'r' }],
     };
-    expect(fromDraft(draft)).toMatchObject({
+    const fields = fromDraft(draft);
+    expect(fields).toMatchObject({
       title: 'NPM 502',
       priority: 'high',
       severity: 'major',
       labelIds: [3],
       dueDate: '',
       kind: 'ticket',
-      parentId: null,
+      parentId: 9,
     });
+    expect(toCreateBody(fields, true)).toMatchObject({ parentId: 9, links: [{ direction: 'blocked_by', cardId: 4 }] });
+    // A suggested work card is never filed under another one.
+    expect(fromDraft({ ...draft, kind: 'work' }).parentId).toBeNull();
   });
 });

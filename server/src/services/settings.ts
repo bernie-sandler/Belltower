@@ -3,6 +3,7 @@
 
 import { randomBytes } from 'node:crypto';
 import {
+  DEFAULT_RESOLUTION_REASONS,
   DEFAULT_TICKET_FORMAT,
   type DiscordSettingsBody,
   type GeneralSettingsBody,
@@ -129,6 +130,22 @@ export function updateDiscordSettings(
   });
 }
 
+/** Resolution reasons in order; the first is the default ("Fixed"). */
+export function getResolutionReasons(ctx: Ctx): string[] {
+  const raw = getSetting(ctx.db, 'resolution_reasons');
+  try {
+    const list = raw ? (JSON.parse(raw) as unknown) : null;
+    if (Array.isArray(list) && list.length && list.every((x) => typeof x === 'string')) return list as string[];
+  } catch {
+    /* fall through to the defaults */
+  }
+  return [...DEFAULT_RESOLUTION_REASONS];
+}
+
+export function setResolutionReasons(ctx: Ctx, reasons: string[]): void {
+  setSetting(ctx.db, 'resolution_reasons', JSON.stringify(reasons));
+}
+
 export function recordDelivery(ctx: Ctx, ok: boolean, message: string): void {
   write(ctx, KEY.delivery, { at: nowIso(ctx), ok, message: message.slice(0, 300) });
 }
@@ -165,5 +182,6 @@ export function settingsResponse(ctx: Ctx, ai: { modelFromEnv: string | null; en
       lastDelivery: lastDelivery(ctx),
     },
     blockedColumnId: getBlockedColumnId(ctx),
+    resolutionReasons: getResolutionReasons(ctx),
   };
 }

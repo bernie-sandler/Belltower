@@ -3,6 +3,30 @@
 Versions follow [semver](https://semver.org). While the app is in alpha (0.x), each minor version is a feature
 release. The version is shown in **Settings**, in the container log on start, and in every backup export.
 
+## 0.10.0: Resolutions, light theme, smarter Claude (beta)
+
+- **Resolution notes.** **Mark done** opens a quick dialog: how it was resolved (Fixed, Won't fix, Duplicate,
+  Can't reproduce, No longer needed) and an optional note. The first reason is preselected and Enter accepts.
+  - Dragging a card into Done (or Move to → Done) shows a toast with **Add resolution**.
+  - Done cards show a **Resolution** section, editable any time. Reopening a card clears it; the history keeps
+    every version.
+  - Tiles show a badge when the reason isn't the default ("Won't fix", "Duplicate"…).
+  - Resolution notes are searchable ("how did I fix this last time?").
+  - The reasons are an editable list in **Settings → Resolution reasons**; the first is the default.
+  - Automation recoveries that complete a ticket record the default reason with a "Recovered" note.
+  - Card import accepts `resolution` and `resolutionNote` for cards created in Done.
+- **Light theme.** Follows your device's light/dark setting by default. **Settings → Appearance** picks Light,
+  Dark or System, remembered per device.
+- **Claude drafting knows your board.**
+  - A draft now suggests the card type (ticket or work card), an open work card to file it under, and links to
+    open cards it blocks, waits on or relates to, each with a reason. All of it shows in the review form and can be
+    changed or removed.
+  - New **Add ticket → Describe several issues**: paste notes, a to-do list or logs, and Claude splits them into
+    cards (grouping steps under a work card, with links between them). You review the same preview as an import,
+    then create them all at once. Counts as one draft.
+  - Drafts now also send your open cards' titles (up to 100) to Anthropic, so Claude can refer to them.
+- Database schema 6 (`cards.resolution`, `cards.resolution_md`).
+
 ## 0.9.0: Tickets from other people and services (beta)
 
 - **Settings page** (Menu → Settings):

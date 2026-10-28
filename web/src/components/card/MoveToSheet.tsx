@@ -5,11 +5,13 @@ import { ArrowDownToLine, ArrowLeft, ArrowUpToLine, ChevronRight, CircleCheck } 
 import { useEffect, useRef, useState } from 'react';
 import { blockedCompletionMessage, bottomAnchor, completionBlocked, currentAnchor, groupCards, sortedColumns, useBoard } from '../../api/board';
 import { useMoveCard } from '../../api/cards';
+import { useShell } from '../shell/ShellContext';
 import { cls } from '../../lib/cls';
 import { toast } from '../../lib/toast';
 import { Modal } from '../common/Modal';
 import { Spinner } from '../common/Status';
 import { CompleteWorkDialog } from './CompleteWorkDialog';
+import { ResolveDialog } from './ResolveDialog';
 
 interface Props {
   cardId: number;
@@ -19,6 +21,7 @@ interface Props {
 export function MoveToSheet({ cardId, onClose }: Props) {
   const { data: board } = useBoard();
   const moveCard = useMoveCard();
+  const shell = useShell();
   const [selected, setSelected] = useState<number | null>(null);
   const [askingDone, setAskingDone] = useState(false);
   const topRef = useRef<HTMLButtonElement>(null);
@@ -63,12 +66,21 @@ export function MoveToSheet({ cardId, onClose }: Props) {
       return;
     }
     moveCard.mutate({ cardId, toColumnId, afterCardId });
-    const name = columns.find((c) => c.id === toColumnId)?.name ?? 'column';
-    if (toColumnId !== tile.columnId) toast(`Moved to ${name}`, { kind: 'success', durationMs: 2500 });
+    const target = columns.find((c) => c.id === toColumnId);
+    if (toColumnId === tile.columnId) return;
+    if (target?.role === 'done') {
+      toast(`Moved to ${target.name}`, { kind: 'success', action: { label: 'Add resolution', onClick: () => shell.openResolution(cardId) } });
+    } else {
+      toast(`Moved to ${target?.name ?? 'column'}`, { kind: 'success', durationMs: 2500 });
+    }
   }
 
   if (askingDone && tile) {
-    return <CompleteWorkDialog card={tile} onClose={onClose} />;
+    return tile.kind === 'work' && tile.childOpen > 0 ? (
+      <CompleteWorkDialog card={tile} onClose={onClose} />
+    ) : (
+      <ResolveDialog cardId={cardId} mode="complete" onClose={onClose} />
+    );
   }
 
   if (!tile) {
@@ -114,7 +126,7 @@ export function MoveToSheet({ cardId, onClose }: Props) {
                   type="button"
                   className="btn btn-success btn-block move-done"
                   disabled={tile.blockedBy > 0}
-                  onClick={() => (tile.kind === 'work' && tile.childOpen > 0 ? setAskingDone(true) : move(doneColumn.id, 'top'))}
+                  onClick={() => setAskingDone(true)}
                 >
                   <CircleCheck size={18} aria-hidden /> Mark done
                 </button>

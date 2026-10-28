@@ -127,6 +127,7 @@ export const ACTIVITY_EVENT_TYPES = [
   'parent_changed',
   'child_added',
   'child_removed',
+  'resolved',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 export type ActivityType = ActivityEventType | 'worklog';
@@ -134,6 +135,9 @@ export type ActivityType = ActivityEventType | 'worklog';
 /** Submit page: the kinds of question a request type can ask. */
 export const REQUEST_FIELD_KINDS = ['short', 'long', 'choice', 'multi', 'datetime', 'yesno'] as const;
 export type RequestFieldKind = (typeof REQUEST_FIELD_KINDS)[number];
+
+/** Starting list of resolution reasons (editable in Settings). The first is the default. */
+export const DEFAULT_RESOLUTION_REASONS = ['Fixed', 'Won’t fix', 'Duplicate', 'Can’t reproduce', 'No longer needed'] as const;
 
 /** Ticket number format tokens; {N} (the per-day counter) must come last. */
 export const DEFAULT_TICKET_FORMAT = '{YY}{MM}{DD}-{N}';

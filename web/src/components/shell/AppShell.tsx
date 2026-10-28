@@ -7,6 +7,7 @@ import { errorMessage } from '../../api/errors';
 import { backgroundOf } from '../../lib/navigation';
 import { setAppTimeZone } from '../../lib/time';
 import { Board } from '../board/Board';
+import { ResolveDialog } from '../card/ResolveDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { ShellContext, type ShellActions } from './ShellContext';
 import type { NewTicketMode, NewTicketPreset } from '../tickets/NewTicketDialog';
@@ -22,6 +23,7 @@ const ImportCardsPage = lazy(() => import('../tools/ImportCardsPage').then((m) =
 const BackupPage = lazy(() => import('../tools/BackupPage').then((m) => ({ default: m.BackupPage })));
 const TemplatesPage = lazy(() => import('../templates/TemplatesPage').then((m) => ({ default: m.TemplatesPage })));
 const LabelsManager = lazy(() => import('../labels/LabelsManager').then((m) => ({ default: m.LabelsManager })));
+const BulkTicketsDialog = lazy(() => import('../tickets/BulkTicketsDialog').then((m) => ({ default: m.BulkTicketsDialog })));
 const NewTicketDialog = lazy(() => import('../tickets/NewTicketDialog').then((m) => ({ default: m.NewTicketDialog })));
 const SettingsPage = lazy(() => import('../settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
@@ -34,12 +36,14 @@ export function AppShell() {
   const [newTicket, setNewTicket] = useState<{ mode: NewTicketMode; preset?: NewTicketPreset } | null>(null);
   const ai = useAiStatus();
   const [addColumnRequest, setAddColumnRequest] = useState(0);
+  const [resolving, setResolving] = useState<number | null>(null);
 
   const actions = useMemo<ShellActions>(
     () => ({
       openLabels: () => setLabelsOpen(true),
       openSettings: () => setSettingsOpen(true),
       openNewTicket: (mode, preset) => setNewTicket({ mode, preset }),
+      openResolution: (cardId) => setResolving(cardId),
       requestAddColumn: () => setAddColumnRequest((n) => n + 1),
       addColumnRequest,
     }),
@@ -74,7 +78,13 @@ export function AppShell() {
       <Suspense fallback={null}>
         {labelsOpen && <LabelsManager onClose={() => setLabelsOpen(false)} />}
         {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
-        {newTicket && <NewTicketDialog mode={newTicket.mode} preset={newTicket.preset} onClose={() => setNewTicket(null)} />}
+        {resolving !== null && <ResolveDialog cardId={resolving} mode="edit" onClose={() => setResolving(null)} />}
+        {newTicket &&
+          (newTicket.mode === 'many' ? (
+            <BulkTicketsDialog onClose={() => setNewTicket(null)} />
+          ) : (
+            <NewTicketDialog mode={newTicket.mode} preset={newTicket.preset} onClose={() => setNewTicket(null)} />
+          ))}
       </Suspense>
     </ShellContext.Provider>
   );

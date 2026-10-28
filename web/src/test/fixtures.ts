@@ -12,6 +12,7 @@ export function tile(over: Partial<CardTile> = {}): CardTile {
     parentId: null,
     childCount: 0,
     childOpen: 0,
+    resolution: null,
     columnId: 1,
     title: `Card ${id}`,
     position: id,
@@ -38,5 +39,5 @@ export const COLUMNS: Column[] = [
 ];
 
 export function board(cards: CardTile[]): BoardResponse {
-  return { columns: COLUMNS, labels: [], cards, blockedColumnId: null };
+  return { columns: COLUMNS, labels: [], cards, blockedColumnId: null, resolutionReasons: ['Fixed', 'Won’t fix'] };
 }

@@ -8,6 +8,7 @@ import { AppError, badRequest } from '../errors';
 import { createImported, prepareImport } from './cardImport';
 import { completeCard, getCard } from './cards';
 import { tx, type Ctx } from './context';
+import { getResolutionReasons } from './settings';
 import type { TokenIdentity } from './tokens';
 import { addWorklog } from './worklog';
 
@@ -62,7 +63,8 @@ export function intakeCard(ctx: Ctx, token: TokenIdentity, body: unknown): Intak
       addWorklog(ctx, existing, { bodyMd: `Recovered (reported by ${via}).${note}` });
       if (token.canComplete) {
         try {
-          return { status: 'resolved' as const, card: brief(completeCard(ctx, existing, { includeChildren: false }).card) };
+          const resolution = { reason: getResolutionReasons(ctx)[0]!, note: `Recovered (reported by ${via}).` };
+          return { status: 'resolved' as const, card: brief(completeCard(ctx, existing, { includeChildren: false, resolution }).card) };
         } catch (err) {
           // Blocked by an open card: leave it open; the work log says it recovered.
           if (!(err instanceof AppError && err.code === 'blocked')) throw err;

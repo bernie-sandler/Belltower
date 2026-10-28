@@ -178,11 +178,11 @@
 
 /* The three kinds: color plus a distinct icon and edge style. */
 .cal-due {
-  --cal: var(--warning);
+  --cal: var(--warning-text);
 }
 
 .cal-completed {
-  --cal: var(--success);
+  --cal: var(--success-text);
 }
 
 .cal-worklog {
@@ -309,7 +309,7 @@ button.cal-chip {
 }
 
 .cal-chip.cal-due.is-overdue {
-  --cal: var(--danger);
+  --cal: var(--danger-text);
 }
 
 .cal-chip.cal-due.is-done .cal-title {
@@ -615,7 +615,7 @@ button.cal-chip .cal-body {
 .import-page code {
   padding: 1px 4px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--well);
   font-family: var(--mono);
   font-size: 0.92em;
 }
@@ -727,7 +727,7 @@ button.cal-chip .cal-body {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .tag.tag-danger {

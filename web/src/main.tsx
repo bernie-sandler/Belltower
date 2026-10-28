@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { installGlobalKeyboard } from './lib/keyboard';
 import { installStaleBundleReload } from './lib/staleBundle';
+import { installTheme } from './lib/theme';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
@@ -14,6 +15,7 @@ import './styles/phase3.css';
 import './styles/tickets.css';
 import './styles/intake.css';
 
+installTheme();
 installStaleBundleReload();
 installGlobalKeyboard();
 

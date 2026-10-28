@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AiStatus, CardDetail, CreateTicketBody, TicketDraft } from '@tt/shared';
+import type { AiStatus, BulkDraft, CardDetail, CreateTicketBody, ImportPreview, TicketDraft } from '@tt/shared';
 import { applyCardDetail } from './cards';
 import { api } from './client';
 import { qk } from './keys';
@@ -19,6 +19,27 @@ export function useDraftTicket() {
     mutationFn: (text: string) => api.post<TicketDraft>('/api/ai/draft', { text }),
     // The dialog shows the error itself and falls back to the manual form.
     meta: { errorToast: false },
+  });
+}
+
+/** "Describe several issues": Claude's cards plus the import preview (nothing saved yet). */
+export function useDraftMany() {
+  return useMutation({
+    mutationFn: (text: string) => api.post<BulkDraft>('/api/ai/draft-many', { text }),
+    meta: { errorToast: false },
+  });
+}
+
+/** Creates the reviewed cards from a bulk draft: an ordinary card import. */
+export function useCreateDrafted() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cards: Record<string, unknown>[]) => api.post<ImportPreview>('/api/import/cards', { data: { cards }, dryRun: false }),
+    meta: { errorToast: false },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.board });
+      void qc.invalidateQueries({ queryKey: qk.cards });
+    },
   });
 }
 

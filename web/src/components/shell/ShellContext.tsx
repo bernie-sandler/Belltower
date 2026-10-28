@@ -7,6 +7,8 @@ export interface ShellActions {
   openSettings: () => void;
   /** Add ticket: Claude draft ('describe') or the empty form ('blank'). */
   openNewTicket: (mode: NewTicketMode, preset?: NewTicketPreset) => void;
+  /** Add or change how a done card was resolved (e.g. from the toast after dragging into Done). */
+  openResolution: (cardId: number) => void;
   /** Asks the board to open its "add column" form; the counter changes on each request. */
   requestAddColumn: () => void;
   addColumnRequest: number;

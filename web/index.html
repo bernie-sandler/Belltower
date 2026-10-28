@@ -4,9 +4,11 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover: the layout pads itself with env(safe-area-inset-*) (notch, home bar). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <!-- Matches the top bar, so the iOS/Android browser chrome blends into it. -->
-    <meta name="theme-color" content="#161a1d" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- Matches the top bar, so the iOS/Android browser chrome blends into it (lib/theme.ts
+         overrides both when a theme is picked in Settings). -->
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#161a1d" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
     <meta name="referrer" content="no-referrer" />
     <meta name="format-detection" content="telephone=no" />
     <!-- Home Screen app (iOS): full screen, status bar over the top bar (which pads for it). -->
