@@ -1,17 +1,19 @@
 # Card import format
 
-**Add ticket → Import from JSON** (or **Main menu → Import cards**) turns JSON into ready-made cards. The quickest
-way to get the JSON is an AI chat. This page is only offered when `ANTHROPIC_API_KEY` isn't set; with a key, use
-**Add ticket → Describe the issue** instead, which asks Claude directly.
+A small JSON format for creating cards in bulk. It's handy with any AI chat: describe a problem, get back
+ready-made cards with priorities, checklists and links. The same format is used by the
+[automation API](API-V1.md) and by [Claude drafting](AI-DRAFTING.md) behind the scenes.
 
-1. On the Import cards page, press **Copy AI prompt**. The prompt describes this format and lists your real columns
-   and labels.
+**Importing with an AI chat** (the page is under **Add ticket → Import from JSON** or **Menu → Import cards**; it's
+offered when no `ANTHROPIC_API_KEY` is set, since with a key Claude can do this directly):
+
+1. Press **Copy AI prompt**. It explains this format to the AI and lists your real columns and labels.
 2. Paste the prompt into your AI, then describe the problem: symptoms, error messages, what you already tried.
 3. Paste the AI's whole answer into the Import box. Code fences and any chatter around the JSON are ignored.
-4. Press **Preview**. Check the cards, warnings and errors.
+4. Press **Preview** and look over the cards, warnings and errors.
 5. Press **Import**.
 
-Nothing is created until every card in the batch is valid.
+Nothing is created until every card in the batch is valid, so a typo never leaves you with half an import.
 
 ## Format
 
@@ -126,5 +128,6 @@ Severity is how bad the impact is:
 
 ## API
 
-`POST /api/import/cards` with `{ "text": "<pasted text>", "dryRun": true }` returns the preview. With
-`"dryRun": false` it creates the cards (`201`). See [API.md](API.md).
+From the web UI's API: `POST /api/import/cards` with `{ "text": "<pasted text>", "dryRun": true }` returns the
+preview, and `"dryRun": false` creates the cards (`201`). See [API.md](API.md). For scripts and monitoring tools,
+use the stable [automation API](API-V1.md) instead, which takes one card in this format.

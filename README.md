@@ -1,396 +1,68 @@
 # Tower Tracker
 
-A self-hosted, single-user, Trello-style issue tracker for a homelab. It's for triaging and fixing problems, and it
-keeps a record of what you did and when. It runs as one Docker container with SQLite, keeps everything under `/data`,
-and needs no internet (unless you turn on the optional Claude ticket drafting).
+A small, self-hosted issue tracker for a homelab. Think of it as a Trello board that remembers everything: when the
+parity check started throwing errors, what you tried, which cable you swapped, and how it finally got fixed.
 
-- **Board**:
-  - Triage → Backlog → In Progress → Blocked/Waiting → Done; columns can be renamed, added and reordered.
-  - Move cards by drag and drop (mouse, long-press on a phone, or keyboard) or with **Move to…**.
-  - Filter by label, priority, severity, due status and text.
-- **Cards**:
-  - Each card gets a ticket number when it's created, shown as "261024-1 — Title" (date `YYMMDD` plus a counter
-    that restarts each day).
-  - A Markdown description, labels, priority (P0–P3, with an impact × urgency helper), severity (S1–S4), and a due
-    date with an optional time.
-  - Checklists, plus attachments: drag and drop, pasted screenshots, inline images, and a log viewer.
-  - Links between cards ("related to", "blocks / blocked by"). A blocked card moves to Blocked/Waiting
-    automatically and can't be marked done until every card blocking it is done.
-- **Work cards**:
-  - Mark a card as a **work card** (what you're working on) and file **tickets** under it, like a folder.
-  - In every column a work card's tickets stack together under it; groups collapse.
-  - **Mark done** on a work card can complete all its tickets at once (not while any of them is blocked).
-- **Resolutions**: **Mark done** asks how it was resolved (Fixed, Won't fix, Duplicate… your own list) with an
-  optional note. Notes are searchable, and the board shows anything other than the default.
-- **History**:
-  - Every change is recorded automatically and can't be altered or deleted.
-  - A **work log** for notes like "Swapped SATA power cable to drive 3", with backdating and edit history.
-- **Calendar**: month and week views of what was due, what got done, and what work was logged.
-- **Search**: full-text across titles, descriptions, checklists and work logs, archived cards included.
-- **Recurring maintenance**: templates (e.g. a monthly parity check) that create a Triage card on a schedule, never
-  duplicating an open one.
-- **Archive and Trash**: archived cards stay searchable; deleted cards can be restored, and nothing is ever purged.
-- **Backup & restore**:
-  - Export to JSON or ZIP (with attachments) and restore with a preview.
-  - Plus nightly snapshots.
-- **Add ticket**: describe a problem in your own words and Claude drafts the card (priority, severity, details,
-  checklist, the work card it belongs to, related cards) for you to review, or paste notes describing several
-  issues and get several cards. Optional: it needs an Anthropic API key, and without one the app stays fully
-  offline.
-- **Light and dark**: follows your device, or pick one per device in Settings.
-- **Submit page**: a link you can share so family, friends or players can file tickets without your password. They
-  pick a request type (General, Plex, Game servers… your own list) and answer its questions.
-- **Automation**: API tokens let Uptime Kuma, Unraid, Home Assistant or scripts open tickets. Repeat alerts update
-  the open ticket. See [docs/AUTOMATION.md](docs/AUTOMATION.md).
-- **Discord notifications**: new outside tickets, urgent cards (P0–P1 or S1 by default, when created or raised),
-  blocked cards and a daily summary, posted to a channel through a webhook.
-- **Card import**: without an API key, paste JSON written by any AI chat to create ready-made cards. See
-  [docs/CARD-IMPORT.md](docs/CARD-IMPORT.md).
+It's built for one person running one server. It's a single Docker container with a SQLite database, it keeps
+everything in one folder, and it works fine with no internet connection.
 
-The design is in [docs/DESIGN.md](docs/DESIGN.md), the HTTP API in [docs/API.md](docs/API.md), and what changed in
-each version in [CHANGELOG.md](CHANGELOG.md).
+## What it does
 
----
+- **A board you already know how to use.** Triage → Backlog → In Progress → Blocked/Waiting → Done. Drag cards
+  around with a mouse, a finger or the keyboard.
+- **Cards with real detail.** Ticket numbers (`261024-1`), Markdown notes, labels, priority and severity, due
+  dates, checklists, and attachments: paste a screenshot, drop in a log file.
+- **Links and blockers.** Say one card is waiting on another and it moves to Blocked/Waiting by itself, and can't be
+  closed until the blocker is done.
+- **Work cards.** Group related tickets under one piece of work, like a folder, and finish them all at once.
+- **A history you can trust.** Every change is recorded and can't be edited or deleted. A work log holds your own
+  notes ("swapped the SATA cable on drive 3"), and closing a card records how it was resolved.
+- **Find it again later.** Full-text search over everything, a calendar of what was due and what got done, and
+  recurring maintenance cards (the monthly parity check) that show up on schedule.
+- **Tickets from elsewhere.** A shareable page where family or friends can report problems without your password,
+  plus API tokens so Uptime Kuma, Unraid or Home Assistant can open tickets when something breaks.
+- **Discord alerts** for urgent cards, new outside tickets and a daily summary.
+- **Backups built in.** Nightly snapshots, one-click export, and a restore that shows you what you're about to get.
+- **Optional Claude drafting.** Describe a problem in plain words and get a well-formed ticket back. Off unless you
+  add an API key.
+- **Light and dark**, and it works well on a phone.
 
-## Install on Unraid (Docker Compose Manager)
+## Quick start (Unraid)
 
-Tower pulls a ready-made image from GitHub (`ghcr.io/bernie-sandler/tower-tracker`); nothing is built on the
-server.
+1. Clone this repository somewhere outside your data folder, for example
+   `/mnt/user/appdata/tower-tracker-src`.
+2. Copy `.env.example` to `.env`. The defaults are fine for most setups.
+3. In **Docker → Compose**, add a stack pointing at that folder and press **Compose Up** (or run
+   `docker compose up -d`).
+4. Open `http://tower:8080`.
+5. Grab the one-time setup code from the container log and choose a password.
 
-1. **Get the stack files onto the server.** For example, clone the repo to `/mnt/user/appdata/tower-tracker-src`.
-   Keep it outside the data folder. Only `docker-compose.yml` and `.env` are used.
-   ```bash
-   git clone https://github.com/bernie-sandler/tower-tracker.git /mnt/user/appdata/tower-tracker-src
-   ```
-2. **Allow Tower to pull the image (private repository only).** While the repository is private, its images
-   are too. Create a GitHub token: **Settings → Developer settings → Personal access tokens → Tokens
-   (classic)** with only the `read:packages` scope. Then log in once on Tower; Docker remembers it:
-   ```bash
-   docker login ghcr.io -u <your GitHub user name>
-   ```
-   Paste the token as the password. (Or make just the image public under the repository's **Packages** →
-   tower-tracker → **Package settings**; the code stays private.)
-3. **Create your settings file.** In that folder, copy `.env.example` to `.env` and adjust it. The defaults suit
-   most setups.
-   ```bash
-   cp .env.example .env
-   ```
-4. **Add the stack.** In **Docker → Compose → Add New Stack**, point the stack at that folder (its
-   `docker-compose.yml`), then press **Compose Up**. From a terminal in the folder, this does the same:
-   ```bash
-   docker compose up -d
-   ```
-5. **Open the app.** Go to `http://tower:8080`, or `http://<server-ip>:8080`.
-6. **Set your password.** On the first run you're asked for a one-time **setup code**. Find it in the container
-   log (Docker tab → tower-tracker icon → **Logs**, or `docker logs tower-tracker`). Then choose a password of 12+
-   characters. To skip this step, set `APP_PASSWORD` in `.env` instead.
+The full walkthrough (private image access, where the data should live, every setting) is in
+[docs/INSTALL.md](docs/INSTALL.md).
 
-**Where the data lives.** `DATA_PATH` (default `/mnt/cache/appdata/tower-tracker`) holds the database
-(`tower.db`), the attachments, and `backups/`.
+## Documentation
 
-Use the **pool path** (`/mnt/cache/…`) rather than `/mnt/user/…` unless the appdata share has **Exclusive access:
-Yes**. SQLite shouldn't go through Unraid's user-share (FUSE) layer.
-
-To check this setting:
-1. Go to **Shares → appdata**. The share needs **Primary storage** set to your pool and **Secondary storage: None**.
-2. Enable it under **Settings → Global Share Settings → Permit exclusive shares**.
-3. Make sure no stray `appdata` folder exists on an array disk.
-
-**Updating.** Pull the new image and recreate the container. The database upgrades itself on start, after
-saving a copy of itself as `/data/backups/pre-migrate-v<old>-to-v<new>-….db` (the last 5 are kept). If that copy
-can't be written, it doesn't upgrade, and the log says why.
-
-```bash
-cd /mnt/user/appdata/tower-tracker-src && docker compose pull && docker compose up -d
-```
-
-**Which version.** `TT_VERSION` in `.env` picks it: `beta` follows the newest beta (the default until 1.0),
-`0.8.0` pins one, and after 1.0 `latest` follows stable releases. Every release is listed on GitHub with its
-changes ([CHANGELOG.md](CHANGELOG.md)).
-
-**Building from source instead** (no GitHub login needed): `git pull`, then
-`docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
-
-## Configuration (`.env`)
-
-Docker Compose reads `.env` from the folder with `docker-compose.yml`. After changing it, apply the change with:
-
-```bash
-docker compose up -d
-```
-
-Data is untouched by this.
-
-| Variable | Default | |
-|---|---|---|
-| `TT_VERSION` | `beta` | Which image to run: `beta`, an exact version like `0.8.0`, or `latest` after 1.0. |
-| `PORT` | `8080` | The port to open the app on. It's used both on Unraid and inside the container, so one setting changes both. |
-| `DATA_PATH` | `/mnt/cache/appdata/tower-tracker` | Host folder for the database, attachments and backups. |
-| `TZ` | `America/Chicago` | All dates, times, due badges, calendar days and schedules use this zone. |
-| `APP_PASSWORD` | — | Optional. When set, this is the password, and it can't be changed in the app. Single-quote it if it contains `$`. |
-| `MAX_UPLOAD_MB` | `25` | Largest attachment. |
-| `PUID` / `PGID` | `99` / `100` | Owner of the files in `DATA_PATH` (Unraid's nobody:users). |
-| `TRUST_PROXY` | — | Only when a reverse proxy sits in front: the proxy's LAN IP. Never `true`. |
-| `ANTHROPIC_API_KEY` | — | Optional. Turns on Claude ticket drafting (see below). |
-
-Advanced settings the app understands (add them under `environment:` in `docker-compose.yml` if needed):
-
-| Variable | Default | |
-|---|---|---|
-| `MAX_IMPORT_MB` | `2048` | Largest backup you can restore. |
-| `APP_PASSWORD_FILE` | — | Read the password from a file instead of `APP_PASSWORD`. |
-| `UMASK` | `0002` | Permissions for new files. |
-| `COOKIE_SECURE` | `auto` | `auto` sets the Secure flag on HTTPS requests. |
-| `SESSION_DAYS` | `90` | How long "Remember this device" lasts (it slides with use). |
-| `LOG_LEVEL` | `info` | |
-| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Claude model used to draft tickets. |
-| `ANTHROPIC_API_KEY_FILE` | — | Read the API key from a file instead of `ANTHROPIC_API_KEY`. |
-
-**Forgot the password?** Set `APP_PASSWORD` in `.env`, then run `docker compose up -d`. This sets the new password and
-signs out every device. You can remove the variable afterwards, and the password stays.
-
-## Reaching it from your phone (Tailscale)
-
-### Option A: Tailscale straight to the server (simplest)
-
-Use this if Tailscale runs on Unraid itself, or the NPM VM acts as a **subnet router** for your LAN.
-
-- On the phone, open `http://tower:8080` (with MagicDNS) or `http://<tailscale-or-lan-ip>:8080`.
-- Plain HTTP over Tailscale is fine: the tunnel is already encrypted, and everything in the app works.
-- Leave `TRUST_PROXY` unset.
-
-### Option B: an HTTPS name through Nginx Proxy Manager
-
-Because ports 80/443 are forwarded to NPM, a proxy host is reachable from the internet by anyone who knows or guesses
-its name. So do all of this:
-
-1. **Add a proxy host.** Forward `http` to `<unraid-ip>` on the app's `PORT`, and turn on **Websockets Support**
-   (harmless).
-2. **Restrict it with an Access List.** Under **Access Lists → Add**, allow only your LAN (e.g. `192.168.1.0/24`) and
-   Tailscale (`100.64.0.0/10`), and deny all. Select that list on the proxy host. Without it, the app's own password
-   is the only protection.
-3. **Raise the upload limit.** On the proxy host's **Advanced** tab, add
-   `client_max_body_size 2048m;` (or at least `MAX_UPLOAD_MB`). Otherwise uploads and restores over about 1 MB fail.
-4. **Trust the proxy.** Set `TRUST_PROXY=<NPM VM's LAN IP>` in `.env`, then run `docker compose up -d`. The login
-   rate limit then sees real client addresses, and cookies get the Secure flag over HTTPS.
-
-**Optional: HTTPS without NPM.** `tailscale serve` (or Unraid 7's per-container Tailscale) gives the app a
-`https://<name>.<tailnet>.ts.net` address that only your tailnet can reach.
-
-### Home Screen app
-
-On the iPhone, open the app in Safari, tap Share, then **Add to Home Screen**. It opens full-screen. The Home Screen
-app keeps its own login, so sign in once there (tick **Remember this device**).
-
-## Backup & restore
-
-- **Full backup by copying files.** With the container **stopped**, copying `DATA_PATH` (e.g. Unraid's **Appdata
-  Backup** plugin, which stops containers by default) is a complete backup: database, attachments and snapshots.
-  Restore by copying it back.
-- **Nightly snapshots.** The app saves a consistent copy of the database to `/data/backups/tower-YYYY-MM-DD.db` every
-  day and keeps the last 7. So even a copy taken while the container is running contains a good database. To use
-  one, stop the container, copy the snapshot over `tower.db` (and delete `tower.db-wal` / `tower.db-shm` if
-  present), then start the container.
-- **Export.** Go to **Menu → Backup & restore**.
-  - **Download ZIP**: everything, including attachment files.
-  - **Download JSON**: data only.
-  - Your password isn't included.
-- **Restore.** On the same page, choose a `.zip` or `.json` export.
-  1. The backup is checked, and you get a preview: card count, history, attachments, and a time-zone warning if it
-     came from a different `TZ`.
-  2. You type `RESTORE` to confirm.
-  3. Everything is replaced. The previous database (and attachments) is kept as `/data/backups/pre-restore-…`, and
-     the last 5 are kept.
-  4. You stay signed in.
-
-  Backups from older versions upgrade automatically; backups from a newer version are refused.
-- **Moving to a new server.** Export a ZIP, start a fresh container there, set its password, then restore the ZIP.
-
-## Settings
-
-**Menu → Settings** has everything that isn't about one card:
-
-- **Appearance**: Light, Dark or System (follows the device). Saved per device.
-- **General**:
-  - the ticket number format, with `{YY}` `{YYYY}` `{MM}` `{DD}` for the date and `{N}` for the day's counter (last);
-  - the app's address, used for links in Discord;
-  - the Claude model;
-  - where blocked cards go.
-- **Resolution reasons**: the list offered on Mark done. The first is the default.
-- **Submit page**: turn it on, copy or replace its link, choose where its tickets land, and edit request types and
-  their questions.
-- **Automation**: API tokens.
-- **Discord notifications**: the webhook, which messages to send, and a test button.
-- **Password and version.**
-
-## Submit page (tickets from other people)
-
-**How it works:**
-1. Turn it on in **Settings → Submit page** and share the link it shows (`…/submit/<long random key>`).
-2. Anyone with the link sees a short form: pick what they need help with, then answer that type's questions.
-3. They give a title and "what's wrong", plus tags you allow, up to 3 screenshots, and their name.
-4. Their answers are added below the description, and the title follows the type's pattern, e.g.
-   "Plex – Interstellar – stutters".
-5. They only ever see the form and the new ticket's number.
-
-**Request types.** They start as **General**, **Plex** and **Game servers**, from your old Discord templates. You can
-edit, reorder, turn off or add types, and change each type's questions: short or long text, pick one or several,
-date and time, and yes/no.
-
-**Where tickets land.** In Triage, or the column you choose, as normal cards with history noting
-"submit page (*name*)". With Discord set up, you get a message for each.
-
-**Limits.**
-- A wrong or old link shows "This page doesn't exist".
-- **New link** replaces the address at once.
-- Each address can send 5 tickets per 10 minutes, and the page 30 per hour.
-- Screenshots must be images.
-
-**Sharing it outside your network.** If you share the link beyond your LAN or tailnet through Nginx Proxy Manager,
-allow only `/submit/` and `/api/public/` (plus the app's `/assets/`; the icons at the site root are optional) past your access list, and keep the rest of the
-app behind it. One way is a custom location for `/submit` and `/api/public` without the access list on the same
-proxy host.
-
-## Automation and Discord
-
-- **Automation.** API tokens (**Settings → Automation**) let monitoring tools and scripts open tickets with
-  `POST /api/v1/cards`, and Uptime Kuma has its own hook. Recipes for Uptime Kuma, Unraid notifications, Home
-  Assistant and curl are in [docs/AUTOMATION.md](docs/AUTOMATION.md).
-- **Discord** (**Settings → Discord notifications**). Paste a channel's webhook URL (Channel settings → Integrations
-  → Webhooks). Then choose what to announce:
-  - new tickets from the submit page or automation;
-  - urgent cards, whether created that way or raised later (P0–P1 or S1 by default; you can change what counts);
-  - a card getting blocked;
-  - a daily summary of overdue and due-today cards, at a time you choose.
-
-  **Send test** and **Send summary now** check it. If your network blocks access from other machines, see
-  [docs/AUTOMATION.md](docs/AUTOMATION.md#if-a-tool-cant-reach-it). Nothing is sent unless a webhook is set, and only Discord webhook addresses are accepted.
-
-## Add ticket (Claude drafting)
-
-Press **Add ticket** in the top bar (or `Shift+N`).
-
-- **Describe the issue**: write what's wrong, as you'd tell a friend: symptoms, error messages, what changed, what
-  you tried. Press **Draft with Claude**. In 10–30 seconds you get a full ticket to review:
-  - a title and a Markdown description (Symptoms / Details / Next steps);
-  - priority from impact × urgency, and severity, each with a one-line reason;
-  - matching labels from your existing ones;
-  - a checklist of next steps;
-  - whether it's a ticket or a work card, an open work card it belongs under, and open cards it blocks, waits on or
-    relates to, each with a reason.
-
-  Change anything you like, then **Create ticket**. Nothing is saved until you do.
-- **Describe several issues**: paste notes, a to-do list or logs. Claude makes one card per issue, groups steps
-  under a work card and links cards that depend on each other. You see the same preview as an import, then
-  **Create** them all.
-- **Blank ticket**: the same form, empty.
-
-**Setup.**
-1. Create an API key at [console.anthropic.com](https://console.anthropic.com) (it needs a little prepaid credit).
-2. Put it in `.env` as `ANTHROPIC_API_KEY='…'`.
-3. Run `docker compose up -d`.
-
-The container log then says "Claude drafting on".
-
-**Cost and privacy.**
-- A draft costs roughly 1–3 cents with the default model.
-- To limit spending, the app allows 20 drafts per 10 minutes.
-- Only the text you type, your label names, today's date and the titles and ticket numbers of your open cards (up to
-  100, so Claude can suggest a work card and links) are sent to Anthropic. Descriptions, history and attachments are
-  never sent.
-
-If Claude can't be reached, or the key is wrong, the dialog says so and lets you fill in the ticket yourself.
-
-Without a key, Add ticket offers **Blank ticket** and **Import from JSON** (below), and the app never contacts the
-internet.
-
-## Card import (AI → cards, no API key)
-
-This is available when `ANTHROPIC_API_KEY` isn't set. Go to **Add ticket → Import from JSON** (or **Menu → Import cards**),
-then press **Copy AI prompt**.
-1. Give the prompt to an AI, then describe the problem.
-2. Paste its answer back.
-3. Preview, then Import.
-
-The format accepts priorities like `P1` or `high`, labels by name, due dates with an optional time, checklists and
-backdated work-log notes. Full format: [docs/CARD-IMPORT.md](docs/CARD-IMPORT.md).
-
-## Keyboard shortcuts (desktop)
-
-| Key | |
+| | |
 |---|---|
-| `n` | New card in Triage |
-| `Shift+N` | Add ticket |
-| `/` | Search |
-| `Esc` | Close the top menu, dialog or card |
-| `Space`, then the arrow keys, then `Space` | Move a focused card with the keyboard |
-| `Ctrl/⌘ + Enter` | Save the description or work-log note being edited |
+| [Install and configure](docs/INSTALL.md) | Setting it up on Unraid, `.env` settings, troubleshooting |
+| [Upgrading](docs/UPGRADING.md) | Updating, moving from a beta to 1.0, rolling back |
+| [Using Tower Tracker](docs/USING.md) | A tour of the board, cards, work cards, history, search and settings |
+| [Phone and remote access](docs/REMOTE-ACCESS.md) | Tailscale, Nginx Proxy Manager, the Home Screen app |
+| [Backups](docs/BACKUP.md) | Snapshots, export and restore, moving to a new server |
+| [Submit page](docs/SUBMIT-PAGE.md) | Letting other people file tickets |
+| [Discord notifications](docs/NOTIFICATIONS.md) | What gets announced and how to set it up |
+| [Automation](docs/AUTOMATION.md) | Uptime Kuma, Unraid, Home Assistant and scripts |
+| [Claude drafting](docs/AI-DRAFTING.md) | Turning a description into tickets, cost and privacy |
+| [Card import format](docs/CARD-IMPORT.md) | Creating cards from JSON (handy with any AI chat) |
+| [Automation API (v1)](docs/API-V1.md) | The stable API contract for tools and scripts |
+| [Backup file format](docs/BACKUP-FORMAT.md) | What's inside an export |
+| [Development](docs/DEVELOPMENT.md) | Building, testing and releasing |
+| [Security](SECURITY.md) | What the app protects and what's up to you |
+| [Changelog](CHANGELOG.md) | What changed in each version |
 
-## Troubleshooting
+## Versions
 
-- **"Setup code" not accepted.** A new code is printed every time the container starts. Use the newest one in the log.
-- **Login rate limit.** 5 wrong passwords lock that address out for 15 minutes. Restarting the container clears it.
-- **Port changes don't take effect.** Change `PORT` in `.env` (not the numbers in `docker-compose.yml`), then run
-  `docker compose up -d`.
-- **Permission errors on `/data`.** Check that `PUID`/`PGID` match the owner you expect. The container fixes ownership
-  of files inside `DATA_PATH` on start.
-- **Logged out unexpectedly while testing two copies on one machine.** Cookies are per host, not per port, so two
-  Tower Tracker instances on `localhost:8080` and `localhost:8090` sign each other out. Use different host names.
-
----
-
-## Development
-
-```bash
-npm install
-npm run dev:server
-```
-
-In a second terminal, start the UI with hot reload (it proxies `/api` to the server):
-
-```bash
-npm run dev:web
-```
-
-Run the server and web unit tests:
-
-```bash
-npm test
-```
-
-Run the end-to-end tests (desktop and iPhone sizes, in your installed Chrome) against a fresh build:
-
-```bash
-npm run build && npm run e2e
-```
-
-GitHub Actions runs all of these, plus a Docker build, on every push. Pushing a tag publishes an image:
-`v0.10.0-beta` → `:0.10.0` and `:beta`; `v1.0.0-rc.1` → `:rc`; `v1.0.0` → `:1.0.0`, `:1.0`, `:1` and `:latest`.
-The tag has to match the version in `package.json`, and `CHANGELOG.md` needs a section for it (it becomes the
-release notes).
-
-Typecheck everything:
-
-```bash
-npm run typecheck
-```
-
-Build the production bundles:
-
-```bash
-npm run build
-```
-
-In development the server keeps its data in `server/data/`. Set `DATA_DIR` to put it somewhere else.
-
-Try the container on a desktop. Data goes to a named volume instead of the Unraid path:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.local.yml up -d --build
-```
-
-Layout:
-- `shared/`: API types and validation shared by both sides.
-- `server/`: Fastify and SQLite (`services/` holds all the logic, `test/` the tests).
-- `web/`: React and Vite.
-- `docker/entrypoint.sh`: handles PUID/PGID.
+Tagged releases are published as images at `ghcr.io/bernie-sandler/tower-tracker`. Pick a channel with
+`TT_VERSION` in `.env`: `latest` for stable releases, `rc` for release candidates, `beta` for betas, or an exact
+version like `1.0.0`. Updating is `docker compose pull && docker compose up -d`; the database upgrades itself
+after saving a copy. See [docs/UPGRADING.md](docs/UPGRADING.md).

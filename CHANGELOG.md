@@ -1,7 +1,29 @@
 # Changelog
 
-Versions follow [semver](https://semver.org). While the app is in alpha (0.x), each minor version is a feature
-release. The version is shown in **Settings**, in the container log on start, and in every backup export.
+Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x never break your data, backups or
+automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
+the container log on start, and in every backup export.
+
+## 1.0.0: Stable
+
+1.0 adds no new features. It's 0.10 made trustworthy for the long run, and it's released as release candidates
+(`v1.0.0-rc.N`, image `:rc`) for a couple of weeks of real use before the final `v1.0.0` (`:latest`).
+
+- **Promises from here on:** every 1.x reads every older database and backup; database changes only add; the
+  automation API (`/api/v1`) is frozen; breaking changes wait for 2.0.
+- **Upgrade tested.** Every older schema is now tested on every build, both upgraded in place and restored from a
+  backup. Before release, real data from 0.5, 0.6, 0.7, 0.9 and 0.10 was upgraded and restored into 1.0, along with
+  real snapshots.
+- **Faster boards when Done grows.** The Done column shows the 50 most recently finished cards, with **Show N
+  older cards** for the rest. A board with 1,900 finished cards went from about 50,000 page elements to 5,000, and
+  renders roughly eight times faster.
+- **Contrast.** Secondary text in the dark theme is a little lighter, so every screen passes the 4.5:1 contrast
+  check in both themes.
+- **Documentation rewritten.** The README is now a short overview. Each topic has its own page under `docs/`
+  (install, upgrading, using it, remote access, backups, submit page, notifications, automation, Claude drafting),
+  plus two frozen specs: the [automation API](docs/API-V1.md) and the [backup format](docs/BACKUP-FORMAT.md).
+- **For developers:** `npm run seed:perf -w @tt/server -- <folder>` creates a 2,000-card board and times it; new
+  tests cover keyboard moves with screen-reader announcements and the `/api/v1` contract.
 
 ## 0.10.0: Resolutions, light theme, smarter Claude (beta)
 

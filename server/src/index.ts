@@ -8,17 +8,15 @@ import { systemClock } from './clock';
 import { ConfigError, loadConfig, type Config } from './config';
 import { openDatabase } from './db/connection';
 import { migrate } from './db/migrate';
-import { seedDefaults } from './db/seed';
+import { prepareData } from './db/prepare';
 import { createLogger } from './logger';
 import type { Ctx } from './services/context';
 import { createClaudeDrafter } from './services/aiDraft';
 import { backupBeforeMigrate, dailySnapshot } from './services/backup';
-import { assignTicketNumbers } from './services/cards';
 import { DiscordNotifier } from './services/notify';
 import { runDueTemplates } from './services/recurring';
 import { getGeneralSettings } from './services/settings';
 import { localDateOf } from './lib/localdate';
-import { rebuildSearch, searchIndexLooksConsistent } from './services/search';
 
 function prepareDataDir(config: Config): void {
   for (const dir of [config.dataDir, config.attachmentsDir, config.backupsDir, config.tmpDir]) {
@@ -70,10 +68,10 @@ async function main(): Promise<void> {
       notifier.handle(ctx, event).catch((err) => log.warn(`Discord notification failed: ${(err as Error).message}`));
     });
   };
-  if (seedDefaults(ctx)) log.info('Seeded default columns, labels and maintenance templates');
-  const numbered = assignTicketNumbers(ctx);
-  if (numbered) log.info(`Gave ticket numbers to ${numbered} existing card(s)`);
-  if (!searchIndexLooksConsistent(ctx)) log.info(`Rebuilt search index (${rebuildSearch(ctx)} cards)`);
+  const prepared = prepareData(ctx);
+  if (prepared.seeded) log.info('Seeded default columns, labels and maintenance templates');
+  if (prepared.numbered) log.info(`Gave ticket numbers to ${prepared.numbered} existing card(s)`);
+  if (prepared.reindexed !== null) log.info(`Rebuilt search index (${prepared.reindexed} cards)`);
 
   const auth: AuthState = await bootstrapAuth(ctx, config.appPassword, log);
   const limiter = new LoginRateLimiter(systemClock);
