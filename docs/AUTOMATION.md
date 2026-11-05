@@ -83,6 +83,31 @@ curl -s -X POST http://tower:8080/api/v1/cards \
 
 `jq` builds the JSON, so quotes in a message can't break it.
 
+To install it:
+
+1. Create a token named "Unraid" (see [step 1](#1-create-a-token)).
+2. In the Unraid terminal, save the script as an agent on the flash drive:
+
+   ```bash
+   mkdir -p /boot/config/plugins/dynamix/notifications/agents
+   nano /boot/config/plugins/dynamix/notifications/agents/TowerTracker.sh
+   ```
+
+   Put your token in place of `tt_…`. The script runs on Unraid itself, so `http://localhost:8080` works as the
+   address. Unraid runs agents with `bash`, so the file doesn't need to be executable.
+3. Check `jq` is there with `which jq`. Recent Unraid releases include it.
+4. In **Settings → Notification Settings**, tick **Agents** for the levels that should open tickets. Warnings and
+   Alerts is a good start; Notices are mostly routine.
+5. Send a test alert. A P1 card "Tower Tracker test" should appear in Triage:
+
+   ```bash
+   /usr/local/emhttp/webGui/scripts/notify -e "Test" -s "Tower Tracker test" -d "Hello from Unraid" -i "alert"
+   ```
+
+Unraid never sends a recovery, so these tickets don't close themselves. The subject is the dedupe key: a subject
+that changes each time (a temperature, say) opens a new ticket each time. Custom agents aren't an official Unraid
+feature, so re-run the test after big Unraid upgrades.
+
 ## Home Assistant
 
 ```yaml

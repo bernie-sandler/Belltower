@@ -1,4 +1,21 @@
-# Tower Tracker
+<p align="center">
+  <img src="web/public/favicon.svg" alt="Tower Tracker logo" width="120" height="120">
+</p>
+
+<h1 align="center">Tower Tracker</h1>
+
+<p align="center">
+  <a href="https://github.com/bernie-sandler/tower-tracker/releases"><img alt="Release" src="https://img.shields.io/github/v/release/bernie-sandler/tower-tracker?include_prereleases&sort=semver"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
+<p align="center">
+  <img alt="Built with TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white">
+  <img alt="Built with React" src="https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB">
+  <img alt="Built with Fastify" src="https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white">
+  <img alt="Built with SQLite" src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white">
+  <img alt="Built with Docker" src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white">
+</p>
 
 A small, self-hosted issue tracker for a homelab. Think of it as a Trello board that remembers everything: when the
 parity check started throwing errors, what you tried, which cable you swapped, and how it finally got fixed.

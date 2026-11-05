@@ -6,6 +6,11 @@ Compose works the same way; only the paths change.
 Nothing gets built on the server. Tower pulls a ready-made image from GitHub
 (`ghcr.io/bernie-sandler/tower-tracker`).
 
+Prefer Unraid's own **Add Container** form over Compose? Copy [unraid/tower-tracker.xml](../unraid/tower-tracker.xml)
+to `/boot/config/plugins/dockerMan/templates-user/my-tower-tracker.xml` on the flash drive, then pick
+**tower-tracker** from the Template list on **Docker → Add Container**. Every setting below has a field there
+(the advanced ones appear under **Show more settings**), and Unraid passes its own time zone in as `TZ`.
+
 ## 1. Get the stack files onto the server
 
 Clone the repository somewhere **outside** the folder that will hold your data. Only `docker-compose.yml` and your
@@ -84,7 +89,7 @@ That recreates the container and leaves your data alone.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `TT_VERSION` | `beta` | Which image to run: `latest` (stable releases), `rc`, `beta`, or an exact version like `1.0.0`. |
+| `TT_VERSION` | `latest` | Which image to run: `latest` (stable releases), `rc`, `beta`, or an exact version like `1.0.0`. |
 | `PORT` | `8080` | The port the app is reached on. One setting covers both Unraid and the container. |
 | `DATA_PATH` | `/mnt/cache/appdata/tower-tracker` | The host folder for the database, attachments and backups. |
 | `TZ` | `America/Chicago` | Your time zone. Every date, due badge, calendar day and schedule uses it. |

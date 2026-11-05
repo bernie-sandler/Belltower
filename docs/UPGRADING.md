@@ -35,17 +35,17 @@ Applied database migration(s): 6
 | `latest` | The newest stable release. The right choice from 1.0 on. |
 | `1` or `1.0` | The newest release within 1.x or 1.0.x. |
 | `1.0.0` | Exactly that version, until you change it. |
-| `rc` | The newest release candidate. |
+| `rc` | The newest release candidate. It only moves when there's a new one, so it can fall behind `latest`. |
 | `beta` | The newest beta (0.8–0.10). Not updated after 1.0. |
 
 ## Moving from a beta to 1.0
 
-If you've been on `beta`, your data comes along untouched. Every database and backup from 0.5 onwards is checked
+If you've been on `beta` or `rc`, your data comes along untouched. Every database and backup from 0.5 onwards is checked
 against 1.0 before release, both upgraded in place and restored from an export.
 
 1. Optional but nice: export a ZIP (**Menu → Backup & restore → Download ZIP**) and keep it somewhere off the
    server.
-2. In `.env`, change `TT_VERSION=beta` to `TT_VERSION=latest` (or `rc` to try a release candidate).
+2. In `.env`, set `TT_VERSION=latest`.
 3. Run `docker compose pull && docker compose up -d`.
 
 Nothing in your `.env` needs to change beyond that.

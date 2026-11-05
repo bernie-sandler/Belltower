@@ -6,8 +6,8 @@ the container log on start, and in every backup export.
 
 ## 1.0.0: Stable
 
-1.0 adds no new features. It's 0.10 made trustworthy for the long run, and it's released as release candidates
-(`v1.0.0-rc.N`, image `:rc`) for a couple of weeks of real use before the final `v1.0.0` (`:latest`).
+1.0 adds no new features. It's 0.10 made trustworthy for the long run, and it ran as a release candidate on a real
+server first.
 
 - **Promises from here on:** every 1.x reads every older database and backup; database changes only add; the
   automation API (`/api/v1`) is frozen; breaking changes wait for 2.0.
@@ -22,8 +22,19 @@ the container log on start, and in every backup export.
 - **Documentation rewritten.** The README is now a short overview. Each topic has its own page under `docs/`
   (install, upgrading, using it, remote access, backups, submit page, notifications, automation, Claude drafting),
   plus two frozen specs: the [automation API](docs/API-V1.md) and the [backup format](docs/BACKUP-FORMAT.md).
+- **Stable by default.** `docker-compose.yml` and `.env.example` now use `latest`. If your `.env` says `beta` or
+  `rc`, change it to `latest`, because neither of those follows 1.0. See
+  [docs/UPGRADING.md](docs/UPGRADING.md#moving-from-a-beta-to-10).
+- **More ways to set it up on Unraid.** There's now a template for Unraid's **Add Container** form
+  ([docs/INSTALL.md](docs/INSTALL.md)), and step-by-step setup for turning Unraid's alerts into tickets
+  ([docs/AUTOMATION.md](docs/AUTOMATION.md)).
+- **MIT license.** See [LICENSE](LICENSE).
 - **For developers:** `npm run seed:perf -w @tt/server -- <folder>` creates a 2,000-card board and times it; new
   tests cover keyboard moves with screen-reader announcements and the `/api/v1` contract.
+
+**Known gap:** Claude drafting is tested against a stand-in for Claude, but hasn't been run against the live API yet.
+It's optional and stays off without an API key. If a draft fails, the dialog says so and you can fill the ticket in
+by hand.
 
 ## 0.10.0: Resolutions, light theme, smarter Claude (beta)
 
