@@ -8,7 +8,7 @@ services:
     # Prebuilt image from GitHub. TT_VERSION in .env picks the channel or an exact version
     # (latest, rc, beta, 1.0.0, …). To build from this folder instead:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-    image: ghcr.io/bernie-sandler/tower-tracker:${TT_VERSION:-beta}
+    image: ghcr.io/bernie-sandler/tower-tracker:${TT_VERSION:-latest}
     container_name: tower-tracker
     restart: unless-stopped
     # Proper PID 1 (signal forwarding, zombie reaping); the app checkpoints SQLite on SIGTERM.
