@@ -4,6 +4,16 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.1.0: Drag whole folders
+
+- **Move a folder in one go.** Tickets whose work card is in another column sit under a folder header. Drag that
+  header to another column and all its tickets go with it: with the mouse, a long press on a phone, or `Space` and
+  the left and right arrow keys. A click still folds it, and a folded folder brings its hidden tickets along.
+- **All or nothing.** A folder moves as one step, so a failure can't leave it split between columns. If a ticket is
+  blocked, or went to the Trash on another device, nothing moves and a message names the ticket.
+- **Nothing to do when upgrading.** The database, backups and the automation API (`/api/v1`) are unchanged. The web
+  app gets one new route of its own, `POST /api/cards/move-many`.
+
 ## 1.0.0: Stable
 
 1.0 adds no new features. It's 0.10 made trustworthy for the long run, and it ran as a release candidate on a real

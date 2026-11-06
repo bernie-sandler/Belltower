@@ -207,6 +207,36 @@
 .group-header .group-toggle {
   color: var(--text);
   font-weight: 600;
+  /* A drag handle too: on a phone, a long press drags the folder instead of selecting its title. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Icon, title and count of a folder header; its own box only in the drag overlay. */
+.group-label {
+  display: contents;
+}
+
+.group-label.is-overlay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--tile-hover);
+  box-shadow: var(--shadow-drag);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  transform: rotate(2deg);
+  cursor: grabbing;
+}
+
+/* A folder being dragged: its header stays as a faint marker. */
+.group-header.is-placeholder {
+  opacity: 0.4;
 }
 
 .group-title {

@@ -5,21 +5,28 @@
 // only; onDragEnd sends exactly one move (toColumnId + afterCardId). After the drop the local
 // order stays on screen until the optimistic cache update arrives ("settle"), so the card never
 // flickers back to its old spot.
+//
+// A folder header (tickets whose work card is in another column) drags its tickets as one block:
+// they move together in the local copy, and the drop sends them all in one request, so a failure
+// can't leave the folder split between columns.
 
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import type { BoardResponse, Column } from '@tt/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { groupCards, groupedOrder } from '../../api/board';
-import type { MoveVars } from '../../api/cards';
+import type { MoveCardsVars, MoveVars } from '../../api/cards';
 import { setDragging } from '../../lib/dragging';
-import { parseDndId } from './dnd';
+import { parseDndId, parseGroupDndId } from './dnd';
 
 /** Column id → ordered ids of saved (non-temporary) cards. */
 export type Items = Map<number, number[]>;
 
 interface DragState {
-  activeId: number;
+  /** The dragged cards in order: one card, or a folder's tickets. */
+  activeIds: number[];
+  /** Set when a folder is dragged. */
+  group: { parentId: number; firstId: number } | null;
   items: Items;
   originColumn: number;
   originAfter: number | null;
@@ -46,6 +53,7 @@ export function useBoardDnd(
   board: BoardResponse,
   columns: Column[],
   onMove: (move: MoveVars, onSettled: () => void) => void,
+  onMoveGroup: (move: MoveCardsVars, onSettled: () => void) => void,
 ) {
   const derived = useMemo(() => itemsFromBoard(board, columns), [board, columns]);
   const dragRef = useRef<DragState | null>(null);
@@ -73,14 +81,23 @@ export function useBoardDnd(
   };
 
   const onDragStart = ({ active, activatorEvent }: DragStartEvent) => {
-    const parsed = parseDndId(active.id);
-    if (!parsed || parsed.kind !== 'card') return;
-    const col = findColumn(items, parsed.id);
+    const group = parseGroupDndId(active.id);
+    const parsed = group ? null : parseDndId(active.id);
+    const first = group?.firstId ?? (parsed?.kind === 'card' ? parsed.id : null);
+    if (first === null) return;
+    const col = findColumn(items, first);
     if (col === null) return;
     const list = items.get(col) ?? [];
-    const index = list.indexOf(parsed.id);
+    let activeIds = [first];
+    if (group) {
+      // The folder's tickets in this column (collapsed ones too: they're still in the list).
+      const kids = new Set(board.cards.filter((c) => c.parentId === group.parentId).map((c) => c.id));
+      activeIds = list.filter((id) => kids.has(id));
+    }
+    const index = list.indexOf(first);
     update({
-      activeId: parsed.id,
+      activeIds,
+      group,
       items: new Map(items),
       originColumn: col,
       originAfter: index > 0 ? (list[index - 1] ?? null) : null,
@@ -94,7 +111,9 @@ export function useBoardDnd(
     if (!state || !over) return;
     const target = parseDndId(over.id);
     if (!target) return;
-    const from = findColumn(state.items, state.activeId);
+    const moving = new Set(state.activeIds);
+    if (target.kind === 'card' && moving.has(target.id)) return;
+    const from = findColumn(state.items, state.activeIds[0]!);
     const to = target.kind === 'col' ? target.id : findColumn(state.items, target.id);
     if (from === null || to === null || from === to) return;
 
@@ -108,8 +127,8 @@ export function useBoardDnd(
       if (overIndex >= 0) index = overIndex + (below ? 1 : 0);
     }
     const next: Items = new Map(state.items);
-    next.set(from, fromList.filter((id) => id !== state.activeId));
-    next.set(to, [...toList.slice(0, index), state.activeId, ...toList.slice(index)]);
+    next.set(from, fromList.filter((id) => !moving.has(id)));
+    next.set(to, [...toList.slice(0, index), ...state.activeIds, ...toList.slice(index)]);
     update({ ...state, items: next });
   };
 
@@ -119,13 +138,15 @@ export function useBoardDnd(
     if (!state || !over) return; // dropped outside the board: nothing changes
 
     let finalItems = state.items;
-    const col = findColumn(finalItems, state.activeId);
+    const activeId = state.activeIds[0]!;
+    const col = findColumn(finalItems, activeId);
     if (col === null) return;
     const target = parseDndId(over.id);
-    if (target?.kind === 'card' && target.id !== state.activeId) {
-      // Within-column reorder: the sortable strategy only moved things visually.
+    if (!state.group && target?.kind === 'card' && target.id !== activeId) {
+      // Within-column reorder: the sortable strategy only moved things visually. (Folders aren't
+      // sortable items, so within their own column they stay put.)
       const list = finalItems.get(col) ?? [];
-      const fromIndex = list.indexOf(state.activeId);
+      const fromIndex = list.indexOf(activeId);
       const toIndex = list.indexOf(target.id);
       if (toIndex >= 0 && fromIndex !== toIndex) {
         finalItems = new Map(finalItems);
@@ -134,19 +155,23 @@ export function useBoardDnd(
     }
 
     const list = finalItems.get(col) ?? [];
-    const index = list.indexOf(state.activeId);
+    const index = list.indexOf(activeId);
     const afterCardId = index > 0 ? (list[index - 1] ?? null) : null;
     if (col === state.originColumn && afterCardId === state.originAfter) return; // no change
 
     setSettle({ items: finalItems, base: board });
-    onMove({ cardId: state.activeId, toColumnId: col, afterCardId }, () => setSettle(null));
+    if (state.group) onMoveGroup({ cardIds: state.activeIds, toColumnId: col, afterCardId }, () => setSettle(null));
+    else onMove({ cardId: activeId, toColumnId: col, afterCardId }, () => setSettle(null));
   };
 
   const onDragCancel = () => finish();
 
   return {
     items,
-    activeId: drag?.activeId ?? null,
+    /** The dragged card (null while a folder is dragged). */
+    activeId: drag && !drag.group ? drag.activeIds[0]! : null,
+    /** The dragged folder: its work card and how many tickets come along. */
+    activeGroup: drag?.group ? { parentId: drag.group.parentId, count: drag.activeIds.length } : null,
     isDragging: drag !== null,
     handlers: { onDragStart, onDragOver, onDragEnd, onDragCancel },
   };

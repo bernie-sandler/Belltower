@@ -9,7 +9,6 @@ import {
   type Announcements,
   type UniqueIdentifier,
 } from '@dnd-kit/core';
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { BoardResponse, CardTile } from '@tt/shared';
 import { Archive, ArrowRightLeft, ExternalLink, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -17,7 +16,7 @@ import { createPortal } from 'react-dom';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useDeleteCard, useCompleteCard,
-  useMoveCard, useRestoreCard } from '../../api/cards';
+  useMoveCard, useMoveCards, useRestoreCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
 import { cls } from '../../lib/cls';
 import { useShortcut } from '../../lib/keyboard';
@@ -32,7 +31,7 @@ import { Menu } from '../common/Menu';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { useShell } from '../shell/ShellContext';
 import { AddColumn } from './AddColumn';
-import { Column } from './Column';
+import { Column, GroupHeaderView } from './Column';
 import { ColumnPills } from './ColumnPills';
 import { FilterBar, matchesFilter, useBoardFilter } from './FilterBar';
 import {
@@ -40,8 +39,10 @@ import {
   collisionDetection,
   dropAnimation,
   keyboardCodes,
+  keyboardCoordinates,
   measuring,
   parseDndId,
+  parseGroupDndId,
 } from './dnd';
 import { TileView } from './Tile';
 import { findColumn, useBoardDnd } from './useBoardDnd';
@@ -71,6 +72,7 @@ function BoardView({ board }: { board: BoardResponse }) {
   const openCard = useCallback((id: number) => navigateRef.current(id), []);
   const isMobile = useIsMobile();
   const moveCard = useMoveCard();
+  const moveCards = useMoveCards();
   const completeCard = useCompleteCard();
   const deleteCard = useDeleteCard();
   const undelete = useRestoreCard('undelete');
@@ -138,6 +140,24 @@ function BoardView({ board }: { board: BoardResponse }) {
               ),
           },
         });
+      },
+    });
+  }, (move, onSettled) => {
+    // A folder: all its tickets or none. The server moves them in one transaction; this just saves
+    // the round trip when one blocked ticket is already known to keep the folder out of Done.
+    const blocked = move.cardIds.map((id) => completionBlocked(board, id, move.toColumnId)).find((m) => m !== null);
+    if (blocked) {
+      toast(blocked, { kind: 'warning' });
+      onSettled();
+      return;
+    }
+    const target = board.columns.find((c) => c.id === move.toColumnId);
+    const intoDone = target?.role === 'done' && board.cards.some((c) => move.cardIds.includes(c.id) && c.columnId !== target.id);
+    const n = move.cardIds.length;
+    moveCards.mutate(move, {
+      onSettled,
+      onSuccess: () => {
+        if (intoDone) toast(`${n} ticket${n === 1 ? ' is' : 's are'} done.`, { kind: 'success' });
       },
     });
   });
@@ -255,7 +275,7 @@ function BoardView({ board }: { board: BoardResponse }) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes }),
+    useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates, keyboardCodes }),
   );
 
   // Screen reader announcements in words (card titles and column names, not ids).
@@ -265,6 +285,8 @@ function BoardView({ board }: { board: BoardResponse }) {
   });
   const announcements = useMemo<Announcements>(() => {
     const cardName = (id: UniqueIdentifier) => {
+      const g = parseGroupDndId(id);
+      if (g) return `folder “${latest.current.tilesById.get(g.parentId)?.title ?? 'work card'}”`;
       const p = parseDndId(id);
       return p ? `“${latest.current.tilesById.get(p.id)?.title ?? 'card'}”` : 'card';
     };
@@ -357,7 +379,11 @@ function BoardView({ board }: { board: BoardResponse }) {
         </div>
         {createPortal(
           <DragOverlay dropAnimation={dropAnimation}>
-            {activeTile ? <TileView tile={activeTile} labelsById={labelsById} now={now} overlay /> : null}
+            {activeTile ? (
+              <TileView tile={activeTile} labelsById={labelsById} now={now} overlay />
+            ) : dnd.activeGroup ? (
+              <GroupHeaderView parent={tilesById.get(dnd.activeGroup.parentId)} count={dnd.activeGroup.count} overlay />
+            ) : null}
           </DragOverlay>,
           document.body,
         )}
