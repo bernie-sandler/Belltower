@@ -5,6 +5,7 @@ import type {
   CardSource,
   CardTile,
   MoveCardResponse,
+  MoveCardsResponse,
   Priority,
   Severity,
 } from '@tt/shared';
@@ -654,6 +655,41 @@ export function moveCard(
     writePositions(ctx, targetIds);
     orders[String(target.id)] = targetIds;
     return { card: getCardTile(ctx, id), orders };
+  });
+}
+
+/**
+ * Moves several cards as one block (a folder's tickets) to `toColumnId`, in the given order, the
+ * first directly after `afterCardId` (null = top). One transaction, so all of them move or none
+ * do. The checks run first, on every card, so the answer doesn't depend on the order: a card
+ * blocked by another card in the block is still blocked, as it would be if moved on its own.
+ */
+export function moveCards(
+  ctx: Ctx,
+  ids: number[],
+  input: { toColumnId: number; afterCardId: number | null },
+): MoveCardsResponse {
+  return tx(ctx, () => {
+    const target = targetColumn(ctx, input.toColumnId);
+    const cards = ids.map((id) => getCardRow(ctx, id));
+    for (const card of cards) {
+      if (card.deleted_at) throw conflict('card_deleted', `“${card.title}” is in the Trash.`);
+      if (card.archived_at) throw conflict('card_archived', `“${card.title}” was archived.`);
+      if (target.role === 'done' && card.column_id !== target.id) assertNotBlocked(ctx, card);
+    }
+
+    let after = input.afterCardId;
+    for (const card of cards) {
+      moveCard(ctx, card.id, { toColumnId: target.id, afterCardId: after });
+      after = card.id;
+    }
+
+    // Read once everything has moved: each single move only knows the order at its own step.
+    const orders: Record<string, number[]> = {};
+    for (const columnId of new Set([target.id, ...cards.map((c) => c.column_id)])) {
+      orders[String(columnId)] = visibleIdsInColumn(ctx, columnId);
+    }
+    return { cards: ids.map((id) => getCardTile(ctx, id)), orders };
   });
 }
 

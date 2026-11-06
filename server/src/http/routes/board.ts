@@ -4,6 +4,7 @@ import {
   DeleteColumnQuery,
   LabelBody,
   MoveCardBody,
+  MoveCardsBody,
   ReorderBody,
   CompleteCardBody,
   BlockedColumnBody,
@@ -24,6 +25,7 @@ import {
   getBoard,
   getCard,
   moveCard,
+  moveCards,
   restoreCard,
   sortColumnByPriority,
   undeleteCard,
@@ -90,6 +92,10 @@ export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.get('/api/cards/:id', async (req) => getCard(ctx, idParam(req)));
   app.patch('/api/cards/:id', async (req) => updateCard(ctx, idParam(req), parse(UpdateCardBody, req.body)));
   app.post('/api/cards/:id/move', async (req) => moveCard(ctx, idParam(req), parse(MoveCardBody, req.body)));
+  app.post('/api/cards/move-many', async (req) => {
+    const { cardIds, ...position } = parse(MoveCardsBody, req.body);
+    return moveCards(ctx, cardIds, position);
+  });
   app.post('/api/cards/:id/complete', async (req) => completeCard(ctx, idParam(req), parse(CompleteCardBody, req.body)));
   app.delete('/api/cards/:id', async (req, reply) => {
     deleteCard(ctx, idParam(req));

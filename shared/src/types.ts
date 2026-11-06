@@ -187,6 +187,13 @@ export interface MoveCardResponse {
   orders: Record<string, number[]>;
 }
 
+export interface MoveCardsResponse {
+  /** The moved cards, in the order they were sent. */
+  cards: CardTile[];
+  /** Authoritative order (board-visible card ids) for every column the move touched, keyed by column id. */
+  orders: Record<string, number[]>;
+}
+
 export interface ColumnRef {
   id: number;
   name: string;

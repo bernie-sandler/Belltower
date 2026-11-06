@@ -3,7 +3,7 @@
 
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BoardResponse, CardDetail, CardTile, Column } from '@tt/shared';
-import type { CreateCardVars, MoveVars } from './cards';
+import type { CreateCardVars, MoveCardsVars, MoveVars } from './cards';
 import { api } from './client';
 import { qk } from './keys';
 
@@ -212,6 +212,17 @@ export function moveCardLocally(
   return { ...board, cards: board.cards.map((c) => updated.get(c.id) ?? c) };
 }
 
+/** Local version of POST /api/cards/move-many: the cards in order, each right after the one before. */
+export function moveCardsLocally(board: BoardResponse, v: MoveCardsVars): BoardResponse {
+  let next = board;
+  let after = v.afterCardId;
+  for (const id of v.cardIds) {
+    next = moveCardLocally(next, id, v.toColumnId, after);
+    after = id;
+  }
+  return next;
+}
+
 /**
  * The anchor for "put this card at the bottom of column X": the last visible card there,
  * ignoring the card itself and unsaved (temporary) cards. Null means the column is empty (= top).
@@ -241,7 +252,10 @@ export function currentAnchor(board: BoardResponse, cardId: number): number | nu
 export const BOARD_ORDER_KEY = ['board-order'] as const;
 export const BOARD_ORDER_SCOPE = { id: 'board-order' };
 
-export type BoardOp = { kind: 'create'; vars: CreateCardVars } | { kind: 'move'; vars: MoveVars };
+export type BoardOp =
+  | { kind: 'create'; vars: CreateCardVars }
+  | { kind: 'move'; vars: MoveVars }
+  | { kind: 'moveMany'; vars: MoveCardsVars };
 
 /** Queued and in-flight board-order operations, oldest (the one running) first. */
 export function queuedBoardOps(qc: QueryClient): BoardOp[] {
@@ -252,15 +266,26 @@ export function queuedBoardOps(qc: QueryClient): BoardOp[] {
     .flatMap((m): BoardOp[] => {
       const vars = m.state.variables;
       if (vars === undefined) return [];
-      return m.options.mutationKey?.[1] === 'create'
-        ? [{ kind: 'create', vars: vars as CreateCardVars }]
-        : [{ kind: 'move', vars: vars as MoveVars }];
+      const kind = m.options.mutationKey?.[1];
+      if (kind === 'create') return [{ kind: 'create', vars: vars as CreateCardVars }];
+      if (kind === 'move-many') return [{ kind: 'moveMany', vars: vars as MoveCardsVars }];
+      return [{ kind: 'move', vars: vars as MoveVars }];
     });
 }
 
 /** The operations queued behind `self` (called from `self`'s own callbacks). */
 export function opsAfter(qc: QueryClient, self: unknown): BoardOp[] {
   return queuedBoardOps(qc).filter((op) => op.vars !== self);
+}
+
+/** The cards these operations will move. */
+export function cardsMovedBy(ops: BoardOp[]): Set<number> {
+  return new Set(
+    ops.flatMap((op) => {
+      if (op.kind === 'move') return [op.vars.cardId];
+      return op.kind === 'moveMany' ? op.vars.cardIds : [];
+    }),
+  );
 }
 
 /** The optimistic tile for a card that is being created. */
@@ -295,6 +320,7 @@ export function tempTile(board: BoardResponse, v: CreateCardVars): CardTile {
 
 export function applyBoardOp(board: BoardResponse, op: BoardOp): BoardResponse {
   if (op.kind === 'move') return moveCardLocally(board, op.vars.cardId, op.vars.toColumnId, op.vars.afterCardId);
+  if (op.kind === 'moveMany') return moveCardsLocally(board, op.vars);
   if (board.cards.some((c) => c.id === op.vars.tempId)) return board;
   return { ...board, cards: [...board.cards, tempTile(board, op.vars)] };
 }

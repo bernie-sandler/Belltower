@@ -16,7 +16,7 @@ export class Api {
   }
 
   board() {
-    return this.call<{ columns: { id: number; name: string; role: string | null }[]; cards: { id: number; title: string; columnId: number }[] }>(
+    return this.call<{ columns: { id: number; name: string; role: string | null }[]; cards: { id: number; title: string; columnId: number; parentId: number | null }[] }>(
       'GET',
       '/api/board',
     );

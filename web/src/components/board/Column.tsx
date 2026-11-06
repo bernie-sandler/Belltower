@@ -1,12 +1,13 @@
-import { useDroppable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { CardTile, Column as ColumnType, Label } from '@tt/shared';
 import { ChevronDown, ChevronRight, FolderOpen, Plus } from 'lucide-react';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { cls } from '../../lib/cls';
+import { justDropped } from '../../lib/dragging';
 import { AddCardComposer } from './AddCardComposer';
 import { ColumnHeader } from './ColumnHeader';
-import { cardDndId, columnDndId } from './dnd';
+import { cardDndId, columnDndId, groupDndId } from './dnd';
 import { SortableTile, TileView } from './Tile';
 
 /**
@@ -66,14 +67,14 @@ export const Column = memo(function Column({
   // cardIds so drop positions are still computed against the real order.
   const rows = useMemo(() => {
     const here = new Set(cardIds);
-    const out: ({ kind: 'card'; id: number; nested: boolean; group?: { count: number } } | { kind: 'header'; parentId: number; count: number })[] = [];
+    const out: ({ kind: 'card'; id: number; nested: boolean; group?: { count: number } } | { kind: 'header'; parentId: number; firstId: number; count: number })[] = [];
     let open: number | null = null;
     for (const id of cardIds) {
       const tile = tilesById.get(id);
       if (!tile) continue;
       const parent = tile.parentId;
       if (parent !== null && !here.has(parent) && open !== parent) {
-        out.push({ kind: 'header', parentId: parent, count: cardIds.filter((x) => tilesById.get(x)?.parentId === parent).length });
+        out.push({ kind: 'header', parentId: parent, firstId: id, count: cardIds.filter((x) => tilesById.get(x)?.parentId === parent).length });
       }
       open = parent ?? (tile.kind === 'work' ? tile.id : null);
       if (parent !== null && collapsed.has(parent)) continue;
@@ -118,27 +119,17 @@ export const Column = memo(function Column({
         <SortableContext id={columnDndId(column.id)} items={sortableIds} strategy={verticalListSortingStrategy}>
           {shownRows.map((row) => {
             if (row.kind === 'header') {
-              const parent = tilesById.get(row.parentId);
-              const isCollapsed = collapsed.has(row.parentId);
               return (
-                <div key={`group-${row.parentId}`} className="group-header">
-                  <button
-                    type="button"
-                    className="group-toggle"
-                    aria-expanded={!isCollapsed}
-                    onClick={() => onToggleGroup(row.parentId)}
-                  >
-                    {isCollapsed ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
-                    <FolderOpen size={14} aria-hidden />
-                    <span className="group-title">
-                      {parent?.ticketNo && <span className="ticket-no">{parent.ticketNo}</span>} {parent?.title ?? 'Work card'}
-                    </span>
-                    <span className="group-count">{row.count}</span>
-                  </button>
-                  <button type="button" className="link-btn group-open" onClick={() => onOpenCard(row.parentId)}>
-                    Open
-                  </button>
-                </div>
+                <GroupHeader
+                  key={`group-${row.parentId}`}
+                  parent={tilesById.get(row.parentId)}
+                  parentId={row.parentId}
+                  firstId={row.firstId}
+                  count={row.count}
+                  collapsed={collapsed.has(row.parentId)}
+                  onToggle={onToggleGroup}
+                  onOpen={onOpenCard}
+                />
               );
             }
             const tile = tilesById.get(row.id)!;
@@ -189,3 +180,59 @@ export const Column = memo(function Column({
     </section>
   );
 });
+
+/** The bit of a folder header shown under the pointer while it's dragged. */
+export function GroupHeaderView({ parent, count, overlay }: { parent: CardTile | undefined; count: number; overlay?: boolean }) {
+  return (
+    <span className={cls('group-label', overlay && 'is-overlay')}>
+      <FolderOpen size={14} aria-hidden />
+      <span className="group-title">
+        {parent?.ticketNo && <span className="ticket-no">{parent.ticketNo}</span>} {parent?.title ?? 'Work card'}
+      </span>
+      <span className="group-count">{count}</span>
+    </span>
+  );
+}
+
+interface GroupHeaderProps {
+  parent: CardTile | undefined;
+  parentId: number;
+  firstId: number;
+  count: number;
+  collapsed: boolean;
+  onToggle: (workCardId: number) => void;
+  onOpen: (id: number) => void;
+}
+
+/**
+ * Where tickets of a work card in another column start. Click toggles them; dragging it (mouse,
+ * long-press, or Space) moves all of them to another column.
+ */
+function GroupHeader({ parent, parentId, firstId, count, collapsed, onToggle, onOpen }: GroupHeaderProps) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: groupDndId(parentId, firstId),
+    data: { type: 'group', parentId },
+  });
+  return (
+    <div className={cls('group-header', isDragging && 'is-placeholder')}>
+      <button
+        ref={setNodeRef}
+        type="button"
+        className="group-toggle"
+        aria-expanded={!collapsed}
+        {...attributes}
+        {...listeners}
+        aria-roledescription="folder"
+        onClick={() => {
+          if (!justDropped()) onToggle(parentId);
+        }}
+      >
+        {collapsed ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+        <GroupHeaderView parent={parent} count={count} />
+      </button>
+      <button type="button" className="link-btn group-open" onClick={() => onOpen(parentId)}>
+        Open
+      </button>
+    </div>
+  );
+}
