@@ -9,12 +9,27 @@ import {
   type CollisionDetection,
   type DropAnimation,
   type KeyboardCodes,
+  type KeyboardCoordinateGetter,
   type MeasuringConfiguration,
   type UniqueIdentifier,
 } from '@dnd-kit/core';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 
 export const cardDndId = (id: number): string => `card:${id}`;
 export const columnDndId = (id: number): string => `col:${id}`;
+/**
+ * A folder header (tickets whose work card is in another column). Named after its first ticket,
+ * so the id stays the same when the folder is dragged into another column and re-rendered there.
+ */
+export const groupDndId = (parentId: number, firstId: number): string => `group:${parentId}:${firstId}`;
+
+export function parseGroupDndId(id: UniqueIdentifier): { parentId: number; firstId: number } | null {
+  const [kind, parent, first] = String(id).split(':');
+  const parentId = Number(parent);
+  const firstId = Number(first);
+  if (kind !== 'group' || !Number.isFinite(parentId) || !Number.isFinite(firstId)) return null;
+  return { parentId, firstId };
+}
 
 export function parseDndId(id: UniqueIdentifier): { kind: 'card' | 'col'; id: number } | null {
   const [kind, raw] = String(id).split(':');
@@ -87,6 +102,33 @@ export const measuring: MeasuringConfiguration = {
 };
 
 export const autoScroll = { threshold: { x: 0.15, y: 0.1 } };
+
+const ARROW_STEP: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 0, ArrowDown: 0 };
+
+/**
+ * Arrow keys while dragging. Cards use dnd-kit's sortable steps, which only work for sortable
+ * items. A folder header isn't one, so left and right take it to the next column; up and down do
+ * nothing, because a folder stays where it entered a column (see useBoardDnd).
+ */
+export const keyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  if (!parseGroupDndId(args.active)) return sortableKeyboardCoordinates(event, args);
+  const step = ARROW_STEP[event.code];
+  if (step === undefined) return undefined;
+  event.preventDefault();
+  const { collisionRect, droppableContainers, droppableRects } = args.context;
+  if (!collisionRect) return undefined;
+  const columns = droppableContainers
+    .getEnabled()
+    .filter((c) => isColumnId(c.id))
+    .flatMap((c) => droppableRects.get(c.id) ?? [])
+    .sort((a, b) => a.left - b.left);
+  const middle = collisionRect.left + collisionRect.width / 2;
+  const here = columns.findIndex((r) => middle >= r.left && middle <= r.right);
+  const from = columns[here];
+  const to = columns[here + step];
+  if (!from || !to || to === from) return undefined;
+  return { x: args.currentCoordinates.x + to.left - from.left, y: args.currentCoordinates.y };
+};
 
 /** Space picks up / drops; Enter stays free to open the card. */
 export const keyboardCodes: KeyboardCodes = {

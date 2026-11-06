@@ -44,6 +44,14 @@ On the board, a work card's tickets stay together under it in every column, and 
 need to see it. **Mark done** on a work card offers to finish all of its tickets at once (not while any of them is
 blocked).
 
+Tickets whose work card is in another column sit under a folder header. **Drag the header** to another column and
+all its tickets move with it, folded or not. On a phone, long-press it first. With the keyboard, focus it, press
+`Space`, use the left and right arrow keys, and press `Space` again to drop it.
+
+A folder moves all at once or not at all. If one ticket is blocked and you're dragging into Done, or one went to the
+Trash on another device, nothing moves and a message tells you which. With a filter on, only the tickets you can see
+move.
+
 ### Closing a card
 
 **Mark done** asks how it ended: **Fixed**, **Won't fix**, **Duplicate**, **Can't reproduce** or **No longer

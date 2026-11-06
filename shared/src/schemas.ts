@@ -134,6 +134,23 @@ export const MoveCardBody = z.object({
 });
 export type MoveCardBody = z.infer<typeof MoveCardBody>;
 
+/** Several cards moved as one block (a folder's tickets), in this order. */
+export const MoveCardsBody = z
+  .object({
+    cardIds: z
+      .array(id)
+      .min(1)
+      .refine((ids) => new Set(ids).size === ids.length, 'List each card once'),
+    toColumnId: id,
+    /** Place the first card directly after this (visible) card; null = top of the column. */
+    afterCardId: id.nullable(),
+  })
+  .refine((b) => b.afterCardId === null || !b.cardIds.includes(b.afterCardId), {
+    message: "The anchor can't be one of the cards being moved",
+    path: ['afterCardId'],
+  });
+export type MoveCardsBody = z.infer<typeof MoveCardsBody>;
+
 // ---- checklists ----
 const ChecklistTitle = z.string().trim().min(1).max(LIMITS.checklistTitle).refine(noNul, NUL_MESSAGE);
 const ItemText = z.string().trim().min(1).max(LIMITS.checklistItem).refine(noNul, NUL_MESSAGE);

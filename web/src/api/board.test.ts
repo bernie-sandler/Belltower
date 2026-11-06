@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { board, tile } from '../test/fixtures';
-import { completionBlocked, groupedOrder, toTile } from './board';
+import { applyBoardOps, cardsMovedBy, completionBlocked, groupCards, groupedOrder, moveCardsLocally, toTile } from './board';
 
 const titles = (list: { title: string }[]) => list.map((c) => c.title);
 
@@ -54,6 +54,50 @@ describe('completionBlocked', () => {
     const b = board([free, inDone]);
     expect(completionBlocked(b, free.id, 3)).toBeNull();
     expect(completionBlocked(b, inDone.id, 3)).toBeNull();
+  });
+});
+
+describe('moving several cards as one block', () => {
+  const setup = () => {
+    const a = tile({ title: 'A', columnId: 1, position: 0 });
+    const b = tile({ title: 'B', columnId: 1, position: 1 });
+    const c = tile({ title: 'C', columnId: 1, position: 2 });
+    const stay = tile({ title: 'Stay', columnId: 1, position: 3 });
+    const top = tile({ title: 'Top', columnId: 2, position: 0 });
+    const bottom = tile({ title: 'Bottom', columnId: 2, position: 1 });
+    return { a, b, c, top, cards: board([a, b, c, stay, top, bottom]) };
+  };
+  const column = (b: ReturnType<typeof board>, id: number) => titles(groupCards(b).get(id) ?? []);
+
+  it('puts them in order right after the anchor, and closes the gap they left', () => {
+    const { a, b, c, top, cards } = setup();
+    const next = moveCardsLocally(cards, { cardIds: [a.id, b.id, c.id], toColumnId: 2, afterCardId: top.id });
+    expect(column(next, 2)).toEqual(['Top', 'A', 'B', 'C', 'Bottom']);
+    expect(column(next, 1)).toEqual(['Stay']);
+    expect(groupCards(next).get(2)?.map((x) => x.position)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('puts them at the top without an anchor', () => {
+    const { a, b, cards } = setup();
+    const next = moveCardsLocally(cards, { cardIds: [a.id, b.id], toColumnId: 2, afterCardId: null });
+    expect(column(next, 2)).toEqual(['A', 'B', 'Top', 'Bottom']);
+  });
+
+  it('marks them complete on the way into Done, like the server', () => {
+    const { a, b, cards } = setup();
+    const next = moveCardsLocally(cards, { cardIds: [a.id, b.id], toColumnId: 3, afterCardId: null });
+    expect(next.cards.filter((x) => x.columnId === 3).every((x) => x.completedAt !== null)).toBe(true);
+  });
+
+  it('is replayed when queued, and reports every card it will move', () => {
+    const { a, b, cards } = setup();
+    const ops = [
+      { kind: 'moveMany' as const, vars: { cardIds: [a.id, b.id], toColumnId: 2, afterCardId: null } },
+      { kind: 'move' as const, vars: { cardId: 99, toColumnId: 1, afterCardId: null } },
+      { kind: 'create' as const, vars: { title: 'New', columnId: 1, tempId: -1 } },
+    ];
+    expect(column(applyBoardOps(cards, ops.slice(0, 1)), 2)).toEqual(['A', 'B', 'Top', 'Bottom']);
+    expect([...cardsMovedBy(ops)].sort((x, y) => x - y)).toEqual([a.id, b.id, 99].sort((x, y) => x - y));
   });
 });
 

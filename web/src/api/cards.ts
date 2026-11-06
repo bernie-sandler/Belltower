@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { ActivityEntry, BoardResponse, CardDetail, MoveCardResponse, UpdateCardBody } from '@tt/shared';
+import type { ActivityEntry, BoardResponse, CardDetail, MoveCardResponse, MoveCardsResponse, UpdateCardBody } from '@tt/shared';
 import { toast } from '../lib/toast';
 import {
   applyBoardOp,
@@ -8,15 +8,18 @@ import {
   applyOrders,
   BOARD_ORDER_KEY,
   BOARD_ORDER_SCOPE,
+  cardsMovedBy,
   currentAnchor,
   flushBoardRefetch,
   moveCardLocally,
+  moveCardsLocally,
   opsAfter,
   removeTile,
   setBoard,
   toTile,
   upsertTile,
   wantBoardRefetch,
+  type BoardOp,
 } from './board';
 import { api, isApiError } from './client';
 import { conflictCard, errorMessage } from './errors';
@@ -210,6 +213,32 @@ interface MoveOrigin {
 }
 
 const moveOrigins = new WeakMap<MoveVars, MoveOrigin>();
+const moveCardsOrigins = new WeakMap<MoveCardsVars, Map<number, MoveOrigin>>();
+
+function originOf(board: BoardResponse, cardId: number): MoveOrigin | null {
+  const tile = board.cards.find((c) => c.id === cardId);
+  if (!tile) return null;
+  return {
+    columnId: tile.columnId,
+    afterCardId: currentAnchor(board, cardId),
+    completedAt: tile.completedAt,
+    title: tile.title,
+  };
+}
+
+/** Puts a card back where a failed move took it from. */
+function restoreOrigin(board: BoardResponse, cardId: number, origin: MoveOrigin): BoardResponse {
+  const next = moveCardLocally(board, cardId, origin.columnId, origin.afterCardId);
+  return { ...next, cards: next.cards.map((c) => (c.id === cardId ? { ...c, completedAt: origin.completedAt } : c)) };
+}
+
+/** A failed move didn't happen, so queued moves of that card start from where it really is. */
+function passOriginOn(later: BoardOp[], cardId: number, origin: MoveOrigin): void {
+  for (const op of later) {
+    if (op.kind === 'move' && op.vars.cardId === cardId) moveOrigins.set(op.vars, origin);
+    if (op.kind === 'moveMany' && op.vars.cardIds.includes(cardId)) moveCardsOrigins.get(op.vars)?.set(cardId, origin);
+  }
+}
 
 /** Codes that mean the client's board is out of date: refetch it. */
 function isStaleBoard(err: unknown): boolean {
@@ -237,19 +266,14 @@ export function useMoveCard() {
     onMutate: (v) => {
       void qc.cancelQueries({ queryKey: qk.board });
       const board = qc.getQueryData<BoardResponse>(qk.board);
-      const tile = board?.cards.find((c) => c.id === v.cardId);
-      if (!board || !tile) return;
-      moveOrigins.set(v, {
-        columnId: tile.columnId,
-        afterCardId: currentAnchor(board, v.cardId),
-        completedAt: tile.completedAt,
-        title: tile.title,
-      });
+      const origin = board && originOf(board, v.cardId);
+      if (!board || !origin) return;
+      moveOrigins.set(v, origin);
       qc.setQueryData(qk.board, moveCardLocally(board, v.cardId, v.toColumnId, v.afterCardId));
     },
     onSuccess: (res, v) => {
       const later = opsAfter(qc, v);
-      const movedAgain = new Set(later.flatMap((op) => (op.kind === 'move' ? [op.vars.cardId] : [])));
+      const movedAgain = cardsMovedBy(later);
       let consistent = true;
       setBoard(qc, (b) => {
         const result = applyOrders(b, res.orders, res.card, movedAgain);
@@ -278,18 +302,12 @@ export function useMoveCard() {
         if (gone) {
           next = removeTile(next, v.cardId);
         } else if (origin) {
-          next = moveCardLocally(next, v.cardId, origin.columnId, origin.afterCardId);
-          next = {
-            ...next,
-            cards: next.cards.map((c) => (c.id === v.cardId ? { ...c, completedAt: origin.completedAt } : c)),
-          };
+          next = restoreOrigin(next, v.cardId, origin);
         }
         return applyBoardOps(next, later);
       });
       // Queued moves of the same card started from where this one would have left it.
-      if (origin) {
-        for (const op of later) if (op.kind === 'move' && op.vars.cardId === v.cardId) moveOrigins.set(op.vars, origin);
-      }
+      if (origin) passOriginOn(later, v.cardId, origin);
 
       if (isApiError(err, 'unauthenticated')) return; // the login page takes over
       if (gone) {
@@ -311,6 +329,91 @@ export function useMoveCard() {
     },
     onSettled: (_d, _e, v) => {
       invalidateActivity(qc, v.cardId);
+      flushBoardRefetch(qc, v);
+    },
+  });
+}
+
+/** Several cards moved as one block (a folder's tickets), in this order. */
+export interface MoveCardsVars {
+  cardIds: number[];
+  toColumnId: number;
+  /** The visible card directly above the first of them; null = top. */
+  afterCardId: number | null;
+}
+
+/** What to tell the user when a block didn't move. */
+function moveCardsFailure(err: unknown): string {
+  // These name the card that stopped the move; errorMessage() only has generic text for them.
+  if (isApiError(err, 'card_deleted') || isApiError(err, 'card_archived') || isApiError(err, 'blocked')) {
+    return `${err.message} Nothing was moved.`;
+  }
+  if (isStaleBoard(err)) return 'Nothing was moved: the board was out of date and has been refreshed.';
+  // No answer: the move may still have happened. The refetch shows which, and it's all or nothing.
+  if (isApiError(err, 'network')) return `Couldn't confirm the move. ${errorMessage(err)}`;
+  return `Nothing was moved. ${errorMessage(err)}`;
+}
+
+/**
+ * POST /api/cards/move-many: one request, one transaction on the server, so the cards all move or
+ * none do. In the same queue as single moves, with the same optimistic update. If it fails, every
+ * card goes back and the board is refetched, because the failure usually means it was out of date.
+ */
+export function useMoveCards() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: [...BOARD_ORDER_KEY, 'move-many'],
+    scope: BOARD_ORDER_SCOPE,
+    meta: { errorToast: false },
+    mutationFn: (v: MoveCardsVars) => api.post<MoveCardsResponse>('/api/cards/move-many', v),
+    onMutate: (v) => {
+      void qc.cancelQueries({ queryKey: qk.board });
+      const board = qc.getQueryData<BoardResponse>(qk.board);
+      if (!board) return;
+      const origins = new Map<number, MoveOrigin>();
+      for (const id of v.cardIds) {
+        const origin = originOf(board, id);
+        if (origin) origins.set(id, origin);
+      }
+      moveCardsOrigins.set(v, origins);
+      qc.setQueryData(qk.board, moveCardsLocally(board, v));
+    },
+    onSuccess: (res, v) => {
+      const later = opsAfter(qc, v);
+      const fresh = new Map(res.cards.map((c) => [c.id, c] as const));
+      setBoard(qc, (b) => {
+        const merged = {
+          ...b,
+          cards: b.cards.map((c) => {
+            const card = fresh.get(c.id);
+            return card ? { ...c, ...card } : c;
+          }),
+        };
+        return applyBoardOps(applyOrders(merged, res.orders, undefined, cardsMovedBy(later)).board, later);
+      });
+      for (const card of res.cards) qc.setQueryData<CardDetail>(qk.card(card.id), (c) => (c ? { ...c, ...card } : c));
+      // Its work card's done count, and whatever these tickets block, changed too.
+      wantBoardRefetch();
+      void qc.invalidateQueries({ queryKey: qk.cards });
+    },
+    onError: (err, v) => {
+      const later = opsAfter(qc, v);
+      const origins = moveCardsOrigins.get(v);
+      // In the order they were sent: a card's anchor may be the one restored just before it.
+      setBoard(qc, (b) => {
+        let next = b;
+        for (const [id, origin] of origins ?? []) next = restoreOrigin(next, id, origin);
+        return applyBoardOps(next, later);
+      });
+      for (const [id, origin] of origins ?? []) passOriginOn(later, id, origin);
+
+      if (isApiError(err, 'unauthenticated')) return; // the login page takes over
+      wantBoardRefetch();
+      const expected = isCardGone(err) || isApiError(err, 'blocked');
+      toast(moveCardsFailure(err), { kind: expected ? 'warning' : 'error' });
+    },
+    onSettled: (_d, _e, v) => {
+      for (const id of v.cardIds) invalidateActivity(qc, id);
       flushBoardRefetch(qc, v);
     },
   });
