@@ -1,4 +1,4 @@
-# Tower Tracker HTTP API (internal)
+# Belltower HTTP API (internal)
 
 This is the API the web UI uses. It's documented to help with development, and it may change between versions. For
 scripts and monitoring tools, use the stable [automation API](API-V1.md) (`/api/v1/`), which is versioned and won't

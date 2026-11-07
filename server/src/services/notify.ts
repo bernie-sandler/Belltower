@@ -156,21 +156,21 @@ export class DiscordNotifier {
     ];
     return this.send(ctx, [
       fields.length
-        ? { title: 'Tower Tracker: today', color: COLOR.digest, fields }
-        : { title: 'Tower Tracker: today', color: COLOR.test, description: 'Nothing overdue or due today.' },
+        ? { title: 'Belltower: today', color: COLOR.digest, fields }
+        : { title: 'Belltower: today', color: COLOR.test, description: 'Nothing overdue or due today.' },
     ]);
   }
 
   /** Settings → Notifications → Send test. */
   async sendTest(ctx: Ctx): Promise<{ ok: boolean; message: string }> {
     if (!getDiscordSettings(ctx).webhookUrl) return { ok: false, message: 'No webhook is set' };
-    return this.send(ctx, [{ title: 'Tower Tracker test message', description: 'Notifications are working.', color: COLOR.test }]);
+    return this.send(ctx, [{ title: 'Belltower test message', description: 'Notifications are working.', color: COLOR.test }]);
   }
 
   private async send(ctx: Ctx, embeds: Embed[]): Promise<{ ok: boolean; message: string }> {
     const url = getDiscordSettings(ctx).webhookUrl;
     if (!url) return { ok: false, message: 'No webhook is set' };
-    const body = JSON.stringify({ username: 'Tower Tracker', embeds, allowed_mentions: { parse: [] } });
+    const body = JSON.stringify({ username: 'Belltower', embeds, allowed_mentions: { parse: [] } });
     let last = 'Not sent';
     for (let attempt = 0; attempt <= this.retryDelaysMs.length; attempt++) {
       try {

@@ -239,7 +239,7 @@ export function uploadAttachments(
       const b = body as { error?: string; message?: string } | null;
       reject(new ApiError(xhr.status, b?.error ?? `http_${xhr.status}`, b?.message ?? 'Upload failed', body));
     };
-    xhr.onerror = () => reject(new ApiError(0, 'network', "Can't reach Tower Tracker. Check your connection.", null));
+    xhr.onerror = () => reject(new ApiError(0, 'network', "Can't reach Belltower. Check your connection.", null));
     xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));
     signal?.addEventListener('abort', () => xhr.abort());
     xhr.send(form);

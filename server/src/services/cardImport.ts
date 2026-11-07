@@ -31,7 +31,7 @@ import { tx, type Ctx } from './context';
 import { getResolutionReasons } from './settings';
 import { addWorklog } from './worklog';
 
-export const CARD_IMPORT_FORMAT = 'tower-tracker/cards@1';
+export const CARD_IMPORT_FORMAT = 'belltower/cards@1';
 
 /** Where an imported ticket is filed: another card in this batch, or a work card already on the board. */
 export type ImportParent =

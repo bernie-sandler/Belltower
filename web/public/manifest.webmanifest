@@ -1,6 +1,6 @@
 {
-  "name": "Tower Tracker",
-  "short_name": "Tower",
+  "name": "Belltower",
+  "short_name": "Belltower",
   "description": "Homelab issue tracker",
   "start_url": "/",
   "scope": "/",

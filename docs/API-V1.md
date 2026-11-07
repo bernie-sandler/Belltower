@@ -3,7 +3,7 @@
 This is the stable contract for tools and scripts that open tickets: Uptime Kuma, Unraid, Home Assistant, your own
 scripts. For recipes and a gentler introduction, see [AUTOMATION.md](AUTOMATION.md).
 
-Everything under `/api/v1/` follows the rules on this page for the whole of Tower Tracker 1.x. (The app's other
+Everything under `/api/v1/` follows the rules on this page for the whole of Belltower 1.x. (The app's other
 routes, documented in [API.md](API.md), are internal to the web UI and may change between versions.)
 
 ## Stability promise
@@ -109,5 +109,5 @@ notifications are `ignored`.
 
 ## Health check
 
-`GET /health` needs no token and answers `{"status":"ok"}` while the app is up. It's useful for monitoring Tower
-Tracker itself.
+`GET /health` needs no token and answers `{"status":"ok"}` while the app is up. It's useful for monitoring
+Belltower itself.

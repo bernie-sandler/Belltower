@@ -6,7 +6,7 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong.'): 
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'network':
-        return "Can't reach Tower Tracker. Check your connection.";
+        return "Can't reach Belltower. Check your connection.";
       case 'csrf':
         return 'The request was blocked by a security check. Reload the page and try again.';
       case 'unauthenticated':

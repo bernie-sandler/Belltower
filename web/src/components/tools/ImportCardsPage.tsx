@@ -144,7 +144,7 @@ export function ImportCardsPage() {
         <AutoGrowTextarea
           className="input input-mono import-input"
           rows={8}
-          placeholder={'```json\n{ "format": "tower-tracker/cards@1", "cards": [ { "title": "…" } ] }\n```'}
+          placeholder={'```json\n{ "format": "belltower/cards@1", "cards": [ { "title": "…" } ] }\n```'}
           value={text}
           onChange={(e) => {
             setText(e.target.value);

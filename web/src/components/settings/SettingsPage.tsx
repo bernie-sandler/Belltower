@@ -123,7 +123,7 @@ function GeneralSection({ s }: { s: SettingsResponse }) {
         <input
           className="input"
           type="url"
-          placeholder="https://tower.example.com"
+          placeholder="https://belltower.example.com"
           value={appUrl}
           onChange={(e) => setAppUrl(e.target.value)}
         />
@@ -453,7 +453,7 @@ function AccountSection() {
         </button>
       </div>
       <p className="muted small">
-        <Bot size={12} aria-hidden /> Tower Tracker {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'}
+        <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'}
       </p>
     </Section>
   );

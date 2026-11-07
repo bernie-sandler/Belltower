@@ -1,7 +1,8 @@
 # Backup file format
 
 What's inside an export from **Backup & restore**, for anyone who wants to read one with a script, check one by
-hand, or just know what they're storing. The format name is `tower-tracker-backup`.
+hand, or just know what they're storing. The format name is `tower-tracker-backup`, from the app's old name. It stays
+that way so every backup, and anything that reads them, keeps working.
 
 ## Compatibility
 
@@ -14,9 +15,12 @@ hand, or just know what they're storing. The format name is `tower-tracker-backu
 
 ## The files
 
-**JSON export** (`tower-tracker-backup-<time>.json`): a single JSON document, described below.
+Exports made before 1.2 are named `tower-tracker-backup-<time>`. Restore doesn't look at the file name, so they work
+the same.
 
-**ZIP export** (`tower-tracker-backup-<time>.zip`):
+**JSON export** (`belltower-backup-<time>.json`): a single JSON document, described below.
+
+**ZIP export** (`belltower-backup-<time>.zip`):
 
 ```
 data.json                        the same JSON document

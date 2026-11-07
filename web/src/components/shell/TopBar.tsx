@@ -39,7 +39,7 @@ export function TopBar() {
     <header className="topbar">
       <div className="topbar-brand">
         <BrandMark size={24} />
-        <span className="topbar-name">Tower Tracker</span>
+        <span className="topbar-name">Belltower</span>
       </div>
       <nav className="topnav" aria-label="Main">
         {NAV.map(({ to, label, icon: Icon }) => {

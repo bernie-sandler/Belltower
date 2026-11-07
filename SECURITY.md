@@ -1,6 +1,6 @@
 # Security
 
-Tower Tracker is a single-user app meant for a home network or a tailnet. This page says what it protects, what
+Belltower is a single-user app meant for a home network or a tailnet. This page says what it protects, what
 it relies on you for, and how to report a problem.
 
 ## Reporting a problem

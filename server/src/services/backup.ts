@@ -28,6 +28,7 @@ import { assignTicketNumbers } from './cards';
 import { seedRequestTypes } from './requestTypes';
 import { rebuildSearch } from './search';
 
+/** Keeps the app's old name: it's frozen (docs/BACKUP-FORMAT.md), and every existing backup carries it. */
 export const BACKUP_FORMAT = 'tower-tracker-backup';
 
 /** Insert order (parents first). Every table here is exported; nothing else is. */
@@ -156,7 +157,7 @@ export function buildRestoreDb(data: BackupData, dbPath: string, tz: string, clo
   if (data.schemaVersion > LATEST_SCHEMA_VERSION) {
     throw badRequest(
       'validation',
-      `This backup is from a newer version of Tower Tracker (schema ${data.schemaVersion}); upgrade the app first`,
+      `This backup is from a newer version of Belltower (schema ${data.schemaVersion}); upgrade the app first`,
     );
   }
   const db = openDatabase(dbPath);
@@ -253,7 +254,7 @@ async function extractZip(zipPath: string, filesDir: string, maxBytes: number): 
   } finally {
     zip.close();
   }
-  if (!json) throw badRequest('validation', 'This ZIP has no data.json; is it a Tower Tracker backup?');
+  if (!json) throw badRequest('validation', 'This ZIP has no data.json; is it a Belltower backup?');
   return json;
 }
 
@@ -265,7 +266,7 @@ function parseBackup(buf: Buffer): BackupData {
     throw badRequest('validation', "The file isn't valid JSON");
   }
   const parsed = BackupSchema.safeParse(raw);
-  if (!parsed.success) throw badRequest('validation', "This isn't a Tower Tracker backup (expected format \"tower-tracker-backup\")");
+  if (!parsed.success) throw badRequest('validation', "This isn't a Belltower backup (expected format \"tower-tracker-backup\")");
   return parsed.data as BackupData;
 }
 

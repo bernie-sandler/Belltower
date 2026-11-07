@@ -54,7 +54,7 @@ export function AppShell() {
   if (!config.data) {
     return (
       <ErrorScreen
-        title="Can't load Tower Tracker"
+        title="Can't load Belltower"
         message={errorMessage(config.error)}
         onRetry={() => void config.refetch()}
       />

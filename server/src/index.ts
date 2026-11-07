@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     throw err;
   }
   const log = createLogger({ level: config.logLevel, timeZone: config.timeZone });
-  log.info(`Tower Tracker ${config.appVersion} starting (data: ${config.dataDir}, TZ: ${config.timeZone})`);
+  log.info(`Belltower ${config.appVersion} starting (data: ${config.dataDir}, TZ: ${config.timeZone})`);
 
   prepareDataDir(config);
   const db = openDatabase(config.dbPath);

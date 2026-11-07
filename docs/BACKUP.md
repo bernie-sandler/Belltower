@@ -51,7 +51,7 @@ refused, so update the app first.
 ## Moving to a new server
 
 1. On the old server, **Download ZIP**.
-2. On the new one, [install](INSTALL.md) Tower Tracker and set a password.
+2. On the new one, [install](INSTALL.md) Belltower and set a password.
 3. **Restore** the ZIP.
 
 That carries over everything except your password and signed-in devices.

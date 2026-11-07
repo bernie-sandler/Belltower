@@ -1,4 +1,4 @@
-// Typed fetch wrapper for the Tower Tracker API.
+// Typed fetch wrapper for the Belltower API.
 //  - Same-origin cookie session; every non-GET request carries the CSRF header.
 //  - Errors become ApiError { status, code, body } using the server's { error, message } shape.
 //  - A 401 'unauthenticated' anywhere notifies the auth layer (back to the login page, no reload).
@@ -61,7 +61,7 @@ export async function request<T>(method: Method, path: string, body?: unknown, s
   } catch (err) {
     // A cancelled query (TanStack aborts the signal) is not a network failure.
     if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) throw err;
-    throw new ApiError(0, 'network', "Can't reach Tower Tracker. Check your connection.", null);
+    throw new ApiError(0, 'network', "Can't reach Belltower. Check your connection.", null);
   }
 
   if (res.status === 204) return undefined as T;

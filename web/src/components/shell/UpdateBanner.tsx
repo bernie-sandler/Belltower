@@ -5,7 +5,7 @@ import { useConfig } from '../../api/config';
 let loadedVersion: string | null = null;
 
 /**
- * Shows "Tower Tracker was updated — Reload" once /api/config reports a different appVersion
+ * Shows "Belltower was updated — Reload" once /api/config reports a different appVersion
  * than the one this page loaded with (config is refetched on focus and every 10 minutes).
  */
 export function UpdateBanner() {
@@ -15,7 +15,7 @@ export function UpdateBanner() {
 
   return (
     <div className="update-banner" role="status">
-      <span>Tower Tracker was updated.</span>
+      <span>Belltower was updated.</span>
       <button type="button" className="btn btn-sm btn-primary" onClick={() => window.location.reload()}>
         <RefreshCw size={14} aria-hidden /> Reload
       </button>

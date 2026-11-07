@@ -1,6 +1,6 @@
 # Phone and remote access
 
-Tower Tracker is meant to stay inside your home network or tailnet. Here are the two ways to reach it from your
+Belltower is meant to stay inside your home network or tailnet. Here are the two ways to reach it from your
 phone, plus how to make it feel like an app.
 
 ## Option A: Tailscale straight to the server (simplest)
@@ -16,7 +16,7 @@ Use this if Tailscale runs on Unraid itself, or another machine on your LAN acts
 
 ## Option B: an HTTPS name through Nginx Proxy Manager
 
-This gives you something like `https://tracker.example.com`. One thing to know first: if ports 80 and 443 are
+This gives you something like `https://belltower.example.com`. One thing to know first: if ports 80 and 443 are
 forwarded to NPM, a proxy host is reachable from the whole internet by anyone who knows or guesses its name. So do
 all four steps.
 

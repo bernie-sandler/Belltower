@@ -55,6 +55,36 @@ current `docker-compose.yml` and `.env.example` from the repository, carry over 
 `TZ`, `APP_PASSWORD`, …), set `TT_VERSION`, and run `docker compose up -d`. Keep `DATA_PATH` the same and
 everything is still there.
 
+## Coming from Tower Tracker
+
+Tower Tracker became Belltower in 1.2. Your data doesn't change, but the Docker container and stack have a new name,
+so this one update takes a few extra steps.
+
+1. Stop the old stack **before** you fetch the new files: press **Compose Down** on Unraid's Compose page, or run
+   `docker compose down` in the stack folder. Don't add `-v`. If you've already fetched them, run
+   `docker compose -p tower-tracker down --remove-orphans` instead. Otherwise the old container keeps the port and
+   the new one can't start.
+2. Fetch the new files with `git pull`.
+3. Check that `.env` still has `DATA_PATH` pointing at your existing folder, for example
+   `DATA_PATH=/mnt/cache/appdata/tower-tracker`. There's no need to rename the folder. New installs default to
+   `/mnt/cache/appdata/belltower`, so without this line the app starts empty and asks you to set a password. If that
+   happens, nothing is lost: add the line and run `docker compose up -d` again.
+4. Run `docker compose pull && docker compose up -d`.
+5. On your phone, remove the old Home Screen icon and add it again. The phone keeps the name and icon from when you
+   first added it.
+
+On a desktop with `docker-compose.local.yml`, the steps are the same and the app keeps using its existing volume.
+
+A few things keep the old name on purpose, because changing them would break what you already have:
+
+| Name | Why it stays |
+|---|---|
+| `tower.db` and `backups/tower-<date>.db` | They're your database files. |
+| `TT_VERSION` in `.env` | Your `.env` already uses it. |
+| API tokens starting `tt_` | Uptime Kuma and your scripts keep working with the tokens they have. |
+| `"format": "tower-tracker-backup"` inside backups | Every backup, old and new, restores the same way. |
+| The image `ghcr.io/bernie-sandler/tower-tracker` | It follows the GitHub repository's name, which hasn't changed. |
+
 ## What 1.0 promises
 
 From 1.0 on, the version numbers mean something:
@@ -69,7 +99,7 @@ From 1.0 on, the version numbers mean something:
 
 ## If something goes wrong
 
-**It won't start.** Read the log (`docker logs tower-tracker`). The common causes are a full disk (the safety copy
+**It won't start.** Read the log (`docker logs belltower`). The common causes are a full disk (the safety copy
 couldn't be written, so nothing changed) and permissions on `DATA_PATH`.
 
 **You want to go back to the previous version.** A newer database can't be opened by an older app, so roll back

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tower Tracker entrypoint: make /data owned by PUID:PGID (Unraid default 99:100), then drop root
+# Belltower entrypoint: make /data owned by PUID:PGID (Unraid default 99:100), then drop root
 # and exec the app so it receives SIGTERM directly.
 set -eu
 
