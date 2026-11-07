@@ -4,7 +4,7 @@ import { expect, test, unique } from './helpers';
 test('import: preview a work card with tickets and links, then import', async ({ page, api }) => {
   const work = unique('Upgrade UPS');
   const json = JSON.stringify({
-    format: 'tower-tracker/cards@1',
+    format: 'belltower/cards@1',
     cards: [
       { type: 'work', ref: 'ups', title: work, tickets: [{ ref: 'order', title: unique('Order battery') }] },
       { title: unique('Swap battery'), partOf: 'ups', blockedBy: ['order'] },

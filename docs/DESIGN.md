@@ -1,4 +1,4 @@
-# Tower Tracker — Design (v1 proposal)
+# Belltower — Design (v1 proposal)
 
 Status: **approved 2026-10-10; Phase 1 complete**. This is the reference for implementation; items marked
 *(default — override?)* are judgment calls the owner can still change.
@@ -11,7 +11,7 @@ Status: **approved 2026-10-10; Phase 1 complete**. This is the reference for imp
   - The README covers the NPM proxy host: an Access List limited to the LAN and `100.64.0.0/10` (because 80/443
     are forwarded, a proxy host is internet-reachable by hostname otherwise), plus `client_max_body_size` for
     uploads and restores.
-- **Install**: Docker Compose Manager plugin. `docker-compose.yml` uses `build: .` and `image: tower-tracker:local`.
+- **Install**: Docker Compose Manager plugin. `docker-compose.yml` uses `build: .` and `image: belltower:local`.
   **No Unraid XML template.**
 - **Phone**: iPhone (iOS Safari) is the primary mobile test target.
   - Inputs use 16px fonts so iOS doesn't zoom; layout uses `100dvh` and safe-area insets.
@@ -19,8 +19,8 @@ Status: **approved 2026-10-10; Phase 1 complete**. This is the reference for imp
   - The photo picker uses `accept="image/*"`, and HEIC is handled as a fallback.
   - The Home Screen app needs its own login once, since it has a separate cookie jar from Safari.
 - **Storage**: appdata is on the cache pool; whether its "Exclusive access" flag is on is unconfirmed.
-  - Compose maps `/mnt/user/appdata/tower-tracker`.
-  - The README explains how to check Exclusive access, and says to map `/mnt/cache/appdata/tower-tracker`
+  - Compose maps `/mnt/user/appdata/belltower`.
+  - The README explains how to check Exclusive access, and says to map `/mnt/cache/appdata/belltower`
     directly if it reads "No".
 
 ---
@@ -378,7 +378,7 @@ event's `clipboardData.files`, which works over plain HTTP. Pasted screenshots a
 ## 8. Project structure (npm workspaces)
 
 ```
-tower-tracker/
+belltower/
 ├─ Dockerfile, docker-compose.yml, .dockerignore, README.md, package.json, package-lock.json
 ├─ docker/entrypoint.sh
 ├─ docs/DESIGN.md

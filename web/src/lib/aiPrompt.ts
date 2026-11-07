@@ -9,12 +9,12 @@ export function buildAiPrompt(columns: Column[], labels: Label[], today: string,
   const works = workCards.length
     ? workCards.map((w) => `  ${w.ticketNo ?? `#${w.id}`}: ${w.title}`).join('\n')
     : '  (none yet)';
-  return `You are helping me file issues in my homelab issue tracker ("Tower Tracker").
+  return `You are helping me file issues in my homelab issue tracker ("Belltower").
 Turn what I describe below into one or more cards. Reply with ONLY a JSON code block in exactly this format:
 
 \`\`\`json
 {
-  "format": "tower-tracker/cards@1",
+  "format": "belltower/cards@1",
   "cards": [
     {
       "title": "Short, specific summary (max 300 characters)",

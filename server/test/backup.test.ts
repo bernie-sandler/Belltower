@@ -70,7 +70,7 @@ describe('backup round trip', () => {
     expect(json1.tables.settings.some((s: { key: string }) => s.key === 'password_hash')).toBe(false);
     const zipRes = await api('GET', '/api/backup/export.zip');
     expect(zipRes.statusCode).toBe(200);
-    expect(zipRes.headers['content-disposition']).toMatch(/tower-tracker-backup-\d{8}-\d{4}\.zip/);
+    expect(zipRes.headers['content-disposition']).toMatch(/belltower-backup-\d{8}-\d{4}\.zip/);
 
     // A brand-new container with its own password.
     const dst = await makeApp();

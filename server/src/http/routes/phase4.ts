@@ -35,7 +35,7 @@ export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void 
     const data = exportData(ctx, config.appVersion);
     return reply
       .header('Content-Type', 'application/json; charset=utf-8')
-      .header('Content-Disposition', contentDisposition(`tower-tracker-backup-${stamp()}.json`))
+      .header('Content-Disposition', contentDisposition(`belltower-backup-${stamp()}.json`))
       .send(JSON.stringify(data, null, 1));
   });
 
@@ -50,7 +50,7 @@ export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void 
     zip.end();
     return reply
       .header('Content-Type', 'application/zip')
-      .header('Content-Disposition', contentDisposition(`tower-tracker-backup-${stamp()}.zip`))
+      .header('Content-Disposition', contentDisposition(`belltower-backup-${stamp()}.zip`))
       .send(zip.outputStream);
   });
 

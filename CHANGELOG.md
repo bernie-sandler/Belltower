@@ -4,6 +4,16 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.2.0: Tower Tracker is now Belltower
+
+- **New name, new look.** The app is now Belltower, with a new logo and icons. That covers the top bar, sign-in page,
+  browser tab, Home Screen app, Discord messages, backup file names, the Docker container and the docs.
+- **Your data stays put.** The database, backups, API tokens, sign-ins and the automation API (`/api/v1`) are
+  unchanged. Backups made under the old name restore as usual, and saved import prompts still work.
+- **One manual step for existing installs.** The Docker container and stack have a new name, so stop the old one
+  first and keep your `DATA_PATH`. See
+  [Coming from Tower Tracker](docs/UPGRADING.md#coming-from-tower-tracker).
+
 ## 1.1.0: Drag whole folders
 
 - **Move a folder in one go.** Tickets whose work card is in another column sit under a folder header. Drag that

@@ -1,4 +1,4 @@
-# Using Tower Tracker
+# Using Belltower
 
 A quick tour. Most of it you'll figure out by clicking around; this covers the parts that aren't obvious.
 

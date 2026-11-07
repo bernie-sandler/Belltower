@@ -63,7 +63,7 @@ describe('headers, health and static files', () => {
     t = await makeApp({ webDist: true });
     const deep = await t.app.inject({ method: 'GET', url: '/cards/42' });
     expect(deep.statusCode).toBe(200);
-    expect(deep.body).toContain('Tower Tracker');
+    expect(deep.body).toContain('Belltower');
     const asset = await t.app.inject({ method: 'GET', url: '/assets/index-abc123.js' });
     expect(asset.statusCode).toBe(200);
     expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
