@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/bernie-sandler/belltower/releases"><img alt="Release" src="https://img.shields.io/github/v/release/bernie-sandler/tower-tracker?include_prereleases&sort=semver"></a>
+  <a href="https://github.com/bernie-sandler/belltower/releases"><img alt="Release" src="https://img.shields.io/github/v/release/bernie-sandler/belltower?include_prereleases&sort=semver"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
