@@ -33,10 +33,12 @@ Applied database migration(s): 6
 | Value | You get |
 |---|---|
 | `latest` | The newest stable release. The right choice from 1.0 on. |
-| `1` or `1.0` | The newest release within 1.x or 1.0.x. |
-| `1.0.0` | Exactly that version, until you change it. |
-| `rc` | The newest release candidate. It only moves when there's a new one, so it can fall behind `latest`. |
-| `beta` | The newest beta (0.8–0.10). Not updated after 1.0. |
+| `1` or `1.2` | The newest release within 1.x or 1.2.x. |
+| `1.2.0` | Exactly that version, until you change it. |
+| `rc` | The newest release candidate, from the first one after 1.2.0. It only moves when there's a new one, so it can fall behind `latest`. |
+
+Images are at `ghcr.io/bernie-sandler/belltower` from 1.2.0 on. Earlier versions, and the old `rc` and `beta` tags,
+are only at `ghcr.io/bernie-sandler/tower-tracker`.
 
 ## Moving from a beta to 1.0
 
@@ -57,8 +59,8 @@ everything is still there.
 
 ## Coming from Tower Tracker
 
-Tower Tracker became Belltower in 1.2. Your data doesn't change, but the Docker container and stack have a new name,
-so this one update takes a few extra steps.
+Tower Tracker became Belltower in 1.2. Your data doesn't change, but the Docker image, container and stack have new
+names, so this one update takes a few extra steps.
 
 1. Stop the old stack **before** you fetch the new files: press **Compose Down** on Unraid's Compose page, or run
    `docker compose down` in the stack folder. Don't add `-v`. If you've already fetched them, run
@@ -69,11 +71,20 @@ so this one update takes a few extra steps.
    `DATA_PATH=/mnt/cache/appdata/tower-tracker`. There's no need to rename the folder. New installs default to
    `/mnt/cache/appdata/belltower`, so without this line the app starts empty and asks you to set a password. If that
    happens, nothing is lost: add the line and run `docker compose up -d` again.
-4. Run `docker compose pull && docker compose up -d`.
-5. On your phone, remove the old Home Screen icon and add it again. The phone keeps the name and icon from when you
+4. If `.env` sets `TT_VERSION`, check that it's `latest` or `1.2.0` or newer. The image moved to
+   `ghcr.io/bernie-sandler/belltower`, and `rc`, `beta` and older versions aren't there, so anything else makes the
+   next step fail with `manifest unknown`.
+5. Run `docker compose pull && docker compose up -d`.
+6. On your phone, remove the old Home Screen icon and add it again. The phone keeps the name and icon from when you
    first added it.
 
 On a desktop with `docker-compose.local.yml`, the steps are the same and the app keeps using its existing volume.
+
+If you installed with Unraid's **Add Container** form, also change **Repository** to
+`ghcr.io/bernie-sandler/belltower:latest`.
+
+A `docker login ghcr.io` you've already done still works for the new image. If you made the old image public instead,
+the new one starts out private, so make it public too (**Packages → belltower → Package settings**).
 
 A few things keep the old name on purpose, because changing them would break what you already have:
 
@@ -83,7 +94,6 @@ A few things keep the old name on purpose, because changing them would break wha
 | `TT_VERSION` in `.env` | Your `.env` already uses it. |
 | API tokens starting `tt_` | Uptime Kuma and your scripts keep working with the tokens they have. |
 | `"format": "tower-tracker-backup"` inside backups | Every backup, old and new, restores the same way. |
-| The image `ghcr.io/bernie-sandler/tower-tracker` | It follows the GitHub repository's name, which hasn't changed. |
 
 ## What 1.0 promises
 
@@ -108,7 +118,9 @@ together with the safety copy:
 1. Stop the container: `docker compose down`.
 2. In `DATA_PATH`, move `tower.db` aside (and delete `tower.db-wal` / `tower.db-shm` if they're there).
 3. Copy the newest `backups/pre-migrate-…db` to `tower.db`.
-4. Set `TT_VERSION` back to the version you came from and run `docker compose up -d`.
+4. Set `TT_VERSION` back to the version you came from and run `docker compose up -d`. Versions before 1.2.0 are only
+   at the old address, so for those also change `image:` in `docker-compose.yml` to
+   `ghcr.io/bernie-sandler/tower-tracker:${TT_VERSION}`.
 
 Anything you changed after the upgrade is lost this way. Export a backup first if that matters, then open an issue so
 it can be fixed.

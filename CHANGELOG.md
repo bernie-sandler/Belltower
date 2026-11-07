@@ -13,6 +13,10 @@ the container log on start, and in every backup export.
 - **One manual step for existing installs.** The Docker container and stack have a new name, so stop the old one
   first and keep your `DATA_PATH`. See
   [Coming from Tower Tracker](docs/UPGRADING.md#coming-from-tower-tracker).
+- **New image address.** The repository is now `bernie-sandler/Belltower` and the image is
+  `ghcr.io/bernie-sandler/belltower`. `docker-compose.yml` and the Unraid template point there. Versions before 1.2.0
+  stay at `ghcr.io/bernie-sandler/tower-tracker`, so if `TT_VERSION` is set to one of those, or to `rc` or `beta`,
+  change it to `latest`.
 
 ## 1.1.0: Drag whole folders
 
