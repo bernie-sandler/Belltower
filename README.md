@@ -9,6 +9,19 @@
   <em>Ring the bell when something breaks.</em>
 </p>
 
+<p align="center">
+  <a href="https://github.com/bernie-sandler/belltower/releases"><img alt="Release" src="https://img.shields.io/github/v/release/bernie-sandler/tower-tracker?include_prereleases&sort=semver"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
+
+<p align="center">
+  <img alt="Built with TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white">
+  <img alt="Built with React" src="https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB">
+  <img alt="Built with Fastify" src="https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white">
+  <img alt="Built with SQLite" src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white">
+  <img alt="Built with Docker" src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white">
+</p>
+
 ---
 
 Belltower is a lightweight ticket tracker for the people who keep things running: whoever runs the home server, the small-office IT person, the friend everyone texts when Plex goes down. Users ring the bell when something's wrong, and you track it, fix it, and keep a record of what you did and when.
