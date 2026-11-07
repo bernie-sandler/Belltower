@@ -42,9 +42,16 @@ npm run typecheck        # everything
 npm test                 # server and web unit tests
 npm run build            # production bundles, plus a check that nothing loads from a CDN
 npm run e2e              # end-to-end tests in your installed Chrome, desktop and iPhone sizes (build first)
+npm run build:demo       # the browser-only demo, see DEMO.md
 ```
 
 GitHub Actions runs all of these, plus a Docker build and health check, on every push and pull request.
+
+### The browser-only demo
+
+`web/src/demo/` answers the API inside the page for the [live demo](DEMO.md) on GitHub Pages
+(`npm run dev:demo` runs it locally). **Every new API endpoint needs a matching handler there**; a test fails
+until it has one. [DEMO.md](DEMO.md) explains how it works and what to keep in step.
 
 ### Performance
 

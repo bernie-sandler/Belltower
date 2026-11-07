@@ -1,0 +1,131 @@
+/* The demo banner, and the few layout tweaks that make room for it above the app. Only the demo
+   build loads this file. */
+
+body.demo {
+  display: flex;
+  flex-direction: column;
+}
+
+body.demo > #root {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+/* The app shell fills the viewport by itself; under the banner it fills what's left. */
+body.demo .app {
+  height: 100%;
+}
+
+/* The banner sits under the notch now, so the top bar doesn't need to pad for it. */
+body.demo .topbar {
+  min-height: var(--topbar-h);
+  padding-top: 0;
+}
+
+#demo-banner {
+  flex: none;
+}
+
+.demo-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  padding: calc(6px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 6px
+    calc(12px + env(safe-area-inset-left));
+  border-bottom: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.demo-banner-text {
+  margin: 0;
+}
+
+.demo-banner-text strong {
+  color: var(--warning-text);
+}
+
+.demo-banner-hint {
+  color: var(--muted);
+}
+
+.demo-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.demo-banner-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.demo-banner-label {
+  margin-right: 2px;
+  color: var(--muted);
+}
+
+.demo-banner button,
+.demo-banner-link {
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--btn-bg);
+  color: var(--text-strong);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.demo-banner button:hover,
+.demo-banner-link:hover {
+  background: var(--btn-bg-hover);
+}
+
+.demo-banner button:focus-visible,
+.demo-banner-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.demo-banner-view button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-color);
+}
+
+.demo-banner-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-text);
+}
+
+/* Phones: the text on one line, the buttons on the next. */
+@media (max-width: 640px) {
+  .demo-banner {
+    gap: 4px 8px;
+    padding-top: calc(4px + env(safe-area-inset-top));
+    padding-bottom: 6px;
+    font-size: 12px;
+  }
+  .demo-banner-actions {
+    gap: 6px;
+  }
+  .demo-banner-label,
+  .demo-banner-wide {
+    display: none;
+  }
+  .demo-banner button,
+  .demo-banner-link {
+    min-height: 30px;
+    padding: 3px 8px;
+  }
+}
