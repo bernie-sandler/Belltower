@@ -4,7 +4,7 @@ This walks through running Belltower on Unraid with the Docker Compose Manager p
 Compose works the same way; only the paths change.
 
 Nothing gets built on the server. Tower pulls a ready-made image from GitHub
-(`ghcr.io/bernie-sandler/tower-tracker`).
+(`ghcr.io/bernie-sandler/belltower`).
 
 Prefer Unraid's own **Add Container** form over Compose? Copy [unraid/belltower.xml](../unraid/belltower.xml)
 to `/boot/config/plugins/dockerMan/templates-user/my-belltower.xml` on the flash drive, then pick
@@ -17,7 +17,7 @@ Clone the repository somewhere **outside** the folder that will hold your data. 
 `.env` are actually used from it.
 
 ```bash
-git clone https://github.com/bernie-sandler/tower-tracker.git /mnt/user/appdata/belltower-src
+git clone https://github.com/bernie-sandler/Belltower.git /mnt/user/appdata/belltower-src
 ```
 
 ## 2. Let Docker pull the image (private repository only)
@@ -32,7 +32,7 @@ While the repository is private, its images are too, so Docker on Tower needs to
    docker login ghcr.io -u <your GitHub user name>
    ```
 
-Prefer not to? You can make just the image public (the repository's **Packages → tower-tracker → Package
+Prefer not to? You can make just the image public (the repository's **Packages → belltower → Package
 settings**). The code stays private.
 
 ## 3. Create your settings file
@@ -89,7 +89,7 @@ That recreates the container and leaves your data alone.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `TT_VERSION` | `latest` | Which image to run: `latest` (stable releases), `rc`, `beta`, or an exact version like `1.0.0`. |
+| `TT_VERSION` | `latest` | Which image to run: `latest` (stable releases) or an exact version like `1.2.0`. |
 | `PORT` | `8080` | The port the app is reached on. One setting covers both Unraid and the container. |
 | `DATA_PATH` | `/mnt/cache/appdata/belltower` | The host folder for the database, attachments and backups. |
 | `TZ` | `America/Chicago` | Your time zone. Every date, due badge, calendar day and schedule uses it. |
