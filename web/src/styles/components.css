@@ -802,6 +802,8 @@ textarea.input {
 .brand-mark {
   flex: none;
   display: block;
+  /* It's only decoration: no image drag on desktop, no save-image menu on a long press on iOS. */
+  pointer-events: none;
 }
 
 .topnav {
