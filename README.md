@@ -22,6 +22,11 @@
   <img alt="Built with Docker" src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white">
 </p>
 
+<p align="center">
+  <a href="https://bernie-sandler.github.io/Belltower/"><strong>Live Demo</strong></a><br>
+  Try it without installing anything: the demo runs entirely in your browser, and your changes stay there.
+</p>
+
 ---
 
 Belltower is a lightweight ticket tracker for the people who keep things running: whoever runs the home server, the small-office IT person, the friend everyone texts when Plex goes down. It gives you one place to see what's broken, what you're in the middle of, and what's coming up, and to look up how you fixed it last time.

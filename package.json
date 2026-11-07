@@ -12,7 +12,9 @@
   "scripts": {
     "dev:server": "npm run dev -w @tt/server",
     "dev:web": "npm run dev -w @tt/web",
+    "dev:demo": "npm run dev:demo -w @tt/web",
     "build": "npm run build -w @tt/web && npm run build -w @tt/server && node scripts/check-dist.mjs",
+    "build:demo": "npm run build:demo -w @tt/web",
     "test": "npm test -w @tt/server && npm test -w @tt/web",
     "typecheck": "npm run typecheck -w @tt/shared && npm run typecheck -w @tt/server && npm run typecheck -w @tt/web",
     "e2e": "playwright test"

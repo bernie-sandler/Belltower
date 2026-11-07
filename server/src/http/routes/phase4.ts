@@ -5,6 +5,7 @@ import { createWriteStream, existsSync, mkdirSync, openSync, readdirSync, readSy
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import yazl from 'yazl';
+import { CardImportBody } from '@tt/shared';
 import { z } from 'zod';
 import type { AppDeps } from '../../app';
 import { AppError, badRequest } from '../../errors';
@@ -15,12 +16,6 @@ import { importCards } from '../../services/cardImport';
 import { parse } from '../util';
 
 const ConfirmBody = z.object({ confirm: z.literal('RESTORE') });
-const CardImportBody = z.object({
-  /** The pasted text (JSON, possibly inside ``` fences), or `data` already parsed. */
-  text: z.string().max(2_000_000).optional(),
-  data: z.unknown().optional(),
-  dryRun: z.boolean().default(true),
-});
 
 export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void {
   const { ctx, config } = deps;

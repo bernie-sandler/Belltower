@@ -297,6 +297,17 @@ export const UpdateTemplateBody = z.object({
 });
 export type UpdateTemplateBody = z.infer<typeof UpdateTemplateBody>;
 
+// ---- Phase 4 ----
+
+/** POST /api/import/cards. */
+export const CardImportBody = z.object({
+  /** The pasted text (JSON, possibly inside ``` fences), or `data` already parsed. */
+  text: z.string().max(2_000_000).optional(),
+  data: z.unknown().optional(),
+  dryRun: z.boolean().default(true),
+});
+export type CardImportBody = z.infer<typeof CardImportBody>;
+
 // ---- Add ticket (Claude drafting) ----
 export const DraftTicketBody = z.object({
   /** The problem in your own words. */
