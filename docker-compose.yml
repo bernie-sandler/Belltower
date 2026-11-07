@@ -6,7 +6,7 @@ name: belltower
 services:
   belltower:
     # Prebuilt image from GitHub. TT_VERSION in .env picks the channel or an exact version
-    # (latest, 1.2, 1.2.0, …). Versions before 1.2.0 are only at ghcr.io/bernie-sandler/tower-tracker.
+    # (latest, 1.2, 1.2.1, …). Images go back to 1.2.0.
     # To build from this folder instead:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
     image: ghcr.io/bernie-sandler/belltower:${TT_VERSION:-latest}

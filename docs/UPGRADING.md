@@ -37,8 +37,8 @@ Applied database migration(s): 6
 | `1.2.0` | Exactly that version, until you change it. |
 | `rc` | The newest release candidate, from the first one after 1.2.0. It only moves when there's a new one, so it can fall behind `latest`. |
 
-Images are at `ghcr.io/bernie-sandler/belltower` from 1.2.0 on. Earlier versions, and the old `rc` and `beta` tags,
-are only at `ghcr.io/bernie-sandler/tower-tracker`.
+Images are at `ghcr.io/bernie-sandler/belltower` and go back to 1.2.0. Earlier versions, and the old `rc` and `beta`
+tags, are no longer published.
 
 ## Moving from a beta to 1.0
 
@@ -118,9 +118,8 @@ together with the safety copy:
 1. Stop the container: `docker compose down`.
 2. In `DATA_PATH`, move `tower.db` aside (and delete `tower.db-wal` / `tower.db-shm` if they're there).
 3. Copy the newest `backups/pre-migrate-…db` to `tower.db`.
-4. Set `TT_VERSION` back to the version you came from and run `docker compose up -d`. Versions before 1.2.0 are only
-   at the old address, so for those also change `image:` in `docker-compose.yml` to
-   `ghcr.io/bernie-sandler/tower-tracker:${TT_VERSION}`.
+4. Set `TT_VERSION` back to the version you came from and run `docker compose up -d`. Images go back to 1.2.0, so to
+   return to anything older you'd have to build it yourself from its commit in the git history.
 
 Anything you changed after the upgrade is lost this way. Export a backup first if that matters, then open an issue so
 it can be fixed.

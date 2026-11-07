@@ -90,8 +90,6 @@ Only add optional fields; anything else needs `/api/v2/`.
 - The hidden `username` field on the password forms: it's the account name saved in password managers.
 - The volume name in `docker-compose.local.yml`: it's where an existing desktop install keeps its data.
 - The `@tt/*` workspace names: internal, and never seen by anyone running the app.
-- The `tower-tracker` image on GHCR: it's the only place versions before 1.2.0 exist, and rollbacks rely on it, so
-  don't delete it.
 
 ## Releasing
 
