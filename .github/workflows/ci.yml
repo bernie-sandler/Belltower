@@ -54,12 +54,12 @@ jobs:
           context: .
           push: false
           load: true
-          tags: tower-tracker:ci
+          tags: belltower:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Container starts and reports healthy
         run: |
-          docker run -d --name tt -p 18080:8080 -e APP_PASSWORD=ci-only-password tower-tracker:ci
+          docker run -d --name tt -p 18080:8080 -e APP_PASSWORD=ci-only-password belltower:ci
           for i in $(seq 1 30); do
             if curl -fs http://127.0.0.1:18080/health; then echo; exit 0; fi
             sleep 1

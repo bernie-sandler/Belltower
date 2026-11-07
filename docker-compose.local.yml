@@ -1,11 +1,14 @@
-# For trying Tower Tracker on a desktop with Docker Desktop (no /mnt/cache there):
+# For trying Belltower on a desktop with Docker Desktop (no /mnt/cache there):
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.local.yml up -d --build
 # (or leave out docker-compose.build.yml to pull the published image)
 # Data goes to a named Docker volume instead of the Unraid pool path.
 services:
-  tower-tracker:
+  belltower:
     volumes: !override
-      - tower-tracker-data:/data
+      - belltower-data:/data
 
 volumes:
-  tower-tracker-data:
+  belltower-data:
+    # The volume's name from before the rename, so an existing desktop install keeps its data.
+    # Compose may warn that it belongs to the old project; that's harmless.
+    name: tower-tracker_tower-tracker-data

@@ -79,6 +79,20 @@ step (see `migrate.ts`).
 **The automation API** ([API-V1.md](API-V1.md)) is frozen for 1.x. `server/test/api-v1-contract.test.ts` pins it.
 Only add optional fields; anything else needs `/api/v2/`.
 
+**Names from before the rename.** The app was Tower Tracker until 1.2. These keep the old name on purpose, so don't
+"finish" the rename without a plan for existing installs:
+
+- `tower.db` and `tower-<date>.db`: the files on disk, which existing installs already have.
+- `tt_` API tokens and `TT_VERSION`: held by other tools and in people's `.env` files.
+- `tt_sid` and the `tt:` / `tt-` browser storage keys: changing them signs people out and resets per-device settings.
+- The `tower-tracker-backup` format id: frozen, see [BACKUP-FORMAT.md](BACKUP-FORMAT.md).
+- The CSRF header value: tabs still open on the previous bundle would get `403` on every change.
+- The hidden `username` field on the password forms: it's the account name saved in password managers.
+- The volume name in `docker-compose.local.yml`: it's where an existing desktop install keeps its data.
+- The `@tt/*` workspace names: internal, and never seen by anyone running the app.
+- The GitHub repository and image address: the release workflow takes the image name from the repository name, so
+  renaming the repository means updating `docker-compose.yml`, the docs and `unraid/belltower.xml` in the same change.
+
 ## Releasing
 
 Releases are cut from `main` by pushing a tag. The release workflow runs the full CI, builds the image and publishes

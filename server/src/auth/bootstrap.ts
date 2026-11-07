@@ -50,7 +50,7 @@ export async function bootstrapAuth(
     [
       '',
       '==================================================================',
-      '  Tower Tracker first-run setup',
+      '  Belltower first-run setup',
       '  Open the app in your browser and enter this one-time setup code:',
       '',
       `      ${code}`,

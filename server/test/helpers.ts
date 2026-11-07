@@ -65,7 +65,7 @@ export async function makeApp(
   if (opts.webDist) {
     webDistDir = path.join(t.dir, 'web');
     mkdirSync(path.join(webDistDir, 'assets'), { recursive: true });
-    writeFileSync(path.join(webDistDir, 'index.html'), '<!doctype html><title>Tower Tracker</title>');
+    writeFileSync(path.join(webDistDir, 'index.html'), '<!doctype html><title>Belltower</title>');
     writeFileSync(path.join(webDistDir, 'assets', 'index-abc123.js'), 'console.log("hi")');
   }
   const config = {

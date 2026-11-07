@@ -15,7 +15,7 @@ const AI_OUTPUT = `Here's the card for your tracker:
 
 \`\`\`json
 {
-  "format": "tower-tracker/cards@1",
+  "format": "belltower/cards@1",
   "cards": [
     {
       "title": "Plex transcoder crashes on 4K HDR files",
@@ -35,6 +35,13 @@ const AI_OUTPUT = `Here's the card for your tracker:
 Let me know if you want more cards.`;
 
 describe('card import', () => {
+  it('still imports files and saved prompts that use the old format name', () => {
+    const old = JSON.stringify({ format: 'tower-tracker/cards@1', cards: [{ title: 'From a saved prompt' }] });
+    const result = importCards(t.ctx, old, false);
+    expect(result.created).toHaveLength(1);
+    expect(getCard(t.ctx, result.created[0]!).title).toBe('From a saved prompt');
+  });
+
   it('turns AI output (with prose and code fences) into a full card', () => {
     const preview = importCards(t.ctx, AI_OUTPUT, true);
     expect(preview.created).toEqual([]);

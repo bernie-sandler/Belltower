@@ -1,12 +1,12 @@
 # Discord notifications
 
-Tower Tracker can post to a Discord channel, so the things that matter find you instead of waiting for you to open
+Belltower can post to a Discord channel, so the things that matter find you instead of waiting for you to open
 the board.
 
 ## Setting it up
 
 1. In Discord, open the channel's settings and go to **Integrations → Webhooks → New Webhook**. Copy its URL.
-2. In Tower Tracker, go to **Settings → Discord notifications** and paste the URL.
+2. In Belltower, go to **Settings → Discord notifications** and paste the URL.
 3. Pick what to announce (below), then press **Send test**.
 
 Only Discord webhook addresses are accepted, so the app can't be pointed anywhere else. The saved address is never

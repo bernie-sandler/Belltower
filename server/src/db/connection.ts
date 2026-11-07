@@ -10,7 +10,7 @@ export function openDatabase(file: string): DB {
       db.close();
       throw new Error(
         `Could not enable SQLite WAL mode on ${file} (got "${String(mode)}"). ` +
-          'On Unraid, map /data to a pool path such as /mnt/cache/appdata/tower-tracker.',
+          'On Unraid, map /data to a pool path such as /mnt/cache/appdata/belltower.',
       );
     }
   }

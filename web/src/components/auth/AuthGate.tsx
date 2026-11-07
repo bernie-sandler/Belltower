@@ -20,7 +20,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!data) {
     return (
       <ErrorScreen
-        title="Can't reach Tower Tracker"
+        title="Can't reach Belltower"
         message={errorMessage(error)}
         onRetry={() => void refetch()}
       />

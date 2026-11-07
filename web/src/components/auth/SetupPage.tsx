@@ -56,7 +56,7 @@ export function SetupPage() {
   }
 
   return (
-    <AuthLayout title="Set up Tower Tracker">
+    <AuthLayout title="Set up Belltower">
       <div className="auth-intro">
         <p>
           Choose the password for this tracker. To prove you run the server, first enter the one-time setup code from
@@ -64,11 +64,11 @@ export function SetupPage() {
         </p>
         <ul className="setup-steps">
           <li>
-            <strong>Unraid:</strong> Docker tab → click the <em>tower-tracker</em> icon → <em>Logs</em>.
+            <strong>Unraid:</strong> Docker tab → click the <em>belltower</em> icon → <em>Logs</em>.
           </li>
           <li>
             <strong>Terminal:</strong>
-            <pre className="code-block">docker logs tower-tracker</pre>
+            <pre className="code-block">docker logs belltower</pre>
           </li>
         </ul>
         <p className="muted small">

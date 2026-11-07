@@ -17,7 +17,7 @@ export function migrate(db: DB, opts: { to?: number; migrations?: readonly Migra
   const current = schemaVersion(db);
   if (current > latest) {
     throw new Error(
-      `Database schema v${current} is newer than this version of Tower Tracker supports (v${latest}). ` +
+      `Database schema v${current} is newer than this version of Belltower supports (v${latest}). ` +
         'Upgrade the app or restore an older backup.',
     );
   }

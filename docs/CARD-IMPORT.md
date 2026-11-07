@@ -19,7 +19,7 @@ Nothing is created until every card in the batch is valid, so a typo never leave
 
 ```json
 {
-  "format": "tower-tracker/cards@1",
+  "format": "belltower/cards@1",
   "cards": [
     {
       "title": "Plex transcoder crashes on 4K HDR files",
@@ -39,6 +39,8 @@ Nothing is created until every card in the batch is valid, so a typo never leave
   ]
 }
 ```
+
+Files and saved prompts from before the rename say `tower-tracker/cards@1`. They still import fine.
 
 | Field | Required | Accepts |
 |---|---|---|
@@ -73,7 +75,7 @@ Imported cards record "created via card import" in their history.
 
 ```json
 {
-  "format": "tower-tracker/cards@1",
+  "format": "belltower/cards@1",
   "cards": [
     {
       "type": "work",

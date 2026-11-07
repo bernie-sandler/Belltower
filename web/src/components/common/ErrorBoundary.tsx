@@ -17,7 +17,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   override componentDidCatch(error: unknown, info: ErrorInfo): void {
-    console.error('Tower Tracker crashed while rendering', error, info.componentStack);
+    console.error('Belltower crashed while rendering', error, info.componentStack);
   }
 
   override render(): ReactNode {
@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
       return (
         <ErrorScreen
           title="Something went wrong"
-          message="Tower Tracker hit an unexpected error. Reloading usually fixes it; your saved data is safe."
+          message="Belltower hit an unexpected error. Reloading usually fixes it; your saved data is safe."
           onRetry={() => window.location.reload()}
         />
       );

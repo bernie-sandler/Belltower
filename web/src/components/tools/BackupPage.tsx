@@ -49,7 +49,7 @@ function uploadBackup(file: File, onProgress: (f: number) => void): Promise<Prev
         reject(new ApiError(xhr.status, b?.error ?? `http_${xhr.status}`, b?.message ?? 'Upload failed', body));
       }
     };
-    xhr.onerror = () => reject(new ApiError(0, 'network', "Can't reach Tower Tracker.", null));
+    xhr.onerror = () => reject(new ApiError(0, 'network', "Can't reach Belltower.", null));
     xhr.send(form);
   });
 }
@@ -178,7 +178,7 @@ export function BackupPage() {
           <div className="restore-preview">
             <p>
               Backup from <strong>{formatDateTime(preview.exportedAt, now)}</strong>
-              {preview.appVersion && <> (Tower Tracker {preview.appVersion})</>}:
+              {preview.appVersion && <> (Belltower {preview.appVersion})</>}:
             </p>
             <ul className="restore-counts">
               {COUNT_LABELS.map(([k, label]) => (

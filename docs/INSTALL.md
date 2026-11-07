@@ -1,14 +1,14 @@
 # Install and configure
 
-This walks through running Tower Tracker on Unraid with the Docker Compose Manager plugin. Any machine with Docker
+This walks through running Belltower on Unraid with the Docker Compose Manager plugin. Any machine with Docker
 Compose works the same way; only the paths change.
 
 Nothing gets built on the server. Tower pulls a ready-made image from GitHub
 (`ghcr.io/bernie-sandler/tower-tracker`).
 
-Prefer Unraid's own **Add Container** form over Compose? Copy [unraid/tower-tracker.xml](../unraid/tower-tracker.xml)
-to `/boot/config/plugins/dockerMan/templates-user/my-tower-tracker.xml` on the flash drive, then pick
-**tower-tracker** from the Template list on **Docker → Add Container**. Every setting below has a field there
+Prefer Unraid's own **Add Container** form over Compose? Copy [unraid/belltower.xml](../unraid/belltower.xml)
+to `/boot/config/plugins/dockerMan/templates-user/my-belltower.xml` on the flash drive, then pick
+**belltower** from the Template list on **Docker → Add Container**. Every setting below has a field there
 (the advanced ones appear under **Show more settings**), and Unraid passes its own time zone in as `TZ`.
 
 ## 1. Get the stack files onto the server
@@ -17,7 +17,7 @@ Clone the repository somewhere **outside** the folder that will hold your data. 
 `.env` are actually used from it.
 
 ```bash
-git clone https://github.com/bernie-sandler/tower-tracker.git /mnt/user/appdata/tower-tracker-src
+git clone https://github.com/bernie-sandler/tower-tracker.git /mnt/user/appdata/belltower-src
 ```
 
 ## 2. Let Docker pull the image (private repository only)
@@ -38,7 +38,7 @@ settings**). The code stays private.
 ## 3. Create your settings file
 
 ```bash
-cd /mnt/user/appdata/tower-tracker-src
+cd /mnt/user/appdata/belltower-src
 cp .env.example .env
 ```
 
@@ -56,8 +56,8 @@ docker compose up -d
 ## 5. Set your password
 
 Open `http://tower:8080` (or `http://<server-ip>:8080`). On the very first run it asks for a one-time **setup code**,
-which is printed in the container log: in the Docker tab, click the tower-tracker icon and choose **Logs**, or run
-`docker logs tower-tracker`. Then choose a password of at least 12 characters.
+which is printed in the container log: in the Docker tab, click the belltower icon and choose **Logs**, or run
+`docker logs belltower`. Then choose a password of at least 12 characters.
 
 If you'd rather skip that step, set `APP_PASSWORD` in `.env` before starting.
 
@@ -68,7 +68,7 @@ That's it. Next steps you might want:
 
 ## Where your data lives
 
-Everything lives in the folder set by `DATA_PATH` (default `/mnt/cache/appdata/tower-tracker`):
+Everything lives in the folder set by `DATA_PATH` (default `/mnt/cache/appdata/belltower`):
 
 - the database, `tower.db`;
 - your attachments;
@@ -91,7 +91,7 @@ That recreates the container and leaves your data alone.
 |---|---|---|
 | `TT_VERSION` | `latest` | Which image to run: `latest` (stable releases), `rc`, `beta`, or an exact version like `1.0.0`. |
 | `PORT` | `8080` | The port the app is reached on. One setting covers both Unraid and the container. |
-| `DATA_PATH` | `/mnt/cache/appdata/tower-tracker` | The host folder for the database, attachments and backups. |
+| `DATA_PATH` | `/mnt/cache/appdata/belltower` | The host folder for the database, attachments and backups. |
 | `TZ` | `America/Chicago` | Your time zone. Every date, due badge, calendar day and schedule uses it. |
 | `APP_PASSWORD` | (empty) | Optional. When set, this *is* the password, and it can't be changed in the app. Wrap it in single quotes if it contains a `$`. |
 | `MAX_UPLOAD_MB` | `25` | The largest attachment you can upload. |

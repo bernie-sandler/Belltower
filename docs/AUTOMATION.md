@@ -1,6 +1,6 @@
 # Automation: tickets from monitoring and scripts
 
-The best ticket is the one you didn't have to write. Tower Tracker can open tickets for you when something breaks:
+The best ticket is the one you didn't have to write. Belltower can open tickets for you when something breaks:
 from Uptime Kuma, Unraid's notifications, Home Assistant, or any script that can send an HTTP request.
 
 It's built for noisy monitors. A flapping service updates one ticket instead of opening twenty, and when the
@@ -90,7 +90,7 @@ To install it:
 
    ```bash
    mkdir -p /boot/config/plugins/dynamix/notifications/agents
-   nano /boot/config/plugins/dynamix/notifications/agents/TowerTracker.sh
+   nano /boot/config/plugins/dynamix/notifications/agents/Belltower.sh
    ```
 
    Put your token in place of `tt_…`. The script runs on Unraid itself, so `http://localhost:8080` works as the
@@ -98,10 +98,10 @@ To install it:
 3. Check `jq` is there with `which jq`. Recent Unraid releases include it.
 4. In **Settings → Notification Settings**, tick **Agents** for the levels that should open tickets. Warnings and
    Alerts is a good start; Notices are mostly routine.
-5. Send a test alert. A P1 card "Tower Tracker test" should appear in Triage:
+5. Send a test alert. A P1 card "Belltower test" should appear in Triage:
 
    ```bash
-   /usr/local/emhttp/webGui/scripts/notify -e "Test" -s "Tower Tracker test" -d "Hello from Unraid" -i "alert"
+   /usr/local/emhttp/webGui/scripts/notify -e "Test" -s "Belltower test" -d "Hello from Unraid" -i "alert"
    ```
 
 Unraid never sends a recovery, so these tickets don't close themselves. The subject is the dedupe key: a subject
@@ -116,7 +116,7 @@ rest_command:
     url: http://tower:8080/api/v1/cards
     method: POST
     headers:
-      Authorization: !secret tower_tracker_token   # "Bearer tt_…"
+      Authorization: !secret belltower_token   # "Bearer tt_…"
     content_type: application/json
     payload: '{"title": "{{ title }}", "description": "{{ message }}", "dedupeKey": "{{ key }}", "labels": ["Home Assistant"]}'
 ```
@@ -136,8 +136,8 @@ Invoke-RestMethod -Method Post -Uri "http://192.168.1.50:8080/api/v1/cards" `
 
 ## If a tool can't reach it
 
-**It times out** (Uptime Kuma says something like "timeout of 48000ms exceeded"). The request never reached Tower
-Tracker. Check these:
+**It times out** (Uptime Kuma says something like "timeout of 48000ms exceeded"). The request never reached
+Belltower. Check these:
 
 - **The address.** Use the address of the machine running the app *as the tool sees it*, such as
   `http://192.168.1.50:8080` or a Tailscale name. `localhost` only works on that machine itself.
@@ -146,7 +146,7 @@ Tracker. Check these:
   connection* → Network profile type → Private**), or allow the port in an administrator PowerShell:
 
   ```powershell
-  New-NetFirewallRule -DisplayName "Tower Tracker 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private
+  New-NetFirewallRule -DisplayName "Belltower 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Private
   ```
 
   (Use `-Profile Any` if the network has to stay Public.)
