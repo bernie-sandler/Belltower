@@ -4,6 +4,11 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.2.2: The real icon in the app
+
+- **The top bar and sign-in page show the real Belltower icon.** They were drawing a plain bell in code, so they didn't
+  match the Home Screen icon. They now use the same picture, the bell in its tower, from the app's icon files.
+
 ## 1.2.1: Compose file uses the new image
 
 The app itself hasn't changed. This release makes the files that ship with a release match the new image address.
