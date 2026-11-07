@@ -1,0 +1,44 @@
+# A throwaway Belltower with a board of sample tickets. See README.md in this folder.
+#
+# It has its own project name, container and volume, and reads no settings from a real install,
+# so it can run next to one. `docker compose down -v` from this folder removes only the demo.
+
+name: belltower-demo
+
+x-image: &image ghcr.io/bernie-sandler/belltower:${DEMO_VERSION:-latest}
+# Public on purpose, which is why the port below only listens on this machine.
+x-password: &password belltower-demo
+
+services:
+  belltower:
+    image: *image
+    container_name: belltower-demo
+    init: true
+    ports:
+      - "127.0.0.1:${DEMO_PORT:-8088}:8080"
+    environment:
+      APP_PASSWORD: *password
+      TZ: ${DEMO_TZ:-America/Chicago}
+    volumes:
+      - demo-data:/data
+
+  # Runs once: waits for the app, adds the sample tickets, exits. It uses the same image because
+  # that already has Node in it, so there's nothing else to download.
+  seed:
+    image: *image
+    container_name: belltower-demo-seed
+    depends_on:
+      - belltower
+    entrypoint: ["node", "/demo/seed.mjs"]
+    user: node
+    healthcheck:
+      disable: true
+    environment:
+      BELLTOWER_URL: http://belltower:8080
+      APP_PASSWORD: *password
+      DEMO_PUBLIC_URL: http://127.0.0.1:${DEMO_PORT:-8088}
+    volumes:
+      - ./seed.mjs:/demo/seed.mjs:ro
+
+volumes:
+  demo-data:

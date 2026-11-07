@@ -59,6 +59,13 @@ Targets for 1.0: `/api/board` under 300 ms on Tower, and a board that scrolls an
 reference, on a desktop the board query takes about 18 ms, and a capped Done column keeps the page small however
 many cards are finished.
 
+### The demo
+
+[`demo/`](../demo/README.md) runs the published image with sample tickets. `demo/seed.mjs` adds them through the web
+app's API, which can change between versions, and the demo uses `latest`, so a release that changes those routes can
+break it. `server/test/demo-seed.test.ts` runs the script against a real server to catch that, so update the script
+in the same change as the route.
+
 ## Rules that protect your data
 
 These are what make the [1.x promises](UPGRADING.md#what-10-promises) true.

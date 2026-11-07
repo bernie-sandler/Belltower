@@ -63,6 +63,19 @@ It's built for small setups where a full help desk is overkill and a sticky note
 
 Belltower is in early development. Expect rough edges and breaking changes.
 
+## Try it
+
+Want to look around before installing? The [demo](demo/README.md) runs the published image on your own machine, with a
+board of sample tickets, and removes cleanly when you're done:
+
+```bash
+git clone --depth 1 https://github.com/bernie-sandler/Belltower.git
+cd Belltower/demo
+docker compose up -d
+```
+
+Then open <http://127.0.0.1:8088> and sign in with the password `belltower-demo`.
+
 ## Quick start (Unraid)
 
 1. Clone this repository somewhere outside your data folder, for example
@@ -80,6 +93,7 @@ The full walkthrough (where the data should live, every setting) is in
 
 | | |
 |---|---|
+| [Try the demo](demo/README.md) | A throwaway copy with sample tickets and what to look at |
 | [Install and configure](docs/INSTALL.md) | Setting it up on Unraid, `.env` settings, troubleshooting |
 | [Upgrading](docs/UPGRADING.md) | Updating, coming from Tower Tracker, moving from a beta to 1.0, rolling back |
 | [Using Belltower](docs/USING.md) | A tour of the board, cards, work cards, history, search and settings |
