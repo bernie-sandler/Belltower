@@ -24,17 +24,35 @@
 
 ---
 
-Belltower is a lightweight ticket tracker for the people who keep things running: whoever runs the home server, the small-office IT person, the friend everyone texts when Plex goes down. Users ring the bell when something's wrong, and you track it, fix it, and keep a record of what you did and when.
+Belltower is a lightweight ticket tracker for the people who keep things running: whoever runs the home server, the small-office IT person, the friend everyone texts when Plex goes down. It gives you one place to see what's broken, what you're in the middle of, and what's coming up, and to look up how you fixed it last time.
+
+Most tickets are ones you write yourself. A drive starts throwing errors, a container won't update, you've been meaning to move to 10GbE. Make a card for it, drag it across the board as the work moves, and jot down what you tried along the way. When the same thing happens six months later, search finds the card and the note that fixed it.
+
+Tickets can also come from other people through a submit page, or from monitoring tools when something fails, and they land on the same board.
 
 It's built for small setups where a full help desk is overkill and a sticky note isn't enough.
 
+## What it's for
+
+- **Tracking problems:** write down what's wrong, mark how urgent it is, and close it with a note on how it ended
+- **Planning bigger jobs:** keep the tickets for something like "Upgrade Plex" together under one work card, and see what's blocking what
+- **Staying on top of maintenance:** have a monthly parity check or a quarterly look at SMART data show up as a ticket when it's due
+- **Keeping a record:** look back at what changed and when, so you're not relying on memory the next time something acts up
+
 ## Features
 
-- **Ring the bell:** a simple page where users can submit a ticket
-- **Board view:** a Trello-style board for moving tickets from open to done
+- **Board view:** a Trello-style board for moving tickets from Triage to Done, with columns you can rename, add, or reorder
+- **Detailed tickets:** priority, severity, due dates, checklists, attachments, and links between related tickets
 - **Labels:** tag tickets by area, like Network, Storage, or Docker
-- **History:** every ticket keeps a record of what was done and when
+- **History and work log:** every change is recorded automatically, and you can add your own notes, backdated if needed
+- **Search and calendar:** search everything, including archived tickets, or see what was due and what got done by month or week
+- **Ring the bell:** a simple page where other people can submit a ticket, without a login or access to your board
+- **Automation:** Uptime Kuma, Unraid, Home Assistant, or your own scripts can open tickets when something fails
+- **Discord notifications:** hear about urgent and blocked tickets, plus a daily summary of what's due
+- **Claude drafting (optional):** with your own Anthropic API key, describe a problem in your own words and review the ticket Claude writes
 - **JSON import:** bring in existing tickets in bulk
+- **Backups:** nightly snapshots, plus export and restore from the app
+- **Phone-friendly:** add it to your Home Screen and it opens full-screen like an app
 - **Self-hosted:** runs on your own server, so your data stays with you
 
 <!-- Add a screenshot here once the UI settles:
