@@ -4,6 +4,16 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.2.1: Compose file uses the new image
+
+The app itself hasn't changed. This release makes the files that ship with a release match the new image address.
+
+- **The right image out of the box.** `docker-compose.yml` now uses `ghcr.io/bernie-sandler/belltower`. The copy in the
+  1.2.0 release still named the old address.
+- **Older versions are retired.** Images now go back to 1.2.0, and `ghcr.io/bernie-sandler/tower-tracker` and the
+  earlier releases are going away. If `TT_VERSION` is set to `rc`, `beta` or anything before 1.2.0, change it to
+  `latest`. Your data is safe either way: 1.2.1 reads every older database and backup.
+
 ## 1.2.0: Tower Tracker is now Belltower
 
 - **New name, new look.** The app is now Belltower, with a new logo and icons. That covers the top bar, sign-in page,
