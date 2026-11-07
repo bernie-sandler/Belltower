@@ -6,9 +6,10 @@ name: belltower
 services:
   belltower:
     # Prebuilt image from GitHub. TT_VERSION in .env picks the channel or an exact version
-    # (latest, rc, beta, 1.0.0, …). To build from this folder instead:
+    # (latest, 1.2, 1.2.0, …). Versions before 1.2.0 are only at ghcr.io/bernie-sandler/tower-tracker.
+    # To build from this folder instead:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-    image: ghcr.io/bernie-sandler/tower-tracker:${TT_VERSION:-latest}
+    image: ghcr.io/bernie-sandler/belltower:${TT_VERSION:-latest}
     container_name: belltower
     restart: unless-stopped
     # Proper PID 1 (signal forwarding, zombie reaping); the app checkpoints SQLite on SIGTERM.

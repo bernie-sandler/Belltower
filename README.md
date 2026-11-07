@@ -67,10 +67,10 @@ The full walkthrough (private image access, where the data should live, every se
 
 ## Versions
 
-Tagged releases are published as images at `ghcr.io/bernie-sandler/tower-tracker`. Pick a channel with
-`TT_VERSION` in `.env`: `latest` for stable releases, `rc` for release candidates, `beta` for betas, or an exact
-version like `1.0.0`. Updating is `docker compose pull && docker compose up -d`; the database upgrades itself
-after saving a copy. See [docs/UPGRADING.md](docs/UPGRADING.md).
+Tagged releases are published as images at `ghcr.io/bernie-sandler/belltower`. Pick a version with `TT_VERSION` in
+`.env`: `latest` for stable releases, or an exact version like `1.2.0`. Updating is
+`docker compose pull && docker compose up -d`; the database upgrades itself after saving a copy. See
+[docs/UPGRADING.md](docs/UPGRADING.md).
 
 Belltower was called Tower Tracker before 1.2. Coming from that name? See
 [Coming from Tower Tracker](docs/UPGRADING.md#coming-from-tower-tracker).

@@ -90,13 +90,15 @@ Only add optional fields; anything else needs `/api/v2/`.
 - The hidden `username` field on the password forms: it's the account name saved in password managers.
 - The volume name in `docker-compose.local.yml`: it's where an existing desktop install keeps its data.
 - The `@tt/*` workspace names: internal, and never seen by anyone running the app.
-- The GitHub repository and image address: the release workflow takes the image name from the repository name, so
-  renaming the repository means updating `docker-compose.yml`, the docs and `unraid/belltower.xml` in the same change.
+- The `tower-tracker` image on GHCR: it's the only place versions before 1.2.0 exist, and rollbacks rely on it, so
+  don't delete it.
 
 ## Releasing
 
 Releases are cut from `main` by pushing a tag. The release workflow runs the full CI, builds the image and publishes
-it to `ghcr.io/bernie-sandler/tower-tracker`, then creates a GitHub Release from the matching CHANGELOG section.
+it to `ghcr.io/bernie-sandler/belltower`, then creates a GitHub Release from the matching CHANGELOG section. The
+image name comes from the repository name, so renaming the repository also means publishing under the new name and
+then updating `docker-compose.yml`, the docs and `unraid/belltower.xml`.
 
 | Tag | Image tags | GitHub Release |
 |---|---|---|
