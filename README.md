@@ -55,7 +55,7 @@ Belltower is in early development. Expect rough edges and breaking changes.
 4. Open `http://tower:8080`.
 5. Grab the one-time setup code from the container log and choose a password.
 
-The full walkthrough (private image access, where the data should live, every setting) is in
+The full walkthrough (where the data should live, every setting) is in
 [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Documentation
