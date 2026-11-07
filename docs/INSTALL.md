@@ -3,8 +3,8 @@
 This walks through running Belltower on Unraid with the Docker Compose Manager plugin. Any machine with Docker
 Compose works the same way; only the paths change.
 
-Nothing gets built on the server. Tower pulls a ready-made image from GitHub
-(`ghcr.io/bernie-sandler/belltower`).
+Nothing gets built on the server. Tower pulls a ready-made public image from GitHub
+(`ghcr.io/bernie-sandler/belltower`), so there's no registry login.
 
 Prefer Unraid's own **Add Container** form over Compose? Copy [unraid/belltower.xml](../unraid/belltower.xml)
 to `/boot/config/plugins/dockerMan/templates-user/my-belltower.xml` on the flash drive, then pick
@@ -20,22 +20,7 @@ Clone the repository somewhere **outside** the folder that will hold your data. 
 git clone https://github.com/bernie-sandler/Belltower.git /mnt/user/appdata/belltower-src
 ```
 
-## 2. Let Docker pull the image (private repository only)
-
-While the repository is private, its images are too, so Docker on Tower needs to sign in to GitHub's registry once.
-
-1. On GitHub, go to **Settings → Developer settings → Personal access tokens → Tokens (classic)** and create a
-   token with only the `read:packages` scope.
-2. On Tower, run this and paste the token when it asks for a password. Docker remembers it.
-
-   ```bash
-   docker login ghcr.io -u <your GitHub user name>
-   ```
-
-Prefer not to? You can make just the image public (the repository's **Packages → belltower → Package
-settings**). The code stays private.
-
-## 3. Create your settings file
+## 2. Create your settings file
 
 ```bash
 cd /mnt/user/appdata/belltower-src
@@ -44,7 +29,7 @@ cp .env.example .env
 
 The defaults suit most setups. The [settings table](#settings-env) below explains each one.
 
-## 4. Start it
+## 3. Start it
 
 In **Docker → Compose → Add New Stack**, point the stack at that folder, then press **Compose Up**. From a terminal
 in the folder, this does the same thing:
@@ -53,7 +38,7 @@ in the folder, this does the same thing:
 docker compose up -d
 ```
 
-## 5. Set your password
+## 4. Set your password
 
 Open `http://tower:8080` (or `http://<server-ip>:8080`). On the very first run it asks for a one-time **setup code**,
 which is printed in the container log: in the Docker tab, click the belltower icon and choose **Logs**, or run

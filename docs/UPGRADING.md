@@ -83,8 +83,7 @@ On a desktop with `docker-compose.local.yml`, the steps are the same and the app
 If you installed with Unraid's **Add Container** form, also change **Repository** to
 `ghcr.io/bernie-sandler/belltower:latest`.
 
-A `docker login ghcr.io` you've already done still works for the new image. If you made the old image public instead,
-the new one starts out private, so make it public too (**Packages → belltower → Package settings**).
+The new image is public, so pulling it doesn't need a `docker login`.
 
 A few things keep the old name on purpose, because changing them would break what you already have:
 

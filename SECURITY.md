@@ -54,8 +54,7 @@ Fixes go into the newest 1.x release.
 - **Sharing the submit page publicly.** Let only `/submit/`, `/api/public/` and `/assets/` past your access
   list. Treat the link like a guest key, and replace it if it ends up somewhere you don't want.
 - **Set `TRUST_PROXY`** only to your proxy's own address, and never to `true`.
-- **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD` and `ANTHROPIC_API_KEY`. A GitHub token used to
-  pull images should only have the `read:packages` scope.
+- **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD` and `ANTHROPIC_API_KEY`.
 - **Back up `/data`** (or use the export). The pre-upgrade copies and nightly snapshots live in the same folder,
   so they don't protect against losing the disk.
 - **Keep exports private.** They don't contain your password, but they do contain the submit page's link, the
