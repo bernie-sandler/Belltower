@@ -73,6 +73,13 @@ to when it actually happened, and edit or retract it later. The original stays i
 
 - **Search** (press `/`) looks through titles, descriptions, checklists, work logs and resolution notes, archived
   cards included.
+- **Seen this before?** An open ticket lists up to five finished tickets that look like it, with how each ended:
+  the resolution reason and the start of its note. If a ticket was finished along with its work card and has no note
+  of its own, it points to the work card instead. **Link** links one as related, which also drops it from the list.
+  The section only shows up when there's a match. It compares titles and descriptions, archived tickets included.
+  Two tickets need at least two distinctive words in common, one of them from the open ticket's title. Common words,
+  the submit page's standard wording and request type names don't count, and forms of a word ("update", "updated")
+  count as one.
 - **Calendar** shows what was due, what got done and what work was logged, by month or week.
 - **Archive** and **Trash** are in the main menu. Archived cards are tucked away but searchable. Deleted cards go to
   Trash, where they can be restored; nothing is ever purged.
@@ -86,6 +93,9 @@ SMART data. Each one creates a Triage card when it's due, and never makes a seco
 
 **Add ticket** in the top bar (or `Shift+N`) opens a form for a new ticket. A card typed straight into a column
 (or with `n`) is quicker still: just a title, sorted out later.
+
+Once the title has two words, up to three similar finished tickets show under it, so you can check an old fix before
+filing the same problem again. They open in a new tab, so the ticket you're writing stays put.
 
 With [Claude drafting](AI-DRAFTING.md) turned on, you can describe a problem in your own words instead and review the
 ticket Claude writes. Without it, [Import from JSON](CARD-IMPORT.md) does something similar with any AI chat.
