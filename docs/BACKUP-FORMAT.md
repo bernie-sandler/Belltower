@@ -119,3 +119,4 @@ tokens and API token hashes, keep exports somewhere private.
 | 4 | 0.7 | `cards.kind`, `cards.parent_id` (work cards) |
 | 5 | 0.9 | `request_types`, `api_tokens` |
 | 6 | 0.10 | `cards.resolution`, `cards.resolution_md` |
+| 7 | 1.3 | `api_tokens.scope` (`full` or `read`; tokens from older backups come back as `full`) |

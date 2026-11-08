@@ -1,7 +1,7 @@
 # Automation API, version 1
 
-This is the stable contract for tools and scripts that open tickets: Uptime Kuma, Unraid, Home Assistant, your own
-scripts. For recipes and a gentler introduction, see [AUTOMATION.md](AUTOMATION.md).
+This is the stable contract for tools and scripts that open tickets (Uptime Kuma, Unraid, Home Assistant, your own
+scripts) and for dashboards that show ticket counts (Homepage, Home Assistant). For recipes and a gentler introduction, see [AUTOMATION.md](AUTOMATION.md).
 
 Everything under `/api/v1/` follows the rules on this page for the whole of Belltower 1.x. (The app's other
 routes, documented in [API.md](API.md), are internal to the web UI and may change between versions.)
@@ -30,8 +30,13 @@ Authorization: Bearer tt_…
 `/api/v1/` accepts tokens only. Session cookies and the web UI's CSRF header aren't used or needed. A missing,
 mistyped or revoked token gets `401`.
 
-Each token has one permission switch, **may complete tickets** (`canComplete`). It decides what a recovery does (see
-`event` below).
+Each token is one of two kinds:
+
+- **Full** tokens can use everything below. Their one switch, **may complete tickets** (`canComplete`), decides what a
+  recovery does (see `event` below). Every token created before 1.3 is a full token.
+- **Read-only** tokens (since 1.3) can only make `GET` requests: today that's [`GET /api/v1/summary`](#get-apiv1summary).
+  Anything else gets `403 forbidden`. They never complete tickets. Use them for dashboards, so a token that sits in a
+  dashboard's config file can't open or close tickets.
 
 ## Limits
 
@@ -50,9 +55,53 @@ Errors are JSON with a stable machine-readable `error` code and a human-readable
 |---|---|---|
 | 400 | `validation` | The card doesn't validate. `errors` lists every problem. |
 | 401 | `unauthenticated` | No valid token. |
+| 403 | `forbidden` | A read-only token tried something other than `GET`. |
 | 413 | `too_large` | The body is over 2 MB. |
 | 429 | `rate_limited` | Over 120 requests a minute. `retryAfterSec` and the `Retry-After` header say when to retry. |
 | 500 | `internal` | A bug. Retrying later is reasonable. |
+
+## `GET /api/v1/summary`
+
+Ticket counts for a dashboard. Any token works, read-only included. Added in 1.3.
+
+```json
+{
+  "open": 12,
+  "received": 3,
+  "inProgress": 6,
+  "waiting": 3,
+  "urgent": 1,
+  "overdue": 2,
+  "dueToday": 1,
+  "completedToday": 4,
+  "completed7d": 19,
+  "oldestOpenDays": 41,
+  "byPriority": { "P0": 0, "P1": 1, "P2": 5, "P3": 2, "none": 4 },
+  "bySeverity": { "S1": 0, "S2": 1, "S3": 0, "S4": 0, "none": 11 },
+  "generatedAt": "2026-10-28T19:04:05.123Z"
+}
+```
+
+Tickets are counted, not work cards, except in `overdue` and `dueToday`. "Open" means not completed, archived or in
+the Trash. Days are in the app's time zone (`TZ`).
+
+| Field | Meaning |
+|---|---|
+| `open` | Open tickets. Always `received` + `inProgress` + `waiting`. |
+| `received` | Open tickets in Triage, or in the column the submit page files into. |
+| `inProgress` | Open tickets anywhere else that aren't waiting. |
+| `waiting` | Open tickets in the blocked column (**Settings → Board**), or blocked by an open card. Checked before `received`. These are the states the [submit page's status links](SUBMIT-PAGE.md) show. |
+| `urgent` | Open tickets that count as urgent under the alert levels in **Settings → Notifications** (by default P0–P1 or S1). |
+| `overdue`, `dueToday` | Open cards past their due date / due today: the same cards the [daily summary](NOTIFICATIONS.md) lists, work cards included. |
+| `completedToday` | Tickets completed since midnight, archived ones included. |
+| `completed7d` | Tickets completed today or in the 6 days before, archived ones included. |
+| `oldestOpenDays` | Days since the oldest open ticket was created (`0` if today), or `null` when nothing is open. |
+| `byPriority`, `bySeverity` | Open tickets by priority (`P0`–`P3`) and severity (`S1`–`S4`); `none` for tickets without one. Each adds up to `open`. |
+| `generatedAt` | When the counts were taken (ISO 8601, UTC). |
+
+The counts are worked out on every request, and the response is never cached. There are no CORS headers, so a web
+page can't call this from the browser: dashboards have to call it from their server, which Homepage and Home
+Assistant do. [AUTOMATION.md](AUTOMATION.md#dashboards) has ready-made configs.
 
 ## `POST /api/v1/cards`
 

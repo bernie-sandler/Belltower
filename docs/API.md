@@ -187,11 +187,12 @@ occurrence.
 | `GET /api/request-types` | — | `RequestType[]` | |
 | `POST /api/request-types` · `PUT /api/request-types/:id` | `RequestTypeBody` | `201` / `RequestType` | Questions: `{key, label, help, kind: short\|long\|choice\|multi\|datetime\|yesno, required, options}`; the title pattern may use `{summary}` and question keys. |
 | `PUT /api/request-types/order` · `DELETE /api/request-types/:id` | `{ids}` / — | `RequestType[]` / `204` | |
-| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` | — / `{name, canComplete}` / — | `ApiTokenInfo[]` / `201 {token, info}` / `204` | The token is only in the create response. Delete revokes. |
+| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` | — / `{name, canComplete, scope?}` / — | `ApiTokenInfo[]` / `201 {token, info}` / `204` | The token is only in the create response. Delete revokes. `scope` is `full` (default) or `read`; a `read` token only gets `GET` routes and never completes tickets. |
 | `GET /api/public/submit/:key` | — | `PublicSubmitConfig` | **No session.** `404` when the page is off or the key is wrong. |
 | `POST /api/public/submit/:key` | multipart: `data` (JSON `SubmitBody`) + up to 3 `screenshots` | `201 {ticketNo, statusPath}` | **No session**, but needs `X-Requested-With`. `429 rate_limited` (5 per 10 min per address, 30 per hour overall). `statusPath` is the new ticket's status page. |
 | `GET /api/public/status/:id/:sig` | — | `PublicTicketStatus {ticketNo, title, submittedAt, state, resolution, changedAt}` | **No session.** `state` is `received`, `in_progress`, `waiting` or `done`; `resolution` is the reason only. The same `404` for a bad signature, a work card, a card in the Trash or the page being off. `429 rate_limited` past 60 a minute per address. |
-| `POST /api/v1/cards` | one card in the import format + `dedupeKey?`, `event?` | `201`/`200 {status, card}` | **API token only** (`Authorization: Bearer tt_…`). See [AUTOMATION.md](AUTOMATION.md). |
+| `GET /api/v1/summary` | — | `ApiSummary` | **API token only**, read-only tokens included. Ticket counts for dashboards; see [API-V1.md](API-V1.md#get-apiv1summary). |
+| `POST /api/v1/cards` | one card in the import format + `dedupeKey?`, `event?` | `201`/`200 {status, card}` | **API token only** (`Authorization: Bearer tt_…`), not read-only ones (`403 forbidden`). See [AUTOMATION.md](AUTOMATION.md). |
 | `POST /api/v1/hooks/uptime-kuma` | Uptime Kuma's webhook JSON | `{status, card}` | Query: `labels`, `priority`, `severity`, `column`. |
 
 ## Health
