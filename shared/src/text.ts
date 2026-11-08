@@ -1,8 +1,12 @@
 // Text helpers shared by the server and the browser-only demo, so "Seen this before?" picks the
 // same words and counts matches the same way in both.
 
-/** Folds case and strips diacritics, like SQLite FTS5's unicode61 tokenizer (remove_diacritics 2). */
-export const foldText = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+/**
+ * Folds case and strips diacritics from Latin letters, like SQLite FTS5's unicode61 tokenizer
+ * (remove_diacritics 2). Other scripts keep theirs (Greek tonos, Cyrillic й), as in the index.
+ */
+export const foldText = (s: string): string =>
+  s.normalize('NFD').replace(/(\p{Script=Latin})\p{M}+/gu, '$1').normalize('NFC').toLowerCase();
 
 export interface TextToken {
   /** Folded. */
@@ -24,7 +28,7 @@ export function tokenizeText(text: string): TextToken[] {
  */
 export function stripSubmitScaffolding(md: string): string {
   return md
-    .replace(/\n*-{3,}\n_Submitted[^\n]*_\s*$/, '')
+    .replace(/(?:^|\n)-{3,}\n_Submitted[^\n]*_\s*$/, '')
     .replace(/^#{1,6} .* details$/gm, '')
     .replace(/^- \*\*[^*\n]+\*\* ?/gm, '')
     .replace(/^\*\*[^*\n]+\*\*$/gm, '');
@@ -32,7 +36,9 @@ export function stripSubmitScaffolding(md: string): string {
 
 /** Markdown → a short line of plain text (for previews where cut-off Markdown would break). */
 export function plainTextPreview(md: string, max: number): string {
+  // Only the start is shown, so only the start is cleaned (which also keeps the patterns below cheap).
   const text = md
+    .slice(0, max * 4)
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
@@ -55,14 +61,19 @@ const STOP_WORDS = new Set(
 
 /**
  * A rough English stem, so "failed", "failing" and "fails" all become "fail" (matched as a prefix,
- * that also finds "failure"). Only trims when at least 4 characters are left.
+ * that also finds "failure"). Only trims when at least 4 characters are left, and leaves words
+ * where the ending is part of the word ("exceed", "supply", "family").
  */
 export function stemWord(w: string): string {
   if (w.length <= 4 || /^\d+$/.test(w)) return w;
   for (const suffix of ['ing', 'ed', 'ly', 'es']) {
-    if (w.endsWith(suffix) && w.length - suffix.length >= 4) return w.slice(0, -suffix.length);
+    if (!w.endsWith(suffix) || w.length - suffix.length < 4) continue;
+    if ((suffix === 'ed' && w.endsWith('eed')) || (suffix === 'ly' && /(?:p|i|al)ly$/.test(w))) continue;
+    return w.slice(0, -suffix.length);
   }
   if (w.endsWith('s') && !/(ss|us|is)$/.test(w)) return w.slice(0, -1);
+  // "change" → "chang", like "changing" and "changed".
+  if (w.endsWith('e') && !w.endsWith('ee')) return w.slice(0, -1);
   return w;
 }
 
@@ -76,14 +87,17 @@ export function sameTerm(a: string, b: string): boolean {
   return short.length >= 4 && long.startsWith(short);
 }
 
+/** IPv4 addresses: their parts ("192", "168") would count as words every LAN ticket shares. */
+const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/g;
+
 /**
  * The distinctive words of a ticket's text, in order, for finding similar ones: folded and
- * stemmed, at least 3 characters, no common words and no long digit runs (ticket numbers, dates).
- * Forms of one word count once, as the shortest. At most `max`.
+ * stemmed, at least 3 characters, no common words, IP addresses or long digit runs (ticket
+ * numbers, dates). Forms of one word count once, as the shortest. At most `max`.
  */
 export function similarityTerms(text: string, max = 12): string[] {
   const out: string[] = [];
-  for (const { text: w } of tokenizeText(text)) {
+  for (const { text: w } of tokenizeText(text.replace(IPV4, ' '))) {
     if (w.length < 3 || STOP_WORDS.has(w) || /^\d{5,}$/.test(w)) continue;
     const stem = stemWord(w);
     const same = out.findIndex((t) => sameTerm(t, stem));
@@ -123,13 +137,12 @@ export function matchedTerms(terms: readonly string[], text: string): string[] {
 
 /**
  * Whether a finished ticket is close enough to show under "Seen this before?": at least two of the
- * terms in common (one, when there's only one), and at least one of them from the new ticket's
- * title (its title is what it's about; descriptions wander). `titleTerms` may be empty when the
- * title had nothing distinctive left.
+ * distinctive `terms` in common (one, when there's only one), and at least one word of the new
+ * ticket's title, since the title is what it's about and descriptions wander. `titleTerms` are
+ * the title's words before common ones were dropped, so a title of only common words still has
+ * to match; it's empty only when the title has no words worth comparing.
  */
 export function similarEnough(terms: readonly string[], titleTerms: readonly string[], candidateText: string): boolean {
-  const matched = matchedTerms(terms, candidateText);
-  if (matched.length < Math.min(2, terms.length)) return false;
-  const fromTitle = terms.filter((t) => titleTerms.some((tt) => sameTerm(t, tt)));
-  return !fromTitle.length || matched.some((m) => fromTitle.includes(m));
+  if (matchedTerms(terms, candidateText).length < Math.min(2, terms.length)) return false;
+  return !titleTerms.length || matchedTerms(titleTerms, candidateText).length > 0;
 }

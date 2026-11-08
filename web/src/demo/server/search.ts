@@ -176,6 +176,9 @@ const SIMILAR_CANDIDATES = 20;
 const COMMON_SHARE = 0.15;
 const COMMON_MIN_CARDS = 20;
 const NOTE_PREVIEW = 300;
+const QUERY_TEXT = 500;
+const QUERY_SCAN = 4000;
+const CANDIDATE_SCAN = 20_000;
 
 /** Like the server's fts5vocab lookup: how many cards each word is on, over all five fields. */
 function wordDocCounts(ctx: Ctx, live: CardRow[]): Map<string, number> {
@@ -193,8 +196,7 @@ export function similarCards(
 ): SimilarTicket[] {
   const typeNames = ctx.s.requestTypes.map((t) => t.name);
   const title = stripTypePrefix(input.title, typeNames);
-  const picked = similarityTerms(`${title}
-${stripSubmitScaffolding(input.description).slice(0, 500)}`);
+  const picked = similarityTerms(`${title}\n${stripSubmitScaffolding(input.description.slice(0, QUERY_SCAN)).slice(0, QUERY_TEXT)}`);
   const titleTerms = similarityTerms(title);
   const live = ctx.s.cards.filter((c) => !c.deletedAt);
   let terms = picked;
@@ -228,10 +230,8 @@ ${stripSubmitScaffolding(input.description).slice(0, 500)}`);
     .slice(0, SIMILAR_CANDIDATES)
     .map((c) => c.card)
     .filter((c) => {
-      const words = `${stripTypePrefix(c.title, typeNames)}
-${stripSubmitScaffolding(c.descriptionMd)}
-${c.resolution ?? ''}
-${c.resolutionMd}`;
+      // Title and description only: resolution reasons and notes aren't what a ticket is about.
+      const words = `${stripTypePrefix(c.title, typeNames)}\n${stripSubmitScaffolding(c.descriptionMd.slice(0, CANDIDATE_SCAN))}`;
       return similarEnough(terms, titleTerms, words);
     })
     .slice(0, input.limit ?? 5)

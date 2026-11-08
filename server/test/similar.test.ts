@@ -1,4 +1,4 @@
-import { similarityTerms, stemWord, stripSubmitScaffolding, stripTypePrefix } from '@tt/shared';
+import { plainTextPreview, similarityTerms, stemWord, stripSubmitScaffolding, stripTypePrefix } from '@tt/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { archiveCard, completeCard, createCard, deleteCard } from '../src/services/cards';
 import { createLink } from '../src/services/links';
@@ -24,16 +24,28 @@ const similar = (title: string, description = '', excludeId?: number) =>
 describe('picking the words', () => {
   it('keeps distinctive words, stemmed, and drops common ones and ticket numbers', () => {
     expect(similarityTerms('Plex keeps buffering on the TV again (261108-1)')).toEqual(['plex', 'buffer']);
-    expect(similarityTerms('nginx.conf returns 502 after the update')).toEqual(['nginx', 'conf', 'return', '502', 'update']);
+    expect(similarityTerms('nginx.conf returns 502 after the update')).toEqual(['nginx', 'conf', 'return', '502', 'updat']);
   });
 
   it('counts forms of one word once', () => {
     expect(similarityTerms('Check plugin updates, then update the plugins')).toEqual(['check', 'plugin', 'updat']);
   });
 
-  it('stems only when enough of the word is left', () => {
-    const words = ['failed', 'failing', 'fails', 'nightly', 'crashes', 'drives', 'games', 'speed', 'string', 'status', 'process', 'redis', 'disk'];
-    expect(words.map(stemWord)).toEqual(['fail', 'fail', 'fail', 'night', 'crash', 'driv', 'game', 'speed', 'string', 'status', 'process', 'redis', 'disk']);
+  it('stems only when enough of the word is left, and not endings that belong to the word', () => {
+    const words = ['failed', 'failing', 'fails', 'nightly', 'weekly', 'crashes', 'drives', 'drive', 'change', 'changing', 'games', 'speed', 'string', 'status', 'process', 'redis', 'disk'];
+    expect(words.map(stemWord)).toEqual(['fail', 'fail', 'fail', 'night', 'week', 'crash', 'driv', 'driv', 'chang', 'chang', 'game', 'speed', 'string', 'status', 'process', 'redis', 'disk']);
+    expect(['exceed', 'proceed', 'supply', 'family', 'totally'].map(stemWord)).toEqual(['exceed', 'proceed', 'supply', 'family', 'totally']);
+  });
+
+  it('ignores IP addresses, whose parts every LAN ticket shares', () => {
+    expect(similarityTerms('Cannot reach 192.168.1.20 from the printer')).toEqual(['reach', 'printer']);
+  });
+
+  it('stays fast on pathological text', () => {
+    const started = performance.now();
+    stripSubmitScaffolding(`x${'\n'.repeat(100_000)}y`);
+    plainTextPreview('['.repeat(100_000), 300);
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('strips a request type’s name from the front of a submitted title only', () => {
@@ -83,6 +95,28 @@ describe('similar tickets', () => {
     expect(similar('Plex transcoder stutters')).toEqual(['Plex transcoder crash']);
     // With only one distinctive word, one match will do.
     expect(similar('Transcoder')).toEqual(['Plex transcoder crash']);
+  });
+
+  it('doesn’t count resolution reasons or notes as shared words', () => {
+    const talk = createCard(t.ctx, { title: 'Nextcloud Talk app crashes on launch' });
+    completeCard(t.ctx, talk.id, { includeChildren: false, resolution: { reason: 'No longer needed', note: 'Certificate renewal fixed it' } });
+    const photos = createCard(t.ctx, { title: 'Immich mobile app slow' });
+    completeCard(t.ctx, photos.id, { includeChildren: false, resolution: { reason: 'Duplicate', note: '' } });
+    expect(similar('Certificate renewal needed for Nextcloud')).toEqual([]);
+    expect(similar('Duplicate photos in Immich')).toEqual([]);
+  });
+
+  it('matches words in other scripts as the index stores them', () => {
+    fixed('Ο εκτυπωτής τυπώνει άδειες σελίδες');
+    expect(similar('Εκτυπωτής: τυπώνει μόνο μαύρο')).toEqual(['Ο εκτυπωτής τυπώνει άδειες σελίδες']);
+    fixed('Принтер не печатает документы');
+    expect(similar('Принтер не печатает')).toEqual(['Принтер не печатает документы']);
+  });
+
+  it('still needs a title word when every title word is common', () => {
+    for (let i = 0; i < 24; i++) createCard(t.ctx, { title: `Plex buffering ${i}` });
+    fixed('Sonarr import broken', 'Synology NFS mount was read-only');
+    expect(similar('Plex buffering again', 'Synology NFS mount looks fine')).toEqual([]);
   });
 
   it('needs one of the shared words to come from the title', () => {

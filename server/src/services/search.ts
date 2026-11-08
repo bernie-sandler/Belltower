@@ -239,6 +239,11 @@ const COMMON_SHARE = 0.15;
 /** …but only judge that once there are enough cards for the share to mean anything. */
 const COMMON_MIN_CARDS = 20;
 const NOTE_PREVIEW = 300;
+/** How much of the new ticket's description picks words, and how much is looked at to find it. */
+const QUERY_TEXT = 500;
+const QUERY_SCAN = 4000;
+/** How much of a candidate's description is compared. */
+const CANDIDATE_SCAN = 20_000;
 
 /** Sorts after every word that starts with a given prefix. */
 const AFTER_PREFIX = String.fromCodePoint(0x10ffff);
@@ -286,7 +291,7 @@ export function similarCards(
   // type shares; the scaffolding around their answers likewise.
   const typeNames = stmt(ctx.db, 'SELECT name FROM request_types').pluck().all() as string[];
   const title = stripTypePrefix(input.title, typeNames);
-  const picked = similarityTerms(`${title}\n${stripSubmitScaffolding(input.description).slice(0, 500)}`);
+  const picked = similarityTerms(`${title}\n${stripSubmitScaffolding(input.description.slice(0, QUERY_SCAN)).slice(0, QUERY_TEXT)}`);
   const titleTerms = similarityTerms(title);
   const common = commonWords(ctx, picked);
   const terms = picked.filter((t) => !common.has(t));
@@ -309,7 +314,9 @@ export function similarCards(
   const parentOf = stmt(ctx.db, 'SELECT id, ticket_no, title FROM cards WHERE id = ? AND deleted_at IS NULL');
   return rows
     .filter((r) => {
-      const words = `${stripTypePrefix(r.title, typeNames)}\n${stripSubmitScaffolding(r.description_md)}\n${r.resolution ?? ''}\n${r.resolution_md}`;
+      // Title and description only: resolution reasons ("No longer needed", "Duplicate") and notes
+      // aren't what a ticket is about.
+      const words = `${stripTypePrefix(r.title, typeNames)}\n${stripSubmitScaffolding(r.description_md.slice(0, CANDIDATE_SCAN))}`;
       return similarEnough(terms, titleTerms, words);
     })
     .slice(0, input.limit ?? 5)
