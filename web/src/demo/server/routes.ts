@@ -257,6 +257,7 @@ export interface DemoApi {
   'POST /api/ai/draft-many': BulkDraft;
   'POST /api/tickets': CardDetail;
   // ---- automation API (routes/v1.ts): bearer tokens from other tools, never the web app ----
+  'GET /api/v1/summary': never;
   'POST /api/v1/cards': never;
   'POST /api/v1/hooks/uptime-kuma': never;
 }
@@ -560,6 +561,9 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     return links?.length ? getCard(ctx, card.id) : card;
   }),
 
+  'GET /api/v1/summary': ok(() => {
+    throw notInDemo(NO_AUTOMATION);
+  }),
   'POST /api/v1/cards': ok(() => {
     throw notInDemo(NO_AUTOMATION);
   }),

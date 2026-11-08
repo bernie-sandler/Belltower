@@ -120,6 +120,9 @@ function oldDatabase(v: number): DB {
     );
     run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, created_at) VALUES ('Uptime Kuma', ?, 'tt_abcd', 1, ?)`, 'b'.repeat(64), at(1));
   }
+  if (v >= 7) {
+    run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, scope, created_at) VALUES ('Homepage', ?, 'tt_efgh', 0, 'read', ?)`, 'c'.repeat(64), at(1));
+  }
   return db;
 }
 
@@ -159,11 +162,21 @@ function checkWorks(ctx: Ctx) {
   createLink(ctx, fresh.id, id('Replace the case fan'), 'relates');
   addWorklog(ctx, fresh.id, { bodyMd: 'Still works' });
   createToken(ctx, { name: 'New token', canComplete: false });
+  createToken(ctx, { name: 'Dashboard', canComplete: true, scope: 'read' });
 
-  // And it can be backed up and restored again.
+  // Tokens from before read-only tokens existed keep doing everything they did.
+  const scopes = (d: DB) => d.prepare('SELECT name, scope, can_complete FROM api_tokens WHERE name != ?').all('Dashboard');
+  for (const tk of scopes(db) as { scope: string }[]) expect(tk.scope).toBe('full');
+
+  // And it can be backed up and restored again, read-only tokens included.
   const data = exportData(ctx, 'test');
-  const counts = buildRestoreDb(data, path.join(tempDir(), 'restored.db'), ctx.tz, ctx.clock);
+  const file = path.join(tempDir(), 'restored.db');
+  const counts = buildRestoreDb(data, file, ctx.tz, ctx.clock);
   expect(counts.cards).toBe(count(db, 'cards'));
+  const again = openDatabase(file);
+  dbs.push(again);
+  expect(again.prepare('SELECT scope, can_complete FROM api_tokens WHERE name = ?').get('Dashboard')).toEqual({ scope: 'read', can_complete: 0 });
+  expect(scopes(again)).toEqual(scopes(db));
 }
 
 describe('upgrading a database left by an older version', () => {
@@ -195,6 +208,7 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     [3, 'cards', ['ticket_no']],
     [4, 'cards', ['kind', 'parent_id']],
     [6, 'cards', ['resolution', 'resolution_md']],
+    [7, 'api_tokens', ['scope']],
   ];
   for (const [added, table, columns] of dropColumns) {
     if (v >= added) continue;

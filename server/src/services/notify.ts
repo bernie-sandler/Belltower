@@ -97,13 +97,16 @@ function cardInfo(ctx: Ctx, id: number): CardInfo | null {
   return (stmt(ctx.db, `SELECT ${CARD_COLUMNS} FROM cards c JOIN columns col ON col.id = c.column_id WHERE c.id = ?`).get(id) as CardInfo | undefined) ?? null;
 }
 
+/** Open cards on the board with a due date (`c` is cards); `?` is the last due date wanted. */
+export const DUE_WHERE = 'c.deleted_at IS NULL AND c.archived_at IS NULL AND c.completed_at IS NULL AND c.due_date IS NOT NULL AND c.due_date <= ?';
+
 /** Open cards on the board that are overdue or due today (the daily summary), soonest first. At most 50. */
 export function dueCards(ctx: Ctx, today: string): { overdue: CardInfo[]; dueToday: CardInfo[] } {
   const rows = stmt(
     ctx.db,
     `SELECT ${CARD_COLUMNS}
        FROM cards c JOIN columns col ON col.id = c.column_id
-      WHERE c.deleted_at IS NULL AND c.archived_at IS NULL AND c.completed_at IS NULL AND c.due_date IS NOT NULL AND c.due_date <= ?
+      WHERE ${DUE_WHERE}
       ORDER BY c.due_date, c.id LIMIT 50`,
   ).all(today) as CardInfo[];
   return { overdue: rows.filter((c) => c.due_date! < today), dueToday: rows.filter((c) => c.due_date === today) };

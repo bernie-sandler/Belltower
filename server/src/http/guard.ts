@@ -109,6 +109,10 @@ export function installGuard(app: FastifyInstance, deps: AppDeps): void {
       const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
       req.apiToken = m ? authenticateToken(deps.ctx, m[1]!) : null;
       if (!req.apiToken) throw new AppError(401, 'unauthenticated', 'Send a valid API token: Authorization: Bearer tt_…');
+      // Checked here rather than per route, so a route added later is closed to read-only tokens by default.
+      if (req.apiToken.scope === 'read' && !SAFE_METHODS.has(req.method)) {
+        throw new AppError(403, 'forbidden', 'This token is read-only. Create a full token to open tickets.');
+      }
       return;
     }
 

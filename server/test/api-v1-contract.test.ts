@@ -11,13 +11,30 @@ afterEach(() => t?.shutdown());
 async function setup(canComplete = true) {
   t = await makeApp();
   const c = client(t.app, await setupAndLogin(t));
+  // No scope: tokens created the 1.2 way are full tokens.
   const { token } = (await c('POST', '/api/tokens', { name: 'Contract', canComplete })).json();
   const v1 = (url: string, body: unknown, auth = `Bearer ${token}`) =>
     t.app.inject({ method: 'POST', url, payload: body as object, headers: auth ? { authorization: auth } : {} });
-  return { c, v1 };
+  const get = (url: string, auth = `Bearer ${token}`) => t.app.inject({ method: 'GET', url, headers: auth ? { authorization: auth } : {} });
+  return { c, v1, get, token };
 }
 
 const CARD_KEYS = ['columnId', 'completedAt', 'id', 'ticketNo', 'title'];
+const SUMMARY_KEYS = [
+  'byPriority',
+  'bySeverity',
+  'completed7d',
+  'completedToday',
+  'dueToday',
+  'generatedAt',
+  'inProgress',
+  'oldestOpenDays',
+  'open',
+  'overdue',
+  'received',
+  'urgent',
+  'waiting',
+];
 
 describe('/api/v1 contract', () => {
   it('cards: created → updated → recovered/resolved → ignored, with the documented shapes', async () => {
@@ -86,6 +103,38 @@ describe('/api/v1 contract', () => {
     expect(down.json()).toMatchObject({ status: 'created', card: { title: 'Plex is down' } });
     expect((await v1('/api/v1/hooks/uptime-kuma', { monitor, heartbeat: { status: 1, msg: 'OK' } })).json().status).toBe('resolved');
     expect((await v1('/api/v1/hooks/uptime-kuma', { monitor, heartbeat: { status: 2 } })).json().status).toBe('ignored');
+  });
+
+  it('summary: the documented counts, for full and read-only tokens', async () => {
+    const { c, v1, get } = await setup();
+    await v1('/api/v1/cards', { title: 'Backup failed', priority: 'P1' });
+    const res = await get('/api/v1/summary');
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Object.keys(body).sort()).toEqual(SUMMARY_KEYS);
+    expect(body).toMatchObject({ open: 1, received: 1, inProgress: 0, waiting: 0, urgent: 1, oldestOpenDays: 0 });
+    expect(body.byPriority).toEqual({ P0: 0, P1: 1, P2: 0, P3: 0, none: 0 });
+    expect(body.bySeverity).toEqual({ S1: 0, S2: 0, S3: 0, S4: 0, none: 1 });
+    expect(body.generatedAt).toEqual(expect.any(String));
+
+    const read = (await c('POST', '/api/tokens', { name: 'Homepage', scope: 'read' })).json().token;
+    expect((await get('/api/v1/summary', `Bearer ${read}`)).json()).toEqual(body);
+    expect((await get('/api/v1/summary', '')).statusCode).toBe(401);
+  });
+
+  it('read-only tokens get 403 forbidden on anything but GET, and never complete tickets', async () => {
+    const { c, v1 } = await setup();
+    const created = (await c('POST', '/api/tokens', { name: 'Homepage', scope: 'read', canComplete: true })).json();
+    expect(created.info).toMatchObject({ scope: 'read', canComplete: false });
+    for (const url of ['/api/v1/cards', '/api/v1/hooks/uptime-kuma']) {
+      const res = await v1(url, { title: 'x', dedupeKey: 'k' }, `Bearer ${created.token}`);
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toMatchObject({ error: 'forbidden', message: expect.any(String) });
+    }
+    expect((await c('GET', '/api/tokens')).json().map((tk: { name: string; scope: string }) => [tk.name, tk.scope])).toEqual([
+      ['Homepage', 'read'],
+      ['Contract', 'full'],
+    ]);
   });
 
   it('health needs no token', async () => {
