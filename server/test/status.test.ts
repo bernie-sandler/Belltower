@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getSetting } from '../src/db/connection';
 import { STATUS_LIMIT } from '../src/http/routes/submit';
-import { completeCard, createCard, deleteCard, moveCard } from '../src/services/cards';
+import { completeCard, createCard, deleteCard, moveCard, resolveCard } from '../src/services/cards';
+import { createColumn, deleteColumn } from '../src/services/columns';
 import { createLink } from '../src/services/links';
 import { listRequestTypes } from '../src/services/requestTypes';
 import { getSubmitSettings, updateSubmitSettings } from '../src/services/settings';
@@ -101,6 +102,29 @@ describe('status links', () => {
     t.clock.advance(60_000);
     addWorklog(t.ctx, card.id, { bodyMd: 'Private note' });
     expect(statusOf(card.id).changedAt).toBe(movedAt);
+  });
+
+  it('dates a changed resolution reason, but not an edited note', () => {
+    const card = createCard(t.ctx, { title: 'Plex buffering' });
+    completeCard(t.ctx, card.id, { includeChildren: false, resolution: { reason: 'Fixed', note: '' } });
+    const doneAt = t.clock.now().toISOString();
+    t.clock.advance(60_000);
+    resolveCard(t.ctx, card.id, { reason: 'Fixed', note: 'Private detail' });
+    expect(statusOf(card.id).changedAt).toBe(doneAt);
+    t.clock.advance(60_000);
+    resolveCard(t.ctx, card.id, { reason: 'Won’t fix', note: 'Private detail' });
+    expect(statusOf(card.id)).toMatchObject({ resolution: 'Won’t fix', changedAt: t.clock.now().toISOString() });
+  });
+
+  it('forgets the submit page’s column when it’s deleted, so a new column can’t take its place', () => {
+    const intake = createColumn(t.ctx, 'Intake');
+    updateSubmitSettings(t.ctx, { enabled: true, columnId: intake.id, pageTitle: 'Help', intro: '' });
+    deleteColumn(t.ctx, intake.id);
+    expect(getSubmitSettings(t.ctx).columnId).toBeNull();
+    const testing = createColumn(t.ctx, 'Testing');
+    expect(testing.id).toBe(intake.id); // SQLite hands the id out again
+    const card = createCard(t.ctx, { title: 'Elsewhere', columnId: testing.id });
+    expect(statusOf(card.id).state).toBe('in_progress');
   });
 
   it('rejects wrong, malformed and tampered links the same way', () => {

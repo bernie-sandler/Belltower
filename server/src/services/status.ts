@@ -90,7 +90,9 @@ export function publicStatus(ctx: Ctx, rawId: string, sig: string): PublicTicket
     (stmt(
       ctx.db,
       `SELECT max(occurred_at) FROM activity
-        WHERE card_id = ? AND kind = 'event' AND type IN ('created', 'moved', 'completion_changed')`,
+        WHERE card_id = ? AND kind = 'event'
+          AND (type IN ('created', 'moved', 'completion_changed')
+               OR (type = 'resolved' AND json_extract(data, '$.reason') IS NOT json_extract(data, '$.from')))`,
     )
       .pluck()
       .get(id) as string | null) ?? card.created_at;

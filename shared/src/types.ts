@@ -445,7 +445,10 @@ export interface PublicTicketStatus {
   state: TicketState;
   /** The resolution reason once done ("Fixed"), never the note. */
   resolution: string | null;
-  /** When it last moved or was completed (not every edit, so private notes don't show up). */
+  /**
+   * When it last moved, was completed or got a different resolution reason. Not every edit, so
+   * private notes don't show up.
+   */
   changedAt: IsoTimestamp;
 }
 
