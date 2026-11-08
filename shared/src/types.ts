@@ -427,6 +427,36 @@ export interface PublicSubmitConfig {
 
 export interface SubmitResult {
   ticketNo: string | null;
+  /** Where the submitter can check on the ticket later ("/submit/status/42/…"); null for the honeypot. */
+  statusPath: string | null;
+}
+
+/**
+ * A ticket's state as people outside see it (the status page). Checked in this order: done, then
+ * waiting (blocked column or an open blocker), then received (triage or the submit page's column),
+ * else in progress.
+ */
+export type TicketState = 'received' | 'waiting' | 'in_progress' | 'done';
+
+/** GET /api/public/status/:id/:sig — deliberately little: nothing private from the card. */
+export interface PublicTicketStatus {
+  ticketNo: string | null;
+  title: string;
+  submittedAt: IsoTimestamp;
+  state: TicketState;
+  /** The resolution reason once done ("Fixed"), never the note. */
+  resolution: string | null;
+  /**
+   * When it last moved, was completed or got a different resolution reason. Not every edit, so
+   * private notes don't show up.
+   */
+  changedAt: IsoTimestamp;
+}
+
+/** GET /api/cards/:id/status-link. `active` is false while the submit page is off (links answer 404). */
+export interface StatusLinkInfo {
+  path: string;
+  active: boolean;
 }
 
 export interface ApiTokenInfo {

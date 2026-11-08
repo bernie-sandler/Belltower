@@ -166,6 +166,8 @@ export interface DemoSettings {
   resolutionReasons: string[] | null;
   /** ntfy, Gotify, webhook: only their event choices (the demo can't send). Optional for older saved data. */
   notifyChannels?: Partial<Record<NotifyChannel, { events: { external: boolean; critical: boolean; digest: boolean; blocked: boolean } }>>;
+  /** Signs ticket status links (status.ts). Optional, so data saved before it existed still loads. */
+  statusSecret?: string | null;
 }
 
 export type TableName =

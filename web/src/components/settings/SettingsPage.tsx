@@ -10,7 +10,7 @@ import { useSetBlockedColumn } from '../../api/columns';
 import { useConfig } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { qk } from '../../api/keys';
-import { useNewSubmitLink, useSaveGeneral, useSaveSubmit, useSettings } from '../../api/settings';
+import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
 import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
 import { todayLocal } from '../../lib/time';
@@ -187,11 +187,13 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
   const { data: board } = useBoard();
   const save = useSaveSubmit();
   const newLink = useNewSubmitLink();
+  const resetStatus = useResetStatusLinks();
   const [enabled, setEnabled] = useState(s.submit.enabled);
   const [columnId, setColumnId] = useState<number | null>(s.submit.columnId);
   const [pageTitle, setPageTitle] = useState(s.submit.pageTitle);
   const [intro, setIntro] = useState(s.submit.intro);
   const [confirmNew, setConfirmNew] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setEnabled(s.submit.enabled), [s.submit.enabled]);
 
@@ -205,7 +207,8 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
     <Section icon={<Globe size={16} aria-hidden />} title="Submit page">
       <p className="muted">
         A page where people without your password (family, friends, players) can file a ticket. Anyone with the link can use
-        it, and nothing else: they only see the form and the new ticket’s number.
+        it, and nothing else: they see the form, and afterwards a status link for their own ticket that shows whether it’s
+        received, being worked on or done.
       </p>
       <label className="checkbox">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
@@ -271,8 +274,37 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
         </button>
       </div>
 
+      {s.submit.key && (
+        <div className="settings-subblock">
+          <p className="muted small">
+            <strong>Status links.</strong> After sending, people get a link to check on their ticket. To send one for any
+            ticket yourself, open the card and press Status link. They only work while the submit page is on.
+          </p>
+          <button type="button" className="btn btn-sm btn-subtle" onClick={() => setConfirmReset(true)}>
+            <RefreshCw size={14} aria-hidden /> Reset status links
+          </button>
+        </div>
+      )}
+
       <RequestTypesEditor />
 
+      {confirmReset && (
+        <ConfirmDialog
+          title="Reset every status link?"
+          message="Every status link handed out so far stops working. New tickets get new links, and Status link on a card copies a fresh one."
+          confirmLabel="Reset links"
+          busy={resetStatus.isPending}
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={() =>
+            resetStatus.mutate(undefined, {
+              onSuccess: () => {
+                setConfirmReset(false);
+                toast('Status links reset; the old ones no longer work', { kind: 'success' });
+              },
+            })
+          }
+        />
+      )}
       {confirmNew && (
         <ConfirmDialog
           title="Make a new link?"

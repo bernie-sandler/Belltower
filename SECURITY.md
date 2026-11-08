@@ -44,6 +44,9 @@ Fixes go into the newest 1.x release.
 - **Submit page** (off by default).
   - It's reachable without the password by anyone who has its long random link.
   - It can only file tickets, and shows nothing from the board except your request types and the tags you chose.
+  - After sending, people get a **status link** for their own ticket. It shows the title, number, dates, a simple
+    state and the resolution reason, and nothing else. Links are signed per ticket, only work while the page is on,
+    and **Reset status links** cuts them all off.
   - It's rate limited, rejects non-image screenshots, and has a hidden field that catches simple bots.
   - **New link** cuts off the old address.
 - **API tokens** can only open and update tickets through `/api/v1`. Only a hash of each is stored. Revoke them in

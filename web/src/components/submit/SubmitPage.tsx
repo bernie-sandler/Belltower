@@ -1,15 +1,18 @@
 // The public submit page (/submit/<key>): pick what you need help with, answer its questions,
-// file a ticket. No sign-in; shows nothing from the board except the request types and their tags.
+// file a ticket. No sign-in; shows nothing from the board except the request types and their tags,
+// and afterwards a link to the new ticket's status page (StatusPage.tsx).
 
 import { useQuery } from '@tanstack/react-query';
 import { CSRF_HEADER, CSRF_VALUE, LIMITS, type PublicSubmitConfig, type RequestFieldDef, type SubmitResult } from '@tt/shared';
-import { CircleCheck, ImagePlus, X } from 'lucide-react';
+import { CircleCheck, Copy, ImagePlus, X } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
-import { useParams } from 'react-router';
+import { useHref, useParams } from 'react-router';
 import { api, ApiError } from '../../api/client';
 import { errorMessage } from '../../api/errors';
+import { copyText } from '../../lib/clipboard';
 import { cls } from '../../lib/cls';
 import { formatBytes } from '../../lib/time';
+import { toast } from '../../lib/toast';
 import { AuthLayout } from '../auth/AuthLayout';
 import { LabelChip } from '../labels/LabelChip';
 import { Spinner } from '../common/Status';
@@ -140,6 +143,7 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
           )}
           .
         </p>
+        {done.statusPath && <StatusLink path={done.statusPath} />}
         <button type="button" className="btn btn-block" onClick={reset}>
           Send another
         </button>
@@ -276,6 +280,30 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
         </form>
       )}
     </AuthLayout>
+  );
+}
+
+/** The thank-you screen's link to the ticket's status page. */
+function StatusLink({ path }: { path: string }) {
+  // Through the router, so the demo's hash-based addresses come out right too.
+  const url = new URL(useHref(path), window.location.href).toString();
+  return (
+    <div className="submit-status-link">
+      <p className="auth-intro">Keep this link to check on it later:</p>
+      <div className="settings-link">
+        <a className="settings-link-url" href={url}>
+          {url}
+        </a>
+        <button
+          type="button"
+          className="btn btn-sm"
+          aria-label="Copy status link"
+          onClick={() => void copyText(url).then((ok) => toast(ok ? 'Link copied' : 'Couldn’t copy; select it instead', { kind: ok ? 'success' : 'warning' }))}
+        >
+          <Copy size={14} aria-hidden /> Copy
+        </button>
+      </div>
+    </div>
   );
 }
 
