@@ -95,7 +95,8 @@ generically.
 
 **Settings keys** you'll see: `general_settings`, `submit_settings` (which includes the submit page's key),
 `discord_settings` (which includes the webhook URL), `discord_last_delivery`, `discord_digest_last`,
-`resolution_reasons`, `blocked_column_id`, `app_tz_at_seed`, `seeded` and `request_types_seeded`.
+`resolution_reasons`, `blocked_column_id`, `status_link_secret` (signs ticket status links), `app_tz_at_seed`, `seeded`
+and `request_types_seeded`.
 
 ## What's left out
 
@@ -103,8 +104,8 @@ generically.
   ones already on the server, so it never locks you out.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.
 
-Because a backup does include the submit page's link, the Discord webhook URL and token hashes, keep exports
-somewhere private.
+Because a backup does include the submit page's link, the secret that signs status links, the Discord webhook URL and
+token hashes, keep exports somewhere private.
 
 ## Schema history
 
