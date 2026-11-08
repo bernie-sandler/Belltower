@@ -297,6 +297,8 @@ export class Notifier {
         }
       } catch (err) {
         last = `Couldn’t reach ${name}: ${channel === 'discord' ? (err as Error).message : networkReason(err)}`;
+        // A redirect will be a redirect again; only network trouble is worth retrying.
+        if (isRedirect(err)) break;
         if (attempt < this.retryDelaysMs.length) await sleep(this.retryDelaysMs[attempt]!);
       }
     }
@@ -311,11 +313,19 @@ function notSetUp(channel: AnyChannel): string {
   return `${START[channel]} isn’t set up`;
 }
 
+type FetchError = { name?: string; message?: string; cause?: { code?: string; message?: string } };
+
+/** fetch with redirect: 'error' rejects a redirect as a network error mentioning it. */
+const isRedirect = (err: unknown) => {
+  const e = err as FetchError;
+  return /redirect/i.test(`${e.cause?.message ?? ''} ${e.message ?? ''}`);
+};
+
 /** Why a request didn't get an answer, without echoing anything the other end said. */
 function networkReason(err: unknown): string {
-  const e = err as { name?: string; message?: string; cause?: { code?: string; message?: string } };
+  const e = err as FetchError;
   if (e.name === 'TimeoutError' || e.name === 'AbortError') return 'no answer within 10 seconds';
-  if (/redirect/i.test(`${e.cause?.message ?? ''} ${e.message ?? ''}`)) return 'it answered with a redirect, and redirects aren’t followed';
+  if (isRedirect(err)) return 'it answered with a redirect, and redirects aren’t followed';
   return e.cause?.code ?? 'network error';
 }
 

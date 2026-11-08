@@ -198,7 +198,9 @@ describe('sending', () => {
     expect((await notifier.sendTest(t.ctx, 'webhook')).message).toBe('Couldn’t reach the webhook: ECONNREFUSED');
     const redirected = Object.assign(new TypeError('fetch failed'), { cause: { message: 'unexpected redirect' } });
     replies = [redirected, redirected, redirected];
+    const before = sent.length;
     expect((await notifier.sendTest(t.ctx, 'webhook')).message).toMatch(/redirects aren’t followed/);
+    expect(sent.length - before).toBe(1); // not retried
     expect(JSON.stringify(lastDelivery(t.ctx, 'webhook'))).not.toContain('secret page body');
     expect(JSON.stringify(lastDelivery(t.ctx, 'webhook'))).not.toContain('10.0.0.5');
   });
