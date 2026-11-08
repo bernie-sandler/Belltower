@@ -1,9 +1,7 @@
 # Publishes the Docker image to GHCR and a GitHub Release when a version tag is pushed:
-#   v0.10.0-beta  → :0.10.0, :beta                        (pre-release)
-#   v1.0.0-rc.1   → :1.0.0-rc.1, :rc                      (pre-release)
-#   v1.0.0        → :1.0.0, :1.0, :1, :latest             (release)
-# The tag must match the version in package.json. Tags are semver so GitHub lists releases in
-# version order (0.8.0-beta, 0.9.0-beta, 0.10.0-beta); before 0.11 the betas were tagged beta-v0.x.0.
+#   v1.3.0-rc.1   → :1.3.0-rc.1, :rc                      (pre-release)
+#   v1.3.0        → :1.3.0, :1.3, :1, :latest             (release)
+# The tag must match the version in package.json.
 name: Release
 
 on:
@@ -30,8 +28,8 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           case "$TAG" in
-            v*-beta*)  VERSION="${TAG#v}"; VERSION="${VERSION%%-*}"; CHANNEL=beta ;;
             v*-rc.*)   VERSION="${TAG#v}";      CHANNEL=rc ;;
+            v*-*)      echo "Only vX.Y.Z and vX.Y.Z-rc.N tags are released, not $TAG"; exit 1 ;;
             v*)        VERSION="${TAG#v}";      CHANNEL=stable ;;
             *) echo "Unexpected tag $TAG"; exit 1 ;;
           esac
@@ -45,7 +43,6 @@ jobs:
           TAGS="$IMAGE:$VERSION"
           case "$CHANNEL" in
             stable) TAGS="$TAGS,$IMAGE:$MAJOR.$MINOR,$IMAGE:$MAJOR,$IMAGE:latest" ;;
-            beta)   TAGS="$TAGS,$IMAGE:beta" ;;
             rc)     TAGS="$TAGS,$IMAGE:rc" ;;
           esac
           {

@@ -1,7 +1,7 @@
 # Development
 
-How the code is laid out, how to run and test it, and the few rules that keep 1.x upgrades safe. The design notes
-are in [DESIGN.md](DESIGN.md) and the web UI's API in [API.md](API.md).
+How the code is laid out, how to run and test it, and the few rules that keep 1.x upgrades safe. The web UI's API is
+in [API.md](API.md).
 
 ## Layout
 
@@ -11,6 +11,30 @@ are in [DESIGN.md](DESIGN.md) and the web UI's API in [API.md](API.md).
 - `web/`: React and Vite.
 - `e2e/`: Playwright tests that drive a real build in Chrome.
 - `docker/entrypoint.sh`: sets up PUID/PGID before starting the app.
+
+## Why this stack
+
+- **TypeScript on both sides**, so the zod schemas in `shared/` check requests on the server and shape them in the UI.
+- **Fastify**, because it's small, streams uploads, and `inject()` makes route tests easy. Security headers are set by
+  hand rather than with helmet, whose HSTS and `upgrade-insecure-requests` defaults break plain-HTTP access over the
+  LAN or Tailscale.
+- **SQLite through better-sqlite3**: synchronous calls make transactions simple, FTS5 powers search, and the whole
+  database is one file under `/data`.
+- **React with TanStack Query**: optimistic drag and drop, and refetching when a window regains focus keeps a phone
+  and a desktop in step.
+- **dnd-kit** for drag and drop with a mouse, a long press on touch, or the keyboard.
+- **markdown-it with raw HTML turned off**, so user text never becomes markup and no sanitizer is needed.
+- **A small calendar of our own** instead of a calendar library: the needs are simple and the libraries are heavy.
+
+A few rules follow from where it runs:
+
+- **Nothing loads from the internet.** Scripts and icons are bundled and fonts are the system's; `npm run build` fails
+  if the web bundle points at a remote URL (`scripts/check-dist.mjs`).
+- **It has to work over plain HTTP** (an IP address or a Tailscale name), where browsers withhold secure-context APIs.
+  In the web app, don't use `crypto.randomUUID` (see `web/src/lib/ids.ts`) or `navigator.clipboard` directly (use
+  `web/src/lib/clipboard.ts`), and there's no service worker.
+- **Dates belong to the app's time zone** (`TZ`), not the device's: due badges, calendar days, ticket numbers and
+  recurring schedules all use it.
 
 ## Running it
 
@@ -107,9 +131,8 @@ then updating `docker-compose.yml`, the docs and `unraid/belltower.xml`.
 
 | Tag | Image tags | GitHub Release |
 |---|---|---|
-| `v1.2.0` | `:1.2.0`, `:1.2`, `:1`, `:latest` | release |
-| `v1.2.0-rc.1` | `:1.2.0-rc.1`, `:rc` | pre-release |
-| `v0.10.0-beta` | `:0.10.0`, `:beta` | pre-release |
+| `v1.3.0` | `:1.3.0`, `:1.3`, `:1`, `:latest` | release |
+| `v1.3.0-rc.1` | `:1.3.0-rc.1`, `:rc` | pre-release |
 
 Before tagging:
 1. Set the version (without any `-rc.N` suffix) in all four `package.json` files (root, `shared`, `server`, `web`)

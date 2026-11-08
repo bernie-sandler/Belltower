@@ -4,6 +4,19 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.2.3: Housekeeping
+
+The app itself hasn't changed. This release tidies up around it.
+
+- **Try it without installing.** The [live demo](https://bernie-sandler.github.io/Belltower/) runs the real app in
+  your browser with a sample board, and your changes stay in that browser. **View as Submitter** shows the submit page.
+- **Screenshots in the README**, in light and dark to match your GitHub theme.
+- **Shorter docs.** The upgrade notes for betas and for coming from Tower Tracker are gone, since releases before
+  1.2.1 are no longer published. The original design proposal (`docs/DESIGN.md`) is retired; the reasons behind the
+  stack now live in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). The README no longer calls Belltower early
+  development.
+- **Release workflow.** The old `beta` channel is gone. Releases are `latest` (and `1`, `1.2`, `1.2.3`) or `rc`.
+
 ## 1.2.2: The real icon in the app
 
 - **The top bar and sign-in page show the real Belltower icon.** They were drawing a plain bell in code, so they didn't
@@ -26,8 +39,7 @@ The app itself hasn't changed. This release makes the files that ship with a rel
 - **Your data stays put.** The database, backups, API tokens, sign-ins and the automation API (`/api/v1`) are
   unchanged. Backups made under the old name restore as usual, and saved import prompts still work.
 - **One manual step for existing installs.** The Docker container and stack have a new name, so stop the old one
-  first and keep your `DATA_PATH`. See
-  [Coming from Tower Tracker](docs/UPGRADING.md#coming-from-tower-tracker).
+  first and keep your `DATA_PATH`.
 - **New image address.** The repository is now `bernie-sandler/Belltower` and the image is
   `ghcr.io/bernie-sandler/belltower`. `docker-compose.yml` and the Unraid template point there. Versions before 1.2.0
   stay at `ghcr.io/bernie-sandler/tower-tracker`, so if `TT_VERSION` is set to one of those, or to `rc` or `beta`,
@@ -62,8 +74,7 @@ server first.
   (install, upgrading, using it, remote access, backups, submit page, notifications, automation, Claude drafting),
   plus two frozen specs: the [automation API](docs/API-V1.md) and the [backup format](docs/BACKUP-FORMAT.md).
 - **Stable by default.** `docker-compose.yml` and `.env.example` now use `latest`. If your `.env` says `beta` or
-  `rc`, change it to `latest`, because neither of those follows 1.0. See
-  [docs/UPGRADING.md](docs/UPGRADING.md#moving-from-a-beta-to-10).
+  `rc`, change it to `latest`, because neither of those follows 1.0.
 - **More ways to set it up on Unraid.** There's now a template for Unraid's **Add Container** form
   ([docs/INSTALL.md](docs/INSTALL.md)), and step-by-step setup for turning Unraid's alerts into tickets
   ([docs/AUTOMATION.md](docs/AUTOMATION.md)).
