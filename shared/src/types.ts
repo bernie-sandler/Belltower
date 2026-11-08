@@ -265,6 +265,24 @@ export interface SearchResult {
   matches: SearchMatch[];
 }
 
+/** "Seen this before?": a finished ticket that looks like the one at hand, and how it ended. */
+export interface SimilarTicket {
+  id: number;
+  ticketNo: string | null;
+  title: string;
+  completedAt: IsoTimestamp;
+  archived: boolean;
+  /** The resolution reason ("Fixed"), if one was recorded. */
+  resolution: string | null;
+  /** The start of the resolution note as plain text ('' when there's none). */
+  note: string;
+  /**
+   * The work card it was filed under. Tickets finished together with their work card often have no
+   * note of their own; the story is on the work card.
+   */
+  parent: { id: number; ticketNo: string | null; title: string } | null;
+}
+
 export type CalendarItemKind = 'due' | 'completed' | 'worklog';
 
 export interface CalendarItem {

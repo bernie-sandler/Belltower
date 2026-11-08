@@ -1,7 +1,8 @@
-import { CalendarQuery, SearchQuery, TemplateBody, UpdateTemplateBody } from '@tt/shared';
+import { CalendarQuery, SearchQuery, SimilarQuery, TemplateBody, UpdateTemplateBody } from '@tt/shared';
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from '../../app';
 import { calendarItems } from '../../services/calendar';
+import { getCardRow } from '../../services/cards';
 import {
   createTemplate,
   deleteTemplate,
@@ -11,7 +12,7 @@ import {
   runTemplateNow,
   updateTemplate,
 } from '../../services/recurring';
-import { searchCards } from '../../services/search';
+import { searchCards, similarCards } from '../../services/search';
 import { idParam, parse } from '../util';
 
 export function registerPhase3Routes(app: FastifyInstance, deps: AppDeps): void {
@@ -27,6 +28,14 @@ export function registerPhase3Routes(app: FastifyInstance, deps: AppDeps): void 
   };
 
   app.get('/api/search', async (req) => searchCards(ctx, parse(SearchQuery, req.query)));
+
+  // "Seen this before?": finished tickets like this card, or like a ticket being written (Add ticket).
+  app.get('/api/cards/:id/similar', async (req) => {
+    const card = getCardRow(ctx, idParam(req));
+    if (card.kind !== 'ticket' || card.deleted_at) return [];
+    return similarCards(ctx, { title: card.title, description: card.description_md, excludeId: card.id });
+  });
+  app.get('/api/similar', async (req) => similarCards(ctx, parse(SimilarQuery, req.query)));
 
   app.get('/api/calendar', async (req) => {
     const q = parse(CalendarQuery, req.query);
