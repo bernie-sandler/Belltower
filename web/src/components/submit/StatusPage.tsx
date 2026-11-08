@@ -64,7 +64,8 @@ export function StatusPage() {
         <strong className="status-ticket-title">{s.title}</strong>
         {s.ticketNo && <span className="muted small">Ticket <span className="ticket-no">{s.ticketNo}</span></span>}
       </div>
-      <ol className="status-steps" aria-label="Progress">
+      {/* role="list": Safari drops list semantics from lists styled with list-style: none. */}
+      <ol className="status-steps" role="list" aria-label="Progress">
         {STEPS.map((step, i) => (
           <li
             key={step}
@@ -75,6 +76,7 @@ export function StatusPage() {
               {(i < reached || (i === reached && step === 'done')) && <Check size={12} />}
             </span>
             {step === 'received' ? 'Received' : step === 'done' ? 'Done' : s.state === 'waiting' ? 'Waiting' : 'Being worked on'}
+            {i < reached && <span className="visually-hidden"> (finished)</span>}
           </li>
         ))}
       </ol>

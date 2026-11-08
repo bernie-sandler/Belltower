@@ -25,13 +25,14 @@ When they send it, they get the new ticket's number and a **status link** for it
 The thank-you screen shows a link to the ticket's own status page, with a Copy button and a reminder to keep it. The
 page shows:
 
-- the ticket's title and number, when it was sent and when it last changed;
+- the ticket's title and number, when it was sent and when it was last updated;
 - where it stands: **received** (still in Triage, or the column the submit page files into), **being worked on**,
   **waiting on something** (in your blocked column, or blocked by another open card) or **done**;
 - once it's done, the resolution reason, such as "Fixed" or "Won't fix".
 
-Nothing else: no description, resolution notes, work logs, columns or labels. "Last changed" only moves when the
-ticket moves or is completed, so adding a private note doesn't show up there.
+Nothing else: no description, resolution notes, work logs, columns or labels. "Last update" only moves when the
+ticket moves, is completed or gets a different resolution reason, so adding a private note doesn't show up there. (It
+also doesn't move when the ticket starts or stops waiting because of another card.)
 
 You can send a status link for any ticket, including ones you filed yourself after someone texted you. Press **Status
 link** in the card's sidebar to copy it. If you reach Belltower as `localhost`, set the app's address under **Settings

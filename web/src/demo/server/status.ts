@@ -64,7 +64,12 @@ export function publicStatus(ctx: Ctx, rawId: string, sig: string): PublicTicket
   if (!card || sign(key, id, card.createdAt) !== sig || card.kind !== 'ticket' || card.deletedAt) throw pageNotFound();
   const state = ticketState(ctx, card);
   const changes = ctx.s.activity
-    .filter((a) => a.cardId === id && a.kind === 'event' && ['created', 'moved', 'completion_changed'].includes(a.type))
+    .filter(
+      (a) =>
+        a.cardId === id &&
+        a.kind === 'event' &&
+        (['created', 'moved', 'completion_changed'].includes(a.type) || (a.type === 'resolved' && a.data.reason !== a.data.from)),
+    )
     .map((a) => a.occurredAt)
     .sort();
   return {

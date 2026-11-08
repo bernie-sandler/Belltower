@@ -29,6 +29,8 @@ function useSettingsMutation<V>(method: 'put' | 'post', path: string) {
       qc.setQueryData(qk.settings, s);
       // The ticket format or blocked column may change what the board shows.
       void qc.invalidateQueries({ queryKey: qk.board });
+      // Turning the submit page on or off, or resetting links, changes cards' status links.
+      void qc.invalidateQueries({ queryKey: qk.statusLinks });
     },
   });
 }

@@ -297,6 +297,7 @@ function StatusLink({ path }: { path: string }) {
         <button
           type="button"
           className="btn btn-sm"
+          aria-label="Copy status link"
           onClick={() => void copyText(url).then((ok) => toast(ok ? 'Link copied' : 'Couldn’t copy; select it instead', { kind: ok ? 'success' : 'warning' }))}
         >
           <Copy size={14} aria-hidden /> Copy
