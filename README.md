@@ -60,13 +60,15 @@ It's built for small setups where a full help desk is overkill and a sticky note
 - **Phone-friendly:** add it to your Home Screen and it opens full-screen like an app
 - **Self-hosted:** runs on your own server, so your data stays with you
 
-<!-- Add a screenshot here once the UI settles:
-![Belltower board](assets/screenshot-board.png)
--->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-board-dark.png">
+  <img alt="The Belltower board: tickets in Triage, Backlog, In Progress, Blocked/Waiting and Done columns" src="assets/screenshot-board-light.png">
+</picture>
 
 ## Status
 
-Belltower is in early development. Expect rough edges and breaking changes.
+Belltower is stable. Updates within 1.x never break your data, backups or automation; see
+[what 1.0 promises](docs/UPGRADING.md#what-10-promises).
 
 ## Quick start (Unraid)
 
@@ -86,7 +88,7 @@ The full walkthrough (where the data should live, every setting) is in
 | | |
 |---|---|
 | [Install and configure](docs/INSTALL.md) | Setting it up on Unraid, `.env` settings, troubleshooting |
-| [Upgrading](docs/UPGRADING.md) | Updating, coming from Tower Tracker, moving from a beta to 1.0, rolling back |
+| [Upgrading](docs/UPGRADING.md) | Updating, picking a version, rolling back |
 | [Using Belltower](docs/USING.md) | A tour of the board, cards, work cards, history, search and settings |
 | [Phone and remote access](docs/REMOTE-ACCESS.md) | Tailscale, Nginx Proxy Manager, the Home Screen app |
 | [Backups](docs/BACKUP.md) | Snapshots, export and restore, moving to a new server |
@@ -104,9 +106,6 @@ The full walkthrough (where the data should live, every setting) is in
 ## Versions
 
 Tagged releases are published as images at `ghcr.io/bernie-sandler/belltower`. Pick a version with `TT_VERSION` in
-`.env`: `latest` for stable releases, or an exact version like `1.2.0`. Updating is
+`.env`: `latest` for stable releases, or an exact version like `1.2.3`. Updating is
 `docker compose pull && docker compose up -d`; the database upgrades itself after saving a copy. See
 [docs/UPGRADING.md](docs/UPGRADING.md).
-
-Belltower was called Tower Tracker before 1.2. Coming from that name? See
-[Coming from Tower Tracker](docs/UPGRADING.md#coming-from-tower-tracker).

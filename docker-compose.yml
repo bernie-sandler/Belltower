@@ -6,7 +6,7 @@ name: belltower
 services:
   belltower:
     # Prebuilt image from GitHub. TT_VERSION in .env picks the channel or an exact version
-    # (latest, 1.2, 1.2.1, …). Images go back to 1.2.0.
+    # (latest, 1.2, 1.2.3, …). Images go back to 1.2.1.
     # To build from this folder instead:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
     image: ghcr.io/bernie-sandler/belltower:${TT_VERSION:-latest}
@@ -28,5 +28,4 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
-      # Installs from before the rename keep their old folder: set DATA_PATH in .env (docs/UPGRADING.md).
       - ${DATA_PATH:-/mnt/cache/appdata/belltower}:/data

@@ -74,7 +74,7 @@ That recreates the container and leaves your data alone.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `TT_VERSION` | `latest` | Which image to run: `latest` (stable releases) or an exact version like `1.2.0`. |
+| `TT_VERSION` | `latest` | Which image to run: `latest` (stable releases) or an exact version like `1.2.3`. |
 | `PORT` | `8080` | The port the app is reached on. One setting covers both Unraid and the container. |
 | `DATA_PATH` | `/mnt/cache/appdata/belltower` | The host folder for the database, attachments and backups. |
 | `TZ` | `America/Chicago` | Your time zone. Every date, due badge, calendar day and schedule uses it. |

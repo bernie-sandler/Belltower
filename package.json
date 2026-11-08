@@ -1,6 +1,6 @@
 {
   "name": "belltower",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
   "description": "Self-hosted, single-user, Trello-style issue tracker for a homelab",

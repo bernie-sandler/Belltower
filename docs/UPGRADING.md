@@ -34,72 +34,18 @@ Applied database migration(s): 6
 |---|---|
 | `latest` | The newest stable release. The right choice from 1.0 on. |
 | `1` or `1.2` | The newest release within 1.x or 1.2.x. |
-| `1.2.0` | Exactly that version, until you change it. |
-| `rc` | The newest release candidate, from the first one after 1.2.0. It only moves when there's a new one, so it can fall behind `latest`. |
+| `1.2.3` | Exactly that version, until you change it. |
+| `rc` | The newest release candidate. It only moves when there's a new one, so it can fall behind `latest`. |
 
-Images are at `ghcr.io/bernie-sandler/belltower` and go back to 1.2.0. Earlier versions, and the old `rc` and `beta`
-tags, are no longer published.
-
-## Moving from a beta to 1.0
-
-If you've been on `beta` or `rc`, your data comes along untouched. Every database and backup from 0.5 onwards is checked
-against 1.0 before release, both upgraded in place and restored from an export.
-
-1. Optional but nice: export a ZIP (**Menu → Backup & restore → Download ZIP**) and keep it somewhere off the
-   server.
-2. In `.env`, set `TT_VERSION=latest`.
-3. Run `docker compose pull && docker compose up -d`.
-
-Nothing in your `.env` needs to change beyond that.
-
-**Coming from a 0.5–0.7 alpha that was built on the server?** Point the stack at the image the same way: take the
-current `docker-compose.yml` and `.env.example` from the repository, carry over your values (`PORT`, `DATA_PATH`,
-`TZ`, `APP_PASSWORD`, …), set `TT_VERSION`, and run `docker compose up -d`. Keep `DATA_PATH` the same and
-everything is still there.
-
-## Coming from Tower Tracker
-
-Tower Tracker became Belltower in 1.2. Your data doesn't change, but the Docker image, container and stack have new
-names, so this one update takes a few extra steps.
-
-1. Stop the old stack **before** you fetch the new files: press **Compose Down** on Unraid's Compose page, or run
-   `docker compose down` in the stack folder. Don't add `-v`. If you've already fetched them, run
-   `docker compose -p tower-tracker down --remove-orphans` instead. Otherwise the old container keeps the port and
-   the new one can't start.
-2. Fetch the new files with `git pull`.
-3. Check that `.env` still has `DATA_PATH` pointing at your existing folder, for example
-   `DATA_PATH=/mnt/cache/appdata/tower-tracker`. There's no need to rename the folder. New installs default to
-   `/mnt/cache/appdata/belltower`, so without this line the app starts empty and asks you to set a password. If that
-   happens, nothing is lost: add the line and run `docker compose up -d` again.
-4. If `.env` sets `TT_VERSION`, check that it's `latest` or `1.2.0` or newer. The image moved to
-   `ghcr.io/bernie-sandler/belltower`, and `rc`, `beta` and older versions aren't there, so anything else makes the
-   next step fail with `manifest unknown`.
-5. Run `docker compose pull && docker compose up -d`.
-6. On your phone, remove the old Home Screen icon and add it again. The phone keeps the name and icon from when you
-   first added it.
-
-On a desktop with `docker-compose.local.yml`, the steps are the same and the app keeps using its existing volume.
-
-If you installed with Unraid's **Add Container** form, also change **Repository** to
-`ghcr.io/bernie-sandler/belltower:latest`.
-
-The new image is public, so pulling it doesn't need a `docker login`.
-
-A few things keep the old name on purpose, because changing them would break what you already have:
-
-| Name | Why it stays |
-|---|---|
-| `tower.db` and `backups/tower-<date>.db` | They're your database files. |
-| `TT_VERSION` in `.env` | Your `.env` already uses it. |
-| API tokens starting `tt_` | Uptime Kuma and your scripts keep working with the tokens they have. |
-| `"format": "tower-tracker-backup"` inside backups | Every backup, old and new, restores the same way. |
+Images are at `ghcr.io/bernie-sandler/belltower` and go back to 1.2.1. The image is public, so pulling it doesn't need
+a `docker login`.
 
 ## What 1.0 promises
 
 From 1.0 on, the version numbers mean something:
 
-- **Your data always moves forward.** Any 1.x reads every database and backup made by an earlier version, including
-  the 0.x betas. Database changes only ever add things.
+- **Your data always moves forward.** Any 1.x reads every database and backup made by an earlier version. Database
+  changes only ever add things.
 - **Backups stay readable.** A backup from any 1.x restores into any later 1.x. (It won't restore into an *older*
   version; that one doesn't know the newer layout.)
 - **The automation API is stable.** [`/api/v1`](API-V1.md) won't change in a way that breaks your scripts or
@@ -117,7 +63,7 @@ together with the safety copy:
 1. Stop the container: `docker compose down`.
 2. In `DATA_PATH`, move `tower.db` aside (and delete `tower.db-wal` / `tower.db-shm` if they're there).
 3. Copy the newest `backups/pre-migrate-…db` to `tower.db`.
-4. Set `TT_VERSION` back to the version you came from and run `docker compose up -d`. Images go back to 1.2.0, so to
+4. Set `TT_VERSION` back to the version you came from and run `docker compose up -d`. Images go back to 1.2.1, so to
    return to anything older you'd have to build it yourself from its commit in the git history.
 
 Anything you changed after the upgrade is lost this way. Export a backup first if that matters, then open an issue so
