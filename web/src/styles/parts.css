@@ -1041,3 +1041,62 @@ a.topnav-item {
 .card-action[aria-disabled='true'] {
   opacity: 0.55;
 }
+
+/* "Seen this before?" on an open ticket, and under the title in Add ticket. */
+.seen-before-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.seen-before-row {
+  align-items: flex-start;
+}
+
+.seen-before-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.seen-before-note {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.seen-before-parent {
+  align-self: flex-start;
+  margin-left: 8px;
+  text-align: left;
+}
+
+.similar-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--well);
+}
+
+.similar-hints ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.similar-hints a {
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}

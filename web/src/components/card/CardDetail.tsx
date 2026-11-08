@@ -44,6 +44,7 @@ import { DescriptionEditor, descriptionDraftKey } from './DescriptionEditor';
 import { CompleteWorkDialog } from './CompleteWorkDialog';
 import { ResolutionSection } from './ResolutionSection';
 import { ResolveDialog } from './ResolveDialog';
+import { SeenBefore } from './SeenBefore';
 import { Family } from './Family';
 import { LabelPicker } from './LabelPicker';
 import { MoveToSheet } from './MoveToSheet';
@@ -293,6 +294,7 @@ function CardDetailBody({
           </section>
 
           {card.completedAt && <ResolutionSection card={card} readOnly={deleted} />}
+          {!card.completedAt && !deleted && card.kind === 'ticket' && <SeenBefore card={card} />}
           <Family card={card} readOnly={deleted} />
           <CardFields card={card} readOnly={deleted} />
 

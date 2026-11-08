@@ -18,4 +18,7 @@ export const qk = {
   settings: ['settings'] as const,
   requestTypes: ['requestTypes'] as const,
   tokens: ['tokens'] as const,
+  similar: ['similar'] as const,
+  similarForCard: (id: number, updatedAt: string) => ['similar', 'card', id, updatedAt] as const,
+  similarForText: (title: string, description: string) => ['similar', 'text', title, description] as const,
 };

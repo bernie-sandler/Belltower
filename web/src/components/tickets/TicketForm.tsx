@@ -24,6 +24,7 @@ import { LevelPicker } from '../card/LevelPicker';
 import { PRIORITY_OPTIONS, SEVERITY_OPTIONS } from '../card/levelOptions';
 import { TicketTitle } from '../common/TicketTitle';
 import { LabelChip } from '../labels/LabelChip';
+import { SimilarHints } from './SimilarHints';
 
 export interface TicketFields {
   title: string;
@@ -183,6 +184,7 @@ export function TicketForm({ fields, onChange, suggestion, columns, labels, work
           placeholder="Short summary of the problem"
         />
       </label>
+      {fields.kind === 'ticket' && <SimilarHints title={fields.title} description={fields.description} />}
 
       <div className="field-row ticket-levels">
         <div className="field-inline">
