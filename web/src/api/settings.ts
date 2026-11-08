@@ -36,6 +36,8 @@ function useSettingsMutation<V>(method: 'put' | 'post', path: string) {
 export const useSaveGeneral = () => useSettingsMutation<GeneralSettingsBody>('put', '/api/settings/general');
 export const useSaveSubmit = () => useSettingsMutation<SubmitSettingsBody>('put', '/api/settings/submit');
 export const useNewSubmitLink = () => useSettingsMutation<void>('post', '/api/settings/submit/new-link');
+/** Cuts off every ticket status link handed out so far. */
+export const useResetStatusLinks = () => useSettingsMutation<void>('post', '/api/settings/submit/reset-status-links');
 export const useSaveResolutions = () => useSettingsMutation<ResolutionReasonsBody>('put', '/api/settings/resolutions');
 export const useSaveDiscord = () => useSettingsMutation<DiscordSettingsBody>('put', '/api/settings/discord');
 

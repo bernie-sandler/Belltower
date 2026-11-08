@@ -64,7 +64,9 @@ import {
   type RequestType,
   type SearchResult,
   type SettingsResponse,
+  type StatusLinkInfo,
   type SubmitResult,
+  type PublicTicketStatus,
   type TextPreview,
   type TicketDraft,
 } from '@tt/shared';
@@ -107,6 +109,7 @@ import { createLabel, deleteLabel, reorderLabels, updateLabel } from './labels';
 import { createLink, deleteLink } from './links';
 import { createTemplate, deleteTemplate, getTemplate, listTemplates, runDueTemplates, runTemplateNow, updateTemplate } from './recurring';
 import { searchCards } from './search';
+import { publicStatus, resetStatusLinks, statusLink } from './status';
 import {
   createRequestType,
   deleteRequestType,
@@ -174,6 +177,7 @@ export interface DemoApi {
   'POST /api/cards/:id/archive': CardDetail;
   'POST /api/cards/:id/restore': CardDetail;
   'GET /api/cards/:id/activity': ActivityEntry[];
+  'GET /api/cards/:id/status-link': StatusLinkInfo;
   // ---- card parts (routes/cardParts.ts) ----
   'GET /api/cards': CardSummary[];
   'POST /api/cards/archive-done': { archived: number };
@@ -217,6 +221,7 @@ export interface DemoApi {
   'PUT /api/settings/submit': SettingsResponse;
   'PUT /api/settings/resolutions': SettingsResponse;
   'POST /api/settings/submit/new-link': SettingsResponse;
+  'POST /api/settings/submit/reset-status-links': SettingsResponse;
   'PUT /api/settings/discord': SettingsResponse;
   'POST /api/settings/discord/test': { ok: boolean; message: string; settings: SettingsResponse };
   'POST /api/settings/discord/digest-now': { ok: boolean; message: string; settings: SettingsResponse };
@@ -231,6 +236,7 @@ export interface DemoApi {
   // ---- the public submit page (routes/submit.ts) ----
   'GET /api/public/submit/:key': PublicSubmitConfig;
   'POST /api/public/submit/:key': SubmitResult;
+  'GET /api/public/status/:id/:sig': PublicTicketStatus;
   // ---- Add ticket (routes/tickets.ts) ----
   'GET /api/ai/status': AiStatus;
   'POST /api/ai/draft': TicketDraft;
@@ -343,6 +349,8 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     getCardRow(ctx, id(req));
     return listActivity(ctx, id(req));
   }),
+  // Creates the signing secret the first time, like the server.
+  'GET /api/cards/:id/status-link': ok((ctx, req) => statusLink(ctx, id(req)), { writes: true }),
 
   'GET /api/cards': ok((ctx, req) => listCards(ctx, parse(CardListQuery, req.query))),
   'POST /api/cards/archive-done': ok((ctx) => ({ archived: archiveAllDone(ctx) })),
@@ -442,6 +450,10 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     regenerateSubmitKey(ctx);
     return settingsResponse(ctx);
   }),
+  'POST /api/settings/submit/reset-status-links': ok((ctx) => {
+    resetStatusLinks(ctx);
+    return settingsResponse(ctx);
+  }),
   'PUT /api/settings/discord': ok((ctx, req) => {
     const body = parse(DiscordSettingsBody, req.body);
     if (body.webhookUrl) throw notInDemo(NO_DISCORD);
@@ -469,6 +481,7 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   }),
 
   'GET /api/public/submit/:key': ok((ctx, req) => publicSubmitConfig(ctx, req.params.key ?? ''), { public: true }),
+  'GET /api/public/status/:id/:sig': ok((ctx, req) => publicStatus(ctx, req.params.id ?? '', req.params.sig ?? ''), { public: true }),
   'POST /api/public/submit/:key': {
     status: 201,
     public: true,

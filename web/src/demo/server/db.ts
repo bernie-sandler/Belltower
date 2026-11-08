@@ -163,6 +163,8 @@ export interface DemoSettings {
   blockedColumn: number | 'none' | null;
   /** null = the defaults. */
   resolutionReasons: string[] | null;
+  /** Signs ticket status links (status.ts). Optional, so data saved before it existed still loads. */
+  statusSecret?: string | null;
 }
 
 export type TableName =

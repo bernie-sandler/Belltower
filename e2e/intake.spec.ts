@@ -24,6 +24,12 @@ test('someone without the password files a ticket through the submit page @mobil
   await v.getByRole('button', { name: 'Send' }).click();
   await expect(v.getByRole('heading', { name: 'Thanks!' })).toBeVisible();
   const ticketNo = (await v.locator('.submit-done .ticket-no').textContent())!;
+
+  // The thank-you screen's status link opens the ticket's status page, still signed out.
+  await v.locator('.submit-status-link a').click();
+  await expect(v.getByRole('heading', { name: 'We’ve got it' })).toBeVisible();
+  await expect(v.getByText(`Plex – Interstellar – ${summary}`)).toBeVisible();
+  await expect(v.getByText(ticketNo)).toBeVisible();
   await visitor.close();
 
   const card = (await api.board()).cards.find((c) => c.title === `Plex – Interstellar – ${summary}`);
