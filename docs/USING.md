@@ -74,12 +74,12 @@ to when it actually happened, and edit or retract it later. The original stays i
 - **Search** (press `/`) looks through titles, descriptions, checklists, work logs and resolution notes, archived
   cards included.
 - **Seen this before?** An open ticket lists up to five finished tickets that look like it, with how each ended:
-  the resolution reason and the start of its note. If a ticket was finished along with its work card and has no note
-  of its own, it points to the work card instead. **Link** links one as related, which also drops it from the list.
-  The section only shows up when there's a match. It compares titles and descriptions, archived tickets included.
-  Two tickets need at least two distinctive words in common, one of them from the open ticket's title. Common words,
-  the submit page's standard wording and request type names don't count, and forms of a word ("update", "updated")
-  count as one.
+  the resolution reason and the start of its note. A ticket with no note that was part of a work card points to the
+  work card, where the fix may be written up. **Link** links one as related; it won't be suggested again. The section
+  only shows up when there's a match. It compares titles and descriptions (not resolutions), archived tickets
+  included. Two tickets need at least two distinctive words in common (one, if that's all the open ticket has), and
+  at least one word from the open ticket's title. Common words, IP addresses, the submit page's standard wording and
+  request type names don't count, and forms of a word ("update", "updated") count as one.
 - **Calendar** shows what was due, what got done and what work was logged, by month or week.
 - **Archive** and **Trash** are in the main menu. Archived cards are tucked away but searchable. Deleted cards go to
   Trash, where they can be restored; nothing is ever purged.

@@ -43,12 +43,15 @@ describe('SeenBefore', () => {
     const fetchMock = setup([hit({}), hit({ id: 4, title: 'Plex buffering upstairs', note: '', parent: { id: 9, ticketNo: '261001-2', title: 'New mesh Wi-Fi' } })]);
     expect(await screen.findByText('Plex buffering on the TV')).toBeTruthy();
     expect(screen.getByText('Moved the TV to 5 GHz')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Finished with work card/ }).textContent).toContain('New mesh Wi-Fi');
+    expect(screen.getByRole('button', { name: /Part of work card/ }).textContent).toContain('New mesh Wi-Fi');
 
     fireEvent.click(screen.getByRole('button', { name: 'Link “Plex buffering on the TV” as related' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/cards/7/links')).toBe(true));
     const [, init] = fetchMock.mock.calls.find(([url]) => url === '/api/cards/7/links') as unknown as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ otherCardId: 3, direction: 'relates' });
+    // It stays in place, marked linked, so focus has somewhere to stay.
+    const done = await screen.findByRole('button', { name: '“Plex buffering on the TV” is linked as related' });
+    expect(done.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('folds away, and shows nothing when there’s nothing similar', async () => {
@@ -56,7 +59,8 @@ describe('SeenBefore', () => {
     const toggle = await screen.findByRole('button', { name: /Seen this before/ });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     fireEvent.click(toggle);
-    expect(screen.queryByText('Plex buffering on the TV')).toBeNull();
+    expect(screen.getByRole('list', { hidden: true }).hidden).toBe(true);
+    expect(toggle.getAttribute('aria-controls')).toBe(screen.getByRole('list', { hidden: true }).id);
   });
 
   it('renders nothing without matches', async () => {

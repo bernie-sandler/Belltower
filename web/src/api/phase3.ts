@@ -62,7 +62,7 @@ export function useSimilarForText(title: string, description: string, enabled: b
   return useQuery({
     queryKey: qk.similarForText(title, description),
     queryFn: ({ signal }) =>
-      api.get<SimilarTicket[]>(`/api/similar?${new URLSearchParams({ title, description: description.slice(0, 4000) }).toString()}`, signal),
+      api.get<SimilarTicket[]>(`/api/similar?${new URLSearchParams({ title, description }).toString()}`, signal),
     enabled,
     staleTime: 60_000,
     placeholderData: keepPreviousData,
