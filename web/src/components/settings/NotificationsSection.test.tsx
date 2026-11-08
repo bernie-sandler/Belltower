@@ -79,6 +79,13 @@ describe('NotificationsSection', () => {
     await waitFor(() => expect(sentTo('/api/settings/notify/ntfy')).toMatchObject({ url: '', secret: '' }));
   });
 
+  it('can remove just the token, keeping the address', async () => {
+    const { sentTo } = setup();
+    fireEvent.click(within(panel('ntfy')).getByRole('button', { name: 'Remove access token' }));
+    await waitFor(() => expect(sentTo('/api/settings/notify/ntfy')).toEqual({ url: null, secret: '', events: EVENTS }));
+    expect(within(panel('ntfy')).getByLabelText('Access token (optional)')).toBeTruthy();
+  });
+
   it('shows a failed last delivery', () => {
     setup();
     expect(within(panel('Webhook')).getByText(/failed.*The webhook answered 404/)).toBeTruthy();

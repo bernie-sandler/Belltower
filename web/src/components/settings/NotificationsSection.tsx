@@ -178,6 +178,18 @@ function ChannelPanel({ def, info }: { def: ChannelDef; info: NotifyChannelInfo 
     }
   }
 
+  /** Removes only the token or secret, keeping the address and the saved choices. */
+  function forgetSecret() {
+    setError(null);
+    saveOther.mutate(
+      { url: null, secret: '', events: info.events },
+      {
+        onSuccess: () => toast(`${def.secret!.label} removed`, { kind: 'success', durationMs: 2000 }),
+        onError: (err) => setError(errorMessage(err)),
+      },
+    );
+  }
+
   const run = (action: typeof test, ok: string) =>
     action.mutate(undefined, {
       onSuccess: (r) => toast(r.ok ? ok : r.message, { kind: r.ok ? 'success' : 'error' }),
@@ -204,16 +216,22 @@ function ChannelPanel({ def, info }: { def: ChannelDef; info: NotifyChannelInfo 
             placeholder={info.hint ?? def.urlPlaceholder}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+            aria-describedby={info.hint ? `${ids}-url-help` : undefined}
           />
-          {info.hint && <span className="field-help">An address is saved. Paste a new one to replace it.</span>}
+          {info.hint && (
+            <span className="field-help" id={`${ids}-url-help`}>
+              An address is saved ({info.hint}). Paste a new one to replace it.
+            </span>
+          )}
         </label>
         {def.secret && (
-          <label className="field">
-            <span className="field-label">
+          <div className="field">
+            <label className="field-label" htmlFor={`${ids}-secret`}>
               {def.secret.label}
               {def.secret.required ? '' : ' (optional)'}
-            </span>
+            </label>
             <input
+              id={`${ids}-secret`}
               className="input input-mono"
               type="password"
               autoComplete="off"
@@ -223,9 +241,15 @@ function ChannelPanel({ def, info }: { def: ChannelDef; info: NotifyChannelInfo 
               aria-describedby={`${ids}-secret-help`}
             />
             <span className="field-help" id={`${ids}-secret-help`}>
-              {def.secret.help} Changing the address to another server forgets a saved one.
+              {info.secretSet && <strong>One is saved. </strong>}
+              {def.secret.help} Changing the address to another server, port or http/https forgets a saved one.
             </span>
-          </label>
+            {info.secretSet && (
+              <button type="button" className="btn btn-sm btn-subtle notify-forget" disabled={save.isPending} onClick={forgetSecret}>
+                Remove {def.secret.label.toLowerCase()}
+              </button>
+            )}
+          </div>
         )}
         <fieldset className="ticket-fieldset">
           <legend className="field-label">Send a message for</legend>

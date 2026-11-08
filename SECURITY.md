@@ -36,9 +36,11 @@ Fixes go into the newest 1.x release.
     - The Discord channel only accepts Discord webhook addresses.
     - ntfy, Gotify and webhooks accept any `http(s)` address, including ones on your network. Only you, signed in,
       can set them.
-    - Saved tokens and secrets are never shown again. Pointing a channel at another server forgets its saved token.
+    - Saved tokens and secrets are never shown again. Pointing a channel at another server, port or scheme (`https`
+      to `http` included) forgets its saved token.
     - Redirects aren't followed, so a token can't be passed on to another host.
     - Errors show only the status code, so **Send test** can't be used to read other pages on your network.
+    - Text from other people is Markdown-escaped in ntfy and Gotify, so it can't load images or hide links.
 - **Submit page** (off by default).
   - It's reachable without the password by anyone who has its long random link.
   - It can only file tickets, and shows nothing from the board except your request types and the tags you chose.

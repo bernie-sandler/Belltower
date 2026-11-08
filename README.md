@@ -53,7 +53,8 @@ It's built for small setups where a full help desk is overkill and a sticky note
 - **Search and calendar:** search everything, including archived tickets, or see what was due and what got done by month or week
 - **Ring the bell:** a simple page where other people can submit a ticket, without a login or access to your board
 - **Automation:** Uptime Kuma, Unraid, Home Assistant, or your own scripts can open tickets when something fails
-- **Discord notifications:** hear about urgent and blocked tickets, plus a daily summary of what's due
+- **Notifications:** hear about urgent and blocked tickets, plus a daily summary of what's due, through Discord,
+  ntfy, Gotify or any webhook
 - **Claude drafting (optional):** with your own Anthropic API key, describe a problem in your own words and review the ticket Claude writes
 - **JSON import:** bring in existing tickets in bulk
 - **Backups:** nightly snapshots, plus export and restore from the app
@@ -93,7 +94,7 @@ The full walkthrough (where the data should live, every setting) is in
 | [Phone and remote access](docs/REMOTE-ACCESS.md) | Tailscale, Nginx Proxy Manager, the Home Screen app |
 | [Backups](docs/BACKUP.md) | Snapshots, export and restore, moving to a new server |
 | [Submit page](docs/SUBMIT-PAGE.md) | Letting other people file tickets |
-| [Discord notifications](docs/NOTIFICATIONS.md) | What gets announced and how to set it up |
+| [Notifications](docs/NOTIFICATIONS.md) | Discord, ntfy, Gotify and webhooks: what gets announced and how to set it up |
 | [Automation](docs/AUTOMATION.md) | Uptime Kuma, Unraid, Home Assistant and scripts |
 | [Claude drafting](docs/AI-DRAFTING.md) | Turning a description into tickets, cost and privacy |
 | [Card import format](docs/CARD-IMPORT.md) | Creating cards from JSON (handy with any AI chat) |

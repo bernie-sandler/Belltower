@@ -31,8 +31,9 @@ shows the result of the last delivery, so a broken channel doesn't go unnoticed.
 summary straight away, which is handy for checking the format.
 
 Saved addresses and tokens are never shown again, only a hint like `https://ntfy.sh/…`. To change one, paste a new
-one. If you point a channel at a different server, its saved token or secret is forgotten unless you enter a new one
-at the same time.
+one. **Remove** next to a token removes just the token. If you point a channel at a different server, port or scheme
+(`https` to `http` included), its saved token or secret is forgotten unless you enter a new one at the same time.
+Tokens can only contain letters, digits and plain punctuation, with no spaces.
 
 ### Discord
 
@@ -47,7 +48,7 @@ Only Discord webhook addresses are accepted here.
    anyone who knows a topic's name can read it, so use a long random name.
 2. Paste the topic's address into **Topic address**, for example `https://ntfy.sh/belltower-x7Kq2v9`. A server under a
    sub-path works too: `https://example.com/ntfy/belltower`.
-3. If the topic is protected, paste an **access token** (`tk_…`).
+3. If the topic is protected, paste an **access token** (`tk_…`). An address with `?auth=…` works too.
 
 Urgent cards arrive with ntfy's top priority (5), everything else with the default (3). Tapping a notification opens
 the card, if the app's address is set under **Settings → General**.
@@ -55,7 +56,8 @@ the card, if the app's address is set under **Settings → General**.
 ### Gotify
 
 1. In Gotify, go to **Apps → Create Application** and copy its token.
-2. Paste your Gotify server's address into **Server address** and the token into **App token**.
+2. Paste your Gotify server's address into **Server address** (a sub-path like `https://example.com/gotify` works) and
+   the token into **App token**.
 
 Urgent cards are sent with priority 8, everything else with 5. Messages use Markdown and open the card when tapped.
 
@@ -95,7 +97,7 @@ Every message is a `POST` with a JSON body:
 | `event` | `new_external`, `new_urgent`, `raised`, `blocked`, `digest` or `test`. No others appear in 1.x. |
 | `title` | The card's ticket number and title, `Belltower: today` for the summary, or `Belltower test message`. |
 | `message` | What happened, in a sentence. |
-| `urgent` | Whether the card counts as urgent. |
+| `urgent` | Whether the card counts as urgent under the current alert levels, on every card event. `false` for `digest` and `test`. |
 | `url`, `card.url` | A link to the card, or `null` if the app's address isn't set. |
 | `card` | The card, or `null` for `digest` and `test`. `priority` is `P0`–`P3` or `null`; `severity` is `S1`–`S4` or `null`; `kind` is `ticket` or `work`. |
 | `digest` | Only for `digest`: `{ "overdue": [card…], "dueToday": [card…] }`, with cards in the same shape as `card`. |
@@ -109,7 +111,7 @@ sent.
 | Header | Meaning |
 |---|---|
 | `X-Belltower-Event` | The same as `event`. |
-| `X-Belltower-Delivery` | A unique id per message. It stays the same when a failed delivery is retried, so you can drop duplicates. |
+| `X-Belltower-Delivery` | A unique id per message. It stays the same across the immediate retries of one delivery, so you can drop duplicates. A daily summary tried again 30 minutes later is a new delivery with a new id. |
 | `X-Belltower-Timestamp` | Unix time in seconds when it was sent. |
 | `X-Belltower-Signature` | Only with a signing secret: `sha256=` followed by the hex HMAC-SHA256 of `<timestamp>.<body>`, keyed with the secret. |
 
@@ -137,13 +139,17 @@ The card's ticket number and title, its column, priority and severity, where it 
 example "submit page (Sam)"), and a link back to the card if you've set the app's address under **Settings →
 General**. Descriptions, work logs and attachments are never sent.
 
+In ntfy and Gotify, which show messages as Markdown, text that comes from other people (a submitter's name, ticket
+titles) has Markdown characters escaped, so it can't add images or disguised links.
+
 ## Not working?
 
 - Press **Send test** and read the result in the panel. For Discord, its error message is passed along. For the other
   channels you see only the status code ("ntfy answered 403") or why the server couldn't be reached
   ("ECONNREFUSED"), never the response itself.
-- Each attempt waits up to 10 seconds for an answer. A failed message is retried twice. A `429` (too many requests)
-  waits as long as the server asks.
+- Each attempt waits up to 10 seconds for an answer. A failed message is retried twice (not after a `4xx` other than
+  `429`, a redirect or a blocked port). A `429` (too many requests) waits as long as the server asks, up to 30
+  seconds.
 - **Redirects aren't followed.** If the address redirects (for example `http://` to `https://`), use the final
   address.
 - A daily summary missed during an outage isn't lost. A channel that failed tries again 30 minutes later, and channels
