@@ -50,7 +50,7 @@ Fixes go into the newest 1.x release.
   - It's rate limited, rejects non-image screenshots, and has a hidden field that catches simple bots.
   - **New link** cuts off the old address.
 - **API tokens** can only open and update tickets through `/api/v1` and read its ticket counts. Read-only tokens
-  (for dashboards) can only read the counts. Only a hash of each is stored. Revoke them in Settings.
+  (for dashboards) can only read the counts, never ticket details. Only a hash of each is stored. Revoke them in Settings.
 - **Upgrades.**
   - The database is copied before every schema upgrade.
   - A nightly snapshot keeps the last 7 days.

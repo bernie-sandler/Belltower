@@ -72,7 +72,7 @@ test('Settings: a read-only token reads the summary and can’t open tickets', a
   await page.getByLabel('Only read ticket counts').check();
   await page.getByLabel('New token for').fill(unique('Homepage'));
   await page.getByRole('button', { name: 'Create token' }).click();
-  await expect(page.getByText('Homepage: add to a group in services.yaml')).toBeVisible();
+  await expect(page.getByText('Homepage: an environment variable for its container')).toBeVisible();
   const token = (await page.locator('.token-fresh .settings-link-url').first().textContent())!;
   const auth = { Authorization: `Bearer ${token}` };
 

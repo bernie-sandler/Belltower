@@ -63,7 +63,8 @@ export function apiSummary(ctx: Ctx): ApiSummary {
     dueToday: due.dueToday,
     completedToday: completedSince(today),
     completed7d: completedSince(addDays(today, -6)),
-    oldestOpenDays: oldest === null ? null : toEpochDay(today) - toEpochDay(localDateOf(new Date(oldest), ctx.tz)),
+    // Never negative, even if the clock was once ahead when a ticket was created.
+    oldestOpenDays: oldest === null ? null : Math.max(0, toEpochDay(today) - toEpochDay(localDateOf(new Date(oldest), ctx.tz))),
     byPriority,
     bySeverity,
     generatedAt: now.toISOString(),

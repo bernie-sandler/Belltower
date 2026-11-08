@@ -43,8 +43,9 @@ export function TokensSection() {
       </p>
 
       {fresh && (
-        <div className="token-fresh" role="status">
-          <p>
+        <div className="token-fresh">
+          {/* Only this line is announced, not the examples below it. */}
+          <p role="status">
             <strong>Copy this token now.</strong> It won’t be shown again.
           </p>
           <div className="settings-link">
@@ -196,7 +197,9 @@ function TicketExamples({ base, token }: { base: string; token: string }) {
 function DashboardExamples({ base, token }: { base: string; token: string }) {
   return (
     <>
-      <p className="field-label">Homepage: add to a group in services.yaml</p>
+      <p className="field-label">Homepage: an environment variable for its container</p>
+      <pre className="token-example">{`HOMEPAGE_VAR_BELLTOWER_TOKEN=${token}`}</pre>
+      <p className="field-label">and a service in one of your groups in services.yaml</p>
       <pre className="token-example">{`- Belltower:
     href: ${base}
     widget:
@@ -204,7 +207,7 @@ function DashboardExamples({ base, token }: { base: string; token: string }) {
       url: ${base}/api/v1/summary
       refreshInterval: 60000
       headers:
-        Authorization: Bearer ${token}
+        Authorization: Bearer {{HOMEPAGE_VAR_BELLTOWER_TOKEN}}
       mappings:
         - field: open
           label: Open

@@ -34,9 +34,13 @@ Each token is one of two kinds:
 
 - **Full** tokens can use everything below. Their one switch, **may complete tickets** (`canComplete`), decides what a
   recovery does (see `event` below). Every token created before 1.3 is a full token.
-- **Read-only** tokens (since 1.3) can only make `GET` requests: today that's [`GET /api/v1/summary`](#get-apiv1summary).
-  Anything else gets `403 forbidden`. They never complete tickets. Use them for dashboards, so a token that sits in a
-  dashboard's config file can't open or close tickets.
+- **Read-only** tokens (since 1.3) can only call [`GET /api/v1/summary`](#get-apiv1summary). The other routes answer
+  them `403 forbidden`, and a route added later stays closed to them unless this page says otherwise. They never
+  complete tickets. Use them for dashboards, so a token that sits in a dashboard's config file can't open or close
+  tickets or read ticket details.
+
+A path under `/api/v1/` that doesn't exist (or a method a route doesn't have) answers `404` with
+`{"error": "not_found"}`, after the token check.
 
 ## Limits
 
@@ -55,7 +59,8 @@ Errors are JSON with a stable machine-readable `error` code and a human-readable
 |---|---|---|
 | 400 | `validation` | The card doesn't validate. `errors` lists every problem. |
 | 401 | `unauthenticated` | No valid token. |
-| 403 | `forbidden` | A read-only token tried something other than `GET`. |
+| 403 | `forbidden` | A read-only token called something other than the summary. |
+| 404 | `not_found` | No such route under `/api/v1/`. |
 | 413 | `too_large` | The body is over 2 MB. |
 | 429 | `rate_limited` | Over 120 requests a minute. `retryAfterSec` and the `Retry-After` header say when to retry. |
 | 500 | `internal` | A bug. Retrying later is reasonable. |

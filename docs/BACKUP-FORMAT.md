@@ -87,7 +87,7 @@ definitions, with every constraint, are the migrations in
 | `activity_revisions` | Earlier versions of edited work-log entries | `activity_id`, `body_md`, `occurred_at`, `revised_at` |
 | `template_runs` | What each recurring template created, and when | `template_id`, `occurrence_date`, `outcome`, `card_id` |
 | `request_types` | Submit page request types | `name`, `title_pattern`, `fields` (JSON), `tag_label_ids` (JSON), `enabled` |
-| `api_tokens` | Automation tokens: **hashes only**, never the token itself | `name`, `token_hash`, `prefix`, `can_complete`, `revoked_at` |
+| `api_tokens` | Automation tokens: **hashes only**, never the token itself | `name`, `token_hash`, `prefix`, `can_complete`, `scope` (`full` or `read`), `revoked_at` |
 
 The shapes of `activity.data` for each event type are documented with `ActivityEntry` in
 [`shared/src/types.ts`](../shared/src/types.ts). New event types may appear in later versions, so treat unknown ones

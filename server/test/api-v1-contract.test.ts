@@ -135,6 +135,19 @@ describe('/api/v1 contract', () => {
       ['Homepage', 'read'],
       ['Contract', 'full'],
     ]);
+    const head = await t.app.inject({ method: 'HEAD', url: '/api/v1/summary', headers: { authorization: `Bearer ${created.token}` } });
+    expect(head.statusCode).toBe(200);
+  });
+
+  it('unknown /api/v1 paths need a token and answer a JSON 404, never a cookie or CSRF error', async () => {
+    const { get, token } = await setup();
+    expect((await get('/api/v1/nothing-here', '')).json()).toMatchObject({ error: 'unauthenticated' });
+    const missing = await get('/api/v1/nothing-here');
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ error: 'not_found' });
+    const wrongMethod = await t.app.inject({ method: 'PUT', url: '/api/v1/summary', headers: { authorization: `Bearer ${token}` } });
+    expect(wrongMethod.statusCode).toBe(404);
+    expect(wrongMethod.json()).toMatchObject({ error: 'not_found' });
   });
 
   it('health needs no token', async () => {

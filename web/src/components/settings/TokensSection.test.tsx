@@ -59,8 +59,11 @@ describe('TokensSection', () => {
     fireEvent.change(screen.getByLabelText('New token for'), { target: { value: 'Homepage' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
     await waitFor(() => expect(posted()).toEqual({ name: 'Homepage', scope: 'read', canComplete: false }));
-    expect(await screen.findByText(/Homepage: add to a group/)).toBeTruthy();
-    expect(screen.getByText(/type: customapi/).textContent).toContain('url: http://tower.lan:8080/api/v1/summary');
+    expect(await screen.findByText(/Homepage: an environment variable/)).toBeTruthy();
+    expect(screen.getByText(/^HOMEPAGE_VAR_BELLTOWER_TOKEN=tt_/)).toBeTruthy();
+    const homepage = screen.getByText(/type: customapi/).textContent;
+    expect(homepage).toContain('url: http://tower.lan:8080/api/v1/summary');
+    expect(homepage).toContain('Authorization: Bearer {{HOMEPAGE_VAR_BELLTOWER_TOKEN}}');
     expect(screen.getByText(/Authorization: !secret belltower_token/)).toBeTruthy();
     expect(screen.queryByText(/Uptime Kuma: Notification type/)).toBeNull();
   });

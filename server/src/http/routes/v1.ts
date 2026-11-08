@@ -1,5 +1,5 @@
 // Automation API (/api/v1/*): bearer tokens only, no cookies or CSRF header. The guard checks the
-// token, refuses anything but GET for read-only tokens, and puts its identity on the request.
+// token, keeps read-only tokens to the routes marked readScope, and puts its identity on the request.
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppDeps } from '../../app';
@@ -12,6 +12,10 @@ import type { TokenIdentity } from '../../services/tokens';
 declare module 'fastify' {
   interface FastifyRequest {
     apiToken: TokenIdentity | null;
+  }
+  interface FastifyContextConfig {
+    /** Read-only API tokens may call this route (the guard refuses them everywhere else). */
+    readScope?: boolean;
   }
 }
 
@@ -30,8 +34,8 @@ export function registerV1Routes(app: FastifyInstance, deps: AppDeps): void {
     return t;
   };
 
-  /** Ticket counts for dashboards. Read-only tokens may call this (and only GET routes). */
-  app.get('/api/v1/summary', async (req) => {
+  /** Ticket counts for dashboards. Read-only tokens may call this. */
+  app.get('/api/v1/summary', { config: { readScope: true } }, async (req) => {
     token(req);
     return apiSummary(ctx);
   });

@@ -514,7 +514,7 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'GET /api/tokens': ok(() => []),
   'POST /api/tokens': ok((_ctx, req) => {
     parse(ApiTokenBody, req.body);
-    throw notInDemo(`API tokens are for tools like Uptime Kuma, and ${NO_AUTOMATION}`);
+    throw notInDemo(`API tokens are for tools like Uptime Kuma and dashboards like Homepage, and ${NO_AUTOMATION}`);
   }),
   'DELETE /api/tokens/:id': noContent(() => {
     throw notFound('Token not found');

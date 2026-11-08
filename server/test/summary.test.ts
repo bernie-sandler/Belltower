@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { archiveCard, completeCard, createCard, deleteCard, moveCard } from '../src/services/cards';
 import { createLink } from '../src/services/links';
-import { updateAlertSettings } from '../src/services/settings';
+import { updateAlertSettings, updateSubmitSettings } from '../src/services/settings';
 import { apiSummary } from '../src/services/summary';
 import { columnId, makeCtx, T0 } from './helpers';
 
@@ -54,6 +54,13 @@ describe('apiSummary', () => {
 
     done(blocker.id);
     expect(apiSummary(t.ctx)).toMatchObject({ open: 4, received: 1, inProgress: 2, waiting: 1 });
+  });
+
+  it('counts the submit page’s column as received', () => {
+    updateSubmitSettings(t.ctx, { enabled: true, columnId: columnId(t.ctx, 'Backlog'), pageTitle: 'Help', intro: '' });
+    createCard(t.ctx, { title: 'From the submit page', columnId: columnId(t.ctx, 'Backlog') });
+    createCard(t.ctx, { title: 'Being worked on', columnId: columnId(t.ctx, 'In Progress') });
+    expect(apiSummary(t.ctx)).toMatchObject({ open: 2, received: 1, inProgress: 1 });
   });
 
   it('counts urgent tickets with the notification alert levels, and priorities and severities by code', () => {

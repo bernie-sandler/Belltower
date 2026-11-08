@@ -24,8 +24,15 @@ const PUBLIC_ROUTES = new Set([
   'GET /api/public/status/:id/:sig',
 ]);
 
-/** Automation API: bearer tokens only (no cookies, no CSRF header, which tools like Uptime Kuma can't send). */
-const isV1Route = (req: FastifyRequest) => req.routeOptions.url?.startsWith('/api/v1/') ?? false;
+/**
+ * Automation API: bearer tokens only (no cookies, no CSRF header, which tools like Uptime Kuma can't send).
+ * Unknown /api/v1 paths too, so a tool gets a token error or a JSON 404 rather than a cookie or CSRF error.
+ * Only paths that matched no route are judged by the raw URL: a matched route always decides by its own pattern.
+ */
+const isV1Route = (req: FastifyRequest) => {
+  const route = req.routeOptions.url;
+  return route === undefined ? req.url.startsWith('/api/v1/') : route.startsWith('/api/v1/');
+};
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -109,8 +116,9 @@ export function installGuard(app: FastifyInstance, deps: AppDeps): void {
       const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
       req.apiToken = m ? authenticateToken(deps.ctx, m[1]!) : null;
       if (!req.apiToken) throw new AppError(401, 'unauthenticated', 'Send a valid API token: Authorization: Bearer tt_…');
-      // Checked here rather than per route, so a route added later is closed to read-only tokens by default.
-      if (req.apiToken.scope === 'read' && !SAFE_METHODS.has(req.method)) {
+      // Read-only tokens only get routes that opt in with config.readScope (the summary), so a route
+      // added later is closed to them unless it says otherwise. Unknown paths fall through to the 404.
+      if (req.apiToken.scope === 'read' && req.routeOptions.url !== undefined && req.routeOptions.config.readScope !== true) {
         throw new AppError(403, 'forbidden', 'This token is read-only. Create a full token to open tickets.');
       }
       return;

@@ -140,7 +140,13 @@ Homepage and Home Assistant both work that way.
 
 ### Homepage
 
-Add a service to one of your groups in `services.yaml`, using the
+Give Homepage's container the token as an environment variable, so it isn't written into `services.yaml`:
+
+```
+HOMEPAGE_VAR_BELLTOWER_TOKEN=tt_…
+```
+
+Then add a service to one of your groups in `services.yaml`, using the
 [Custom API widget](https://gethomepage.dev/widgets/services/customapi/):
 
 ```yaml
@@ -151,7 +157,7 @@ Add a service to one of your groups in `services.yaml`, using the
       url: http://192.168.1.50:8080/api/v1/summary
       refreshInterval: 60000
       headers:
-        Authorization: Bearer tt_…
+        Authorization: Bearer {{HOMEPAGE_VAR_BELLTOWER_TOKEN}}
       mappings:
         - field: open
           label: Open
