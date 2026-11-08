@@ -141,13 +141,29 @@ interface Outgoing {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const cardTitle = (c: Pick<CardInfo, 'ticket_no' | 'title'>) => `${c.ticket_no ? `${c.ticket_no} — ` : ''}${c.title}`;
 
-/** Cuts `s` to at most `max` bytes of UTF-8 without splitting a character. */
+/** Cuts `s` to at most `max` bytes of UTF-8 without splitting a character (emoji included). */
 function cutBytes(s: string, max: number): string {
   if (Buffer.byteLength(s) <= max) return s;
-  let out = s.slice(0, max);
-  while (Buffer.byteLength(out) > max - 3) out = out.slice(0, -1);
+  let out = '';
+  let bytes = 0;
+  for (const ch of s) {
+    const size = Buffer.byteLength(ch);
+    if (bytes + size > max - 3) break; // room for the "…"
+    out += ch;
+    bytes += size;
+  }
   return `${out}…`;
 }
+
+/** The first `n` characters, counting an emoji as one. */
+const firstChars = (s: string, n: number) => Array.from(s).slice(0, n).join('');
+
+/**
+ * Text from outside (a submitter's name, ticket titles) shown as Markdown in ntfy and Gotify, with
+ * the characters that start Markdown syntax escaped, so a name like ![](http://…) can't load a
+ * remote image or disguise a link.
+ */
+const escapeMd = (s: string) => s.replace(/[\\`*_[\]<>|~]/g, '\\$&'); // with [ ] escaped, ( ) and ! can't form links or images
 
 export class Notifier {
   /** When each channel's daily summary last failed (in memory: a restart simply tries again). */
@@ -176,21 +192,22 @@ export class Notifier {
     const card = cardInfo(ctx, event.cardId);
     if (!card || card.deleted_at) return; // rolled back, or already trashed
     const alerts = getAlertSettings(ctx);
-    const message = (name: EventName, heading: string, color: number, urgent: boolean): Message => ({ event: name, heading, color, urgent, card });
+    // `urgent` always says whether the card itself counts as urgent (the webhook documents it so).
+    const urgent = isUrgent(alerts, card.priority, card.severity);
+    const message = (name: EventName, heading: string, color: number): Message => ({ event: name, heading, color, urgent, card });
 
     // Which message (if any) a channel with these events gets.
     let pick: (events: ChannelEvents) => Message | null;
     if (event.type === 'card_created') {
-      const urgent = isUrgent(alerts, card.priority, card.severity);
-      const external = event.external ? message('new_external', `New ticket from ${event.via ?? 'outside'}`, urgent ? COLOR.critical : COLOR.external, urgent) : null;
-      const critical = urgent ? message('new_urgent', `New urgent card (${levels(card)})`, COLOR.critical, true) : null;
+      const external = event.external ? message('new_external', `New ticket from ${event.via ?? 'outside'}`, urgent ? COLOR.critical : COLOR.external) : null;
+      const critical = urgent ? message('new_urgent', `New urgent card (${levels(card)})`, COLOR.critical) : null;
       pick = (e) => (external && e.external ? external : critical && e.critical ? critical : null);
     } else if (event.type === 'card_raised') {
       // Only when it *becomes* urgent, so editing an already-urgent card doesn't repeat the alert.
       const { from, to } = event;
       const raised =
         !card.completed_at && !isUrgent(alerts, from.priority, from.severity) && isUrgent(alerts, to.priority, to.severity)
-          ? message('raised', `Raised to ${levels(to)}`, COLOR.critical, true)
+          ? message('raised', `Raised to ${levels(to)}`, COLOR.critical)
           : null;
       pick = (e) => (raised && e.critical ? raised : null);
     } else {
@@ -200,7 +217,7 @@ export class Notifier {
         .filter((b): b is CardInfo => b !== null)
         .map((b) => `${b.ticket_no ?? `#${b.id}`} ${b.title}`)
         .join(', ');
-      const blocked = message('blocked', `Blocked by ${blockers || 'an open card'}`, COLOR.blocked, false);
+      const blocked = message('blocked', `Blocked by ${blockers || 'an open card'}`, COLOR.blocked);
       pick = (e) => (e.blocked ? blocked : null);
     }
     await Promise.all(
@@ -269,7 +286,16 @@ export class Notifier {
     const appUrl = getGeneralSettings(ctx).appUrl;
     const link = (c: CardInfo) => (appUrl ? `${appUrl}/cards/${c.id}` : null);
     const format = { discord: toDiscord, ntfy: toNtfy, gotify: toGotify, webhook: toWebhook }[t.channel];
-    return this.send(ctx, t.channel, format(t, m, link, ctx.clock.now()));
+    let req: Outgoing;
+    try {
+      req = format(t, m, link, ctx.clock.now());
+    } catch {
+      // One channel's bad address mustn't stop the others (the daily summary sends them together).
+      const message = `Couldn’t build a message for ${NAME[t.channel]}; check its address`;
+      recordDelivery(ctx, t.channel, false, message);
+      return Promise.resolve({ ok: false, message });
+    }
+    return this.send(ctx, t.channel, req);
   }
 
   private async send(ctx: Ctx, channel: AnyChannel, req: Outgoing): Promise<{ ok: boolean; message: string }> {
@@ -297,8 +323,8 @@ export class Notifier {
         }
       } catch (err) {
         last = `Couldn’t reach ${name}: ${channel === 'discord' ? (err as Error).message : networkReason(err)}`;
-        // A redirect will be a redirect again; only network trouble is worth retrying.
-        if (isRedirect(err)) break;
+        // A redirect or a refused port will be the same again; only network trouble is worth retrying.
+        if (isRedirect(err) || isBadPort(err)) break;
         if (attempt < this.retryDelaysMs.length) await sleep(this.retryDelaysMs[attempt]!);
       }
     }
@@ -321,11 +347,15 @@ const isRedirect = (err: unknown) => {
   return /redirect/i.test(`${e.cause?.message ?? ''} ${e.message ?? ''}`);
 };
 
+/** fetch refuses some ports outright (1, 6000, 10080…), with no error code. */
+const isBadPort = (err: unknown) => /bad port/i.test((err as FetchError).cause?.message ?? '');
+
 /** Why a request didn't get an answer, without echoing anything the other end said. */
 function networkReason(err: unknown): string {
   const e = err as FetchError;
   if (e.name === 'TimeoutError' || e.name === 'AbortError') return 'no answer within 10 seconds';
   if (isRedirect(err)) return 'it answered with a redirect, and redirects aren’t followed';
+  if (isBadPort(err)) return 'that port is blocked for outgoing requests; use another one';
   return e.cause?.code ?? 'network error';
 }
 
@@ -335,16 +365,22 @@ function networkReason(err: unknown): string {
 
 type Format = (t: Target, m: Message, link: (c: CardInfo) => string | null, now: Date) => Outgoing;
 
-/** "Column: Triage · P1 High · S1 Blocker" */
+/** "Column: Triage · P1 High · S1 Blocker" (Markdown-escaped). */
 function details(c: CardInfo): string {
-  return [`Column: ${c.column_name}`, levels(c)].filter(Boolean).join(' · ');
+  return escapeMd([`Column: ${c.column_name}`, levels(c)].filter(Boolean).join(' · '));
+}
+
+/** The Markdown text ntfy and Gotify show: what happened and the card's details, or the summary. */
+function markdownText(m: Message, link: (c: CardInfo) => string | null): string {
+  if (m.card) return `${escapeMd(m.heading)}\n\n${details(m.card)}`;
+  return m.digest ? digestMarkdown(m, link) : escapeMd(m.heading);
 }
 
 /** The summary as Markdown sections ("**Overdue (2)**" and a line per card). */
 function digestMarkdown(m: Message, link: (c: CardInfo) => string | null): string {
   const d = m.digest!;
   const line = (c: CardInfo) => {
-    const name = cardTitle(c).slice(0, 120);
+    const name = escapeMd(firstChars(cardTitle(c), 120));
     const url = link(c);
     return `- ${url ? `[${name}](${url})` : name}`;
   };
@@ -398,16 +434,16 @@ const toDiscord: Format = (t, m, link) => {
 
 /**
  * ntfy: JSON publishing, which (unlike headers) takes any characters. It goes to the server's root
- * with the topic in the body, so the pasted topic address is split: https://host/sub/topic →
- * POST https://host/sub/ with {"topic": "topic"}.
+ * with the topic in the body, so the pasted topic address is split: https://host/sub/topic?auth=…
+ * → POST https://host/sub/?auth=… with {"topic": "topic"} (ntfy accepts ?auth= instead of a token).
  */
 const toNtfy: Format = (t, m, link) => {
   const u = new URL(t.url);
   const segments = u.pathname.split('/').filter(Boolean);
   const topic = segments.pop()!;
-  const base = new URL(`${segments.length ? `/${segments.join('/')}` : ''}/`, u.origin);
+  const base = new URL(`${segments.length ? `/${segments.join('/')}` : ''}/${u.search}`, u.origin);
   const url = m.card ? link(m.card) : null;
-  const text = m.card ? `${m.heading}\n\n${details(m.card)}` : m.digest ? digestMarkdown(m, link) : m.heading;
+  const text = markdownText(m, link);
   return {
     url: base.toString(),
     headers: { 'Content-Type': 'application/json', ...(t.secret ? { Authorization: `Bearer ${t.secret}` } : {}) },
@@ -422,13 +458,17 @@ const toNtfy: Format = (t, m, link) => {
   };
 };
 
-/** Gotify: POST /message with the app token in a header. */
+/**
+ * Gotify: POST <server>/message with the app token in a header. The server may sit under a
+ * sub-path; a pasted …/message endpoint and a query string are both kept as they should be.
+ */
 const toGotify: Format = (t, m, link) => {
-  const base = t.url.endsWith('/') ? t.url : `${t.url}/`;
+  const u = new URL(t.url);
+  const path = u.pathname.replace(/\/+$/, '').replace(/\/message$/, '');
   const url = m.card ? link(m.card) : null;
-  const text = m.card ? `${m.heading}\n\n${details(m.card)}` : m.digest ? digestMarkdown(m, link) : m.heading;
+  const text = markdownText(m, link);
   return {
-    url: new URL('message', base).toString(),
+    url: `${u.origin}${path}/message${u.search}`,
     headers: { 'Content-Type': 'application/json', 'X-Gotify-Key': t.secret ?? '' },
     body: JSON.stringify({
       title: titleOf(m).slice(0, 250),

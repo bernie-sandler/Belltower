@@ -213,6 +213,81 @@ describe('sending', () => {
   });
 });
 
+describe('review fixes', () => {
+  it('forgets a token when the scheme or port changes, but keeps one saved before any address', () => {
+    updateChannelSettings(t.ctx, 'ntfy', channel({ url: 'https://ntfy.example/topic', secret: 'tk_a' }));
+    updateChannelSettings(t.ctx, 'ntfy', channel({ url: 'http://ntfy.example/topic' })); // would go out in the clear
+    expect(getChannelSettings(t.ctx, 'ntfy').secret).toBeNull();
+    updateChannelSettings(t.ctx, 'ntfy', channel({ secret: 'tk_b' }));
+    updateChannelSettings(t.ctx, 'ntfy', channel({ url: 'http://ntfy.example:8080/topic' }));
+    expect(getChannelSettings(t.ctx, 'ntfy').secret).toBeNull();
+
+    updateChannelSettings(t.ctx, 'gotify', channel({ secret: 'Atoken' })); // token first…
+    updateChannelSettings(t.ctx, 'gotify', channel({ url: 'https://gotify.lan' })); // …then the address
+    expect(getChannelSettings(t.ctx, 'gotify')).toMatchObject({ url: 'https://gotify.lan/', secret: 'Atoken' });
+  });
+
+  it('refuses tokens that can’t go in a header', () => {
+    expect(() => updateChannelSettings(t.ctx, 'ntfy', channel({ url: 'https://ntfy.sh/t', secret: 'tk with space' }))).toThrow(/plain punctuation/);
+    expect(() => updateChannelSettings(t.ctx, 'gotify', channel({ secret: 'tökén' }))).toThrow(/plain punctuation/);
+    updateChannelSettings(t.ctx, 'webhook', channel({ url: 'https://hooks.example', secret: 'any secret, even with spaces' }));
+  });
+
+  it('builds ntfy and Gotify addresses with ports, sub-paths and queries', async () => {
+    updateChannelSettings(t.ctx, 'ntfy', channel({ url: 'https://ntfy.example:8443/sub/topic?auth=QXV0aA' }));
+    updateChannelSettings(t.ctx, 'gotify', channel({ url: 'https://g.example/sub/message?x=1', secret: 'Atoken' }));
+    await notifier.sendTest(t.ctx, 'ntfy');
+    await notifier.sendTest(t.ctx, 'gotify');
+    expect(sent.map((s) => s.url)).toEqual(['https://ntfy.example:8443/sub/?auth=QXV0aA', 'https://g.example/sub/message?x=1']);
+    const s = settingsResponse(t.ctx, { modelFromEnv: null, enabled: false });
+    expect(JSON.stringify(s)).not.toContain('QXV0aA');
+    expect(s.notify.channels.gotify.hint).toBe('https://g.example/sub/message?…');
+  });
+
+  it('says whether the card is urgent on every card event, blocked included', async () => {
+    updateChannelSettings(t.ctx, 'webhook', channel({ url: 'https://hooks.example/in', events: { ...EVENTS, blocked: true } }));
+    const blocker = createCard(t.ctx, { title: 'Order disk' });
+    const card = createCard(t.ctx, { title: 'Rebuild array', priority: 'critical' });
+    sent = [];
+    await notifier.handle(t.ctx, { type: 'card_blocked', cardId: card.id, blockerIds: [blocker.id] });
+    expect(sent[0]!.json).toMatchObject({ event: 'blocked', urgent: true });
+  });
+
+  it('escapes Markdown from outside, and cuts long ntfy messages without splitting emoji', async () => {
+    updateChannelSettings(t.ctx, 'ntfy', channel({ url: 'https://ntfy.sh/t' }));
+    const card = createCard(t.ctx, { title: 'From the page' });
+    await notifier.handle(t.ctx, { type: 'card_created', cardId: card.id, external: true, via: 'submit page (![](http://x/p.png))' });
+    expect(sent[0]!.json.message).toContain('submit page (!\\[\\](http://x/p.png))');
+
+    const long = createCard(t.ctx, { title: 'x', dueDate: '2026-10-09' });
+    t.ctx.db.prepare('UPDATE cards SET title = ? WHERE id = ?').run(`aa${'😀'.repeat(290)}`, long.id);
+    for (let i = 0; i < 30; i++) createCard(t.ctx, { title: `aa${'😀'.repeat(290)}`, dueDate: '2026-10-09' });
+    await notifier.sendDigest(t.ctx, new Date('2026-10-10T15:00:00.000Z'), 'ntfy');
+    const message = sent.at(-1)!.json.message as string;
+    expect(Buffer.byteLength(message)).toBeLessThanOrEqual(4000);
+    expect(message.endsWith('…')).toBe(true);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(message)).toBe(false); // no lone half of an emoji
+  });
+
+  it('survives a broken saved address (say, from a restored backup)', async () => {
+    t.ctx.db
+      .prepare("INSERT INTO settings (key, value) VALUES ('notify_channels', ?)")
+      .run(JSON.stringify({ ntfy: { url: 'not a url', secret: 'tk', events: { ...EVENTS, digest: true } } }));
+    const s = settingsResponse(t.ctx, { modelFromEnv: null, enabled: false });
+    expect(s.notify.channels.ntfy).toMatchObject({ set: false, hint: null });
+    updateChannelSettings(t.ctx, 'ntfy', channel({ url: 'https://ntfy.sh/fixed' }));
+    expect(getChannelSettings(t.ctx, 'ntfy').url).toBe('https://ntfy.sh/fixed');
+  });
+
+  it('doesn’t retry a port fetch refuses, and says why', async () => {
+    updateChannelSettings(t.ctx, 'webhook', channel({ url: 'http://127.0.0.1:6000/x' }));
+    const badPort = Object.assign(new TypeError('fetch failed'), { cause: { message: 'bad port' } });
+    replies = [badPort, badPort, badPort];
+    expect((await notifier.sendTest(t.ctx, 'webhook')).message).toMatch(/port is blocked/);
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe('daily summary per channel', () => {
   const at = (iso: string) => new Date(iso);
 

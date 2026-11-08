@@ -173,10 +173,25 @@ const CHANNEL_DEFAULTS: ChannelSettings = { url: null, secret: null, events: { .
 /** ntfy topics: letters, digits, - and _ (ntfy's own rule). */
 const NTFY_TOPIC = /^[-\w]{1,64}$/;
 
+/** A saved address that still parses as http(s), or null. A restored backup isn't validated, so this is checked on every read. */
+function usableUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getChannelSettings(ctx: Ctx, channel: NotifyChannel): ChannelSettings {
   const all = read<Partial<Record<NotifyChannel, Partial<ChannelSettings>>>>(ctx, KEY.channels, {});
   const c = all[channel] ?? {};
-  return { ...CHANNEL_DEFAULTS, ...c, events: { ...CHANNEL_DEFAULTS.events, ...c.events } };
+  return {
+    url: usableUrl(c.url),
+    secret: typeof c.secret === 'string' && c.secret ? c.secret : null,
+    events: { ...CHANNEL_DEFAULTS.events, ...c.events },
+  };
 }
 
 /** Whether a channel has what it needs to send. Gotify can't post without its app token. */
@@ -200,27 +215,36 @@ function checkChannelUrl(channel: NotifyChannel, raw: string): URL {
   return u;
 }
 
+/** Tokens go into a request header, so they must be plain printable characters (ntfy's and Gotify's are). */
+const HEADER_SAFE = /^[\x21-\x7e]+$/;
+
 /**
  * Saves a channel. `url`/`secret`: null keeps the saved value, '' removes it. Pointing the channel
- * at another host forgets the saved secret unless a new one comes with it, so a token can't be
- * redirected somewhere else by changing only the address.
+ * at another origin (scheme, host or port: https → http counts) forgets the saved secret unless a
+ * new one comes with it, so a token can't be sent somewhere else, or in the clear, by changing only
+ * the address. A secret saved before any address is kept when the address is first set.
  */
 export function updateChannelSettings(ctx: Ctx, channel: NotifyChannel, body: NotifyChannelBody): void {
   const current = getChannelSettings(ctx, channel);
   const url = body.url === null ? current.url : body.url ? checkChannelUrl(channel, body.url).toString() : null;
+  if (body.secret && channel !== 'webhook' && !HEADER_SAFE.test(body.secret)) {
+    throw badRequest('validation', 'Tokens can only contain letters, digits and plain punctuation (no spaces)');
+  }
   let secret = body.secret === null ? current.secret : body.secret || null;
-  const hostOf = (u: string | null) => (u ? new URL(u).host : null);
-  if (body.secret === null && hostOf(url) !== hostOf(current.url)) secret = null;
+  const originOf = (u: string | null) => (u ? new URL(u).origin : null);
+  if (body.secret === null && current.url !== null && originOf(url) !== originOf(current.url)) secret = null;
   const all = read<Partial<Record<NotifyChannel, ChannelSettings>>>(ctx, KEY.channels, {});
   write(ctx, KEY.channels, { ...all, [channel]: { url, secret, events: body.events } });
 }
 
-/** "https://ntfy.sh/…": the scheme and host, never the path or query (an ntfy topic works like a password). */
+/**
+ * "https://ntfy.sh/…": the scheme and host, never the path or query (an ntfy topic works like a
+ * password, and a query may hold a token). Gotify's path holds nothing secret, so it's shown.
+ */
 function channelHint(channel: NotifyChannel, url: string | null): string | null {
   if (!url) return null;
-  const u = new URL(url);
-  // Gotify's address holds nothing secret (the token is separate).
-  if (channel === 'gotify') return `${u.origin}${u.pathname.replace(/\/$/, '')}`;
+  const u = new URL(url); // getChannelSettings only returns addresses that parse
+  if (channel === 'gotify') return `${u.origin}${u.pathname.replace(/\/$/, '')}${u.search ? '?…' : ''}`;
   return u.pathname === '/' && !u.search ? u.origin : `${u.origin}/…`;
 }
 
