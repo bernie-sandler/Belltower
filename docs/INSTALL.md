@@ -49,7 +49,7 @@ If you'd rather skip that step, set `APP_PASSWORD` in `.env` before starting.
 That's it. Next steps you might want:
 - [reach it from your phone](REMOTE-ACCESS.md);
 - check that [backups](BACKUP.md) are covered;
-- turn on [Discord alerts](NOTIFICATIONS.md) or the [submit page](SUBMIT-PAGE.md).
+- turn on [notifications](NOTIFICATIONS.md) (Discord, ntfy, Gotify or a webhook) or the [submit page](SUBMIT-PAGE.md).
 
 ## Where your data lives
 

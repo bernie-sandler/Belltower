@@ -1,4 +1,5 @@
 import type { ActivityType, CardKind, CardSource, ColumnRole, Level, Priority, RequestFieldKind, Severity } from './constants';
+import type { NotifyChannel } from './schemas';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
 export type IsoTimestamp = string;
@@ -452,6 +453,22 @@ export interface SettingsResponse {
     alertSeverity: 'blocker' | 'major' | 'minor';
     lastDelivery: { at: IsoTimestamp; ok: boolean; message: string } | null;
   };
+  notify: {
+    /** Shared by every channel (they also still appear under `discord`). */
+    alerts: { digestTime: string; alertPriority: 'critical' | 'high' | 'medium'; alertSeverity: 'blocker' | 'major' | 'minor' };
+    channels: Record<NotifyChannel, NotifyChannelInfo>;
+  };
   blockedColumnId: number | null;
   resolutionReasons: string[];
+}
+
+/** A notification channel as Settings shows it. Saved addresses and secrets are never sent back. */
+export interface NotifyChannelInfo {
+  /** Ready to send: has an address (and, for Gotify, its app token). */
+  set: boolean;
+  /** Enough of the address to recognise it, not enough to use it ("https://ntfy.sh/…"). */
+  hint: string | null;
+  secretSet: boolean;
+  events: { external: boolean; critical: boolean; digest: boolean; blocked: boolean };
+  lastDelivery: { at: IsoTimestamp; ok: boolean; message: string } | null;
 }

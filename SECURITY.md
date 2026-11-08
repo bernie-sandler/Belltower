@@ -31,8 +31,14 @@ Fixes go into the newest 1.x release.
 - **Outbound connections.** None unless you turn something on:
   - With `ANTHROPIC_API_KEY`, only the text you type or paste into Add ticket, your label names, today's date and
     the ticket numbers and titles of your open cards are sent to Anthropic's API, from the server.
-  - With a Discord webhook, card titles, ticket numbers and priorities go to that Discord channel. Only Discord
-    webhook addresses are accepted, so the server can't be pointed elsewhere.
+  - With [notifications](docs/NOTIFICATIONS.md) set up, card titles, ticket numbers, columns and priorities go to
+    the channels you chose: Discord, ntfy, Gotify or a webhook. Descriptions and work logs never do.
+    - The Discord channel only accepts Discord webhook addresses.
+    - ntfy, Gotify and webhooks accept any `http(s)` address, including ones on your network. Only you, signed in,
+      can set them.
+    - Saved tokens and secrets are never shown again. Pointing a channel at another server forgets its saved token.
+    - Redirects aren't followed, so a token can't be passed on to another host.
+    - Errors show only the status code, so **Send test** can't be used to read other pages on your network.
 - **Submit page** (off by default).
   - It's reachable without the password by anyone who has its long random link.
   - It can only file tickets, and shows nothing from the board except your request types and the tags you chose.
@@ -57,5 +63,5 @@ Fixes go into the newest 1.x release.
 - **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD` and `ANTHROPIC_API_KEY`.
 - **Back up `/data`** (or use the export). The pre-upgrade copies and nightly snapshots live in the same folder,
   so they don't protect against losing the disk.
-- **Keep exports private.** They don't contain your password, but they do contain the submit page's link, the
-  Discord webhook address and API token hashes. See [docs/BACKUP-FORMAT.md](docs/BACKUP-FORMAT.md).
+- **Keep exports private.** They don't contain your password, but they do contain the submit page's link,
+  notification addresses and tokens (Discord, ntfy, Gotify, webhook) and API token hashes. See [docs/BACKUP-FORMAT.md](docs/BACKUP-FORMAT.md).

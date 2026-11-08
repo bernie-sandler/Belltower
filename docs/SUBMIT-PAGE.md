@@ -22,7 +22,7 @@ When they send it, they get the new ticket's number and nothing else. They never
 
 On your side it's a normal card in Triage (or the column you choose). Their answers are added below the description,
 the title follows the type's pattern (say "Plex – Interstellar – stutters"), and the history notes
-"submit page (*their name*)". With [Discord](NOTIFICATIONS.md) set up, you get a message for each one.
+"submit page (*their name*)". With [notifications](NOTIFICATIONS.md) set up, you get a message for each one.
 
 ## Request types
 

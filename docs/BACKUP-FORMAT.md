@@ -94,7 +94,9 @@ The shapes of `activity.data` for each event type are documented with `ActivityE
 generically.
 
 **Settings keys** you'll see: `general_settings`, `submit_settings` (which includes the submit page's key),
-`discord_settings` (which includes the webhook URL), `discord_last_delivery`, `discord_digest_last`,
+`discord_settings` (which includes the webhook URL, and the alert levels and summary time every channel uses),
+`notify_channels` (ntfy, Gotify and webhook addresses and tokens), `<channel>_last_delivery` and
+`<channel>_digest_last` for `discord`, `ntfy`, `gotify` and `webhook`,
 `resolution_reasons`, `blocked_column_id`, `app_tz_at_seed`, `seeded` and `request_types_seeded`.
 
 ## What's left out
@@ -103,8 +105,8 @@ generically.
   ones already on the server, so it never locks you out.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.
 
-Because a backup does include the submit page's link, the Discord webhook URL and token hashes, keep exports
-somewhere private.
+Because a backup does include the submit page's link, notification addresses and tokens and API token hashes, keep
+exports somewhere private.
 
 ## Schema history
 

@@ -5,8 +5,13 @@ import { randomBytes } from 'node:crypto';
 import {
   DEFAULT_RESOLUTION_REASONS,
   DEFAULT_TICKET_FORMAT,
+  NOTIFY_CHANNELS,
   type DiscordSettingsBody,
   type GeneralSettingsBody,
+  type NotifyAlertsBody,
+  type NotifyChannel,
+  type NotifyChannelBody,
+  type NotifyChannelInfo,
   type SettingsResponse,
   type SubmitSettingsBody,
 } from '@tt/shared';
@@ -19,8 +24,15 @@ const KEY = {
   general: 'general_settings',
   submit: 'submit_settings',
   discord: 'discord_settings',
-  delivery: 'discord_last_delivery',
+  channels: 'notify_channels',
 } as const;
+
+/** Every channel that can send, Discord included. */
+export type AnyChannel = 'discord' | NotifyChannel;
+/** `discord_last_delivery`, `ntfy_last_delivery`… (Discord's key predates the others). */
+const deliveryKey = (channel: AnyChannel) => `${channel}_last_delivery`;
+/** The local date the daily summary last went out on this channel. */
+export const digestKey = (channel: AnyChannel) => `${channel}_digest_last`;
 
 export interface GeneralSettings {
   ticketFormat: string;
@@ -114,20 +126,113 @@ function newSubmitKey(): string {
   return randomBytes(24).toString('base64url');
 }
 
-/** Alert levels left out keep their saved value. */
-export function updateDiscordSettings(
-  ctx: Ctx,
-  body: Omit<DiscordSettingsBody, 'alertPriority' | 'alertSeverity'> & Partial<Pick<DiscordSettingsBody, 'alertPriority' | 'alertSeverity'>>,
-): void {
+/** The summary time and alert levels left out keep their saved values. */
+export function updateDiscordSettings(ctx: Ctx, body: DiscordSettingsBody): void {
   const current = getDiscordSettings(ctx);
   const webhookUrl = body.webhookUrl === null ? current.webhookUrl : body.webhookUrl || null;
   write(ctx, KEY.discord, {
     webhookUrl,
     events: body.events,
-    digestTime: body.digestTime,
+    digestTime: body.digestTime ?? current.digestTime,
     alertPriority: body.alertPriority ?? current.alertPriority,
     alertSeverity: body.alertSeverity ?? current.alertSeverity,
   });
+}
+
+// ---- every channel: alert levels, daily summary time ----
+
+export type AlertSettings = Pick<DiscordSettings, 'digestTime' | 'alertPriority' | 'alertSeverity'>;
+
+/**
+ * What counts as urgent and when the daily summary goes out, for every channel. Kept in
+ * discord_settings, where they lived before there were other channels, so nothing moves.
+ */
+export function getAlertSettings(ctx: Ctx): AlertSettings {
+  const { digestTime, alertPriority, alertSeverity } = getDiscordSettings(ctx);
+  return { digestTime, alertPriority, alertSeverity };
+}
+
+export function updateAlertSettings(ctx: Ctx, body: NotifyAlertsBody): void {
+  write(ctx, KEY.discord, { ...read(ctx, KEY.discord, DISCORD_DEFAULTS), ...body });
+}
+
+// ---- ntfy, Gotify, webhook ----
+
+export type ChannelEvents = DiscordSettings['events'];
+
+export interface ChannelSettings {
+  /** ntfy: the topic's address. Gotify: the server's address. Webhook: where to POST. */
+  url: string | null;
+  /** ntfy access token, Gotify app token, or the webhook's signing secret. */
+  secret: string | null;
+  events: ChannelEvents;
+}
+
+const CHANNEL_DEFAULTS: ChannelSettings = { url: null, secret: null, events: { ...DISCORD_DEFAULTS.events } };
+
+/** ntfy topics: letters, digits, - and _ (ntfy's own rule). */
+const NTFY_TOPIC = /^[-\w]{1,64}$/;
+
+export function getChannelSettings(ctx: Ctx, channel: NotifyChannel): ChannelSettings {
+  const all = read<Partial<Record<NotifyChannel, Partial<ChannelSettings>>>>(ctx, KEY.channels, {});
+  const c = all[channel] ?? {};
+  return { ...CHANNEL_DEFAULTS, ...c, events: { ...CHANNEL_DEFAULTS.events, ...c.events } };
+}
+
+/** Whether a channel has what it needs to send. Gotify can't post without its app token. */
+export function channelReady(channel: AnyChannel, s: { url: string | null; secret?: string | null }): boolean {
+  return s.url !== null && (channel !== 'gotify' || Boolean(s.secret));
+}
+
+function checkChannelUrl(channel: NotifyChannel, raw: string): URL {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw badRequest('validation', 'That address isn’t valid');
+  }
+  if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) {
+    throw badRequest('validation', 'Enter an http:// or https:// address (without a user name or password in it)');
+  }
+  if (channel === 'ntfy' && !NTFY_TOPIC.test(u.pathname.split('/').filter(Boolean).at(-1) ?? '')) {
+    throw badRequest('validation', 'Paste the topic’s address, like https://ntfy.sh/my-topic');
+  }
+  return u;
+}
+
+/**
+ * Saves a channel. `url`/`secret`: null keeps the saved value, '' removes it. Pointing the channel
+ * at another host forgets the saved secret unless a new one comes with it, so a token can't be
+ * redirected somewhere else by changing only the address.
+ */
+export function updateChannelSettings(ctx: Ctx, channel: NotifyChannel, body: NotifyChannelBody): void {
+  const current = getChannelSettings(ctx, channel);
+  const url = body.url === null ? current.url : body.url ? checkChannelUrl(channel, body.url).toString() : null;
+  let secret = body.secret === null ? current.secret : body.secret || null;
+  const hostOf = (u: string | null) => (u ? new URL(u).host : null);
+  if (body.secret === null && hostOf(url) !== hostOf(current.url)) secret = null;
+  const all = read<Partial<Record<NotifyChannel, ChannelSettings>>>(ctx, KEY.channels, {});
+  write(ctx, KEY.channels, { ...all, [channel]: { url, secret, events: body.events } });
+}
+
+/** "https://ntfy.sh/…": the scheme and host, never the path or query (an ntfy topic works like a password). */
+function channelHint(channel: NotifyChannel, url: string | null): string | null {
+  if (!url) return null;
+  const u = new URL(url);
+  // Gotify's address holds nothing secret (the token is separate).
+  if (channel === 'gotify') return `${u.origin}${u.pathname.replace(/\/$/, '')}`;
+  return u.pathname === '/' && !u.search ? u.origin : `${u.origin}/…`;
+}
+
+function channelInfo(ctx: Ctx, channel: NotifyChannel): NotifyChannelInfo {
+  const c = getChannelSettings(ctx, channel);
+  return {
+    set: channelReady(channel, c),
+    hint: channelHint(channel, c.url),
+    secretSet: c.secret !== null,
+    events: c.events,
+    lastDelivery: lastDelivery(ctx, channel),
+  };
 }
 
 /** Resolution reasons in order; the first is the default ("Fixed"). */
@@ -146,12 +251,12 @@ export function setResolutionReasons(ctx: Ctx, reasons: string[]): void {
   setSetting(ctx.db, 'resolution_reasons', JSON.stringify(reasons));
 }
 
-export function recordDelivery(ctx: Ctx, ok: boolean, message: string): void {
-  write(ctx, KEY.delivery, { at: nowIso(ctx), ok, message: message.slice(0, 300) });
+export function recordDelivery(ctx: Ctx, channel: AnyChannel, ok: boolean, message: string): void {
+  write(ctx, deliveryKey(channel), { at: nowIso(ctx), ok, message: message.slice(0, 300) });
 }
 
-export function lastDelivery(ctx: Ctx): Delivery | null {
-  const raw = getSetting(ctx.db, KEY.delivery);
+export function lastDelivery(ctx: Ctx, channel: AnyChannel = 'discord'): Delivery | null {
+  const raw = getSetting(ctx.db, deliveryKey(channel));
   try {
     return raw ? (JSON.parse(raw) as Delivery) : null;
   } catch {
@@ -180,6 +285,10 @@ export function settingsResponse(ctx: Ctx, ai: { modelFromEnv: string | null; en
       alertPriority: discord.alertPriority,
       alertSeverity: discord.alertSeverity,
       lastDelivery: lastDelivery(ctx),
+    },
+    notify: {
+      alerts: getAlertSettings(ctx),
+      channels: Object.fromEntries(NOTIFY_CHANNELS.map((c) => [c, channelInfo(ctx, c)])) as Record<NotifyChannel, NotifyChannelInfo>,
     },
     blockedColumnId: getBlockedColumnId(ctx),
     resolutionReasons: getResolutionReasons(ctx),

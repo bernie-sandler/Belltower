@@ -168,6 +168,6 @@ retry.
 
 - Automated tickets are ordinary cards: in Triage unless `column` says otherwise, with "API token *name*" in their
   history.
-- With [Discord notifications](NOTIFICATIONS.md) on, new tickets from automation are announced.
+- With [notifications](NOTIFICATIONS.md) on, new tickets from automation are announced.
 - Point tools at the app on your LAN or tailnet if you can. If you must expose it through a reverse proxy, `/api/v1/`
   can be let through on its own; tokens are the only way in.

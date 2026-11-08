@@ -1,4 +1,4 @@
-// Settings page: general options, submit page and request types, API tokens, Discord.
+// Settings page: general options, submit page and request types, API tokens, notifications.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
@@ -6,6 +6,9 @@ import type {
   ApiTokenInfo,
   DiscordSettingsBody,
   GeneralSettingsBody,
+  NotifyAlertsBody,
+  NotifyChannel,
+  NotifyChannelBody,
   ResolutionReasonsBody,
   RequestType,
   RequestTypeBody,
@@ -38,21 +41,18 @@ export const useSaveSubmit = () => useSettingsMutation<SubmitSettingsBody>('put'
 export const useNewSubmitLink = () => useSettingsMutation<void>('post', '/api/settings/submit/new-link');
 export const useSaveResolutions = () => useSettingsMutation<ResolutionReasonsBody>('put', '/api/settings/resolutions');
 export const useSaveDiscord = () => useSettingsMutation<DiscordSettingsBody>('put', '/api/settings/discord');
+/** What counts as urgent, and when the daily summary goes out (every channel). */
+export const useSaveAlerts = () => useSettingsMutation<NotifyAlertsBody>('put', '/api/settings/notify');
+export const useSaveChannel = (channel: NotifyChannel) => useSettingsMutation<NotifyChannelBody>('put', `/api/settings/notify/${channel}`);
 
-export function useTestDiscord() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.post<{ ok: boolean; message: string; settings: SettingsResponse }>('/api/settings/discord/test'),
-    meta: { errorToast: false },
-    onSuccess: (r) => qc.setQueryData(qk.settings, r.settings),
-  });
-}
+export type AnyChannel = 'discord' | NotifyChannel;
 
-/** Settings → Send summary now: today's summary straight away (ignores the time and whether it was sent). */
-export function useSendDigestNow() {
+/** Send test / Send summary now, for one channel. */
+export function useChannelAction(channel: AnyChannel, action: 'test' | 'digest-now') {
   const qc = useQueryClient();
+  const base = channel === 'discord' ? '/api/settings/discord' : `/api/settings/notify/${channel}`;
   return useMutation({
-    mutationFn: () => api.post<{ ok: boolean; message: string; settings: SettingsResponse }>('/api/settings/discord/digest-now'),
+    mutationFn: () => api.post<{ ok: boolean; message: string; settings: SettingsResponse }>(`${base}/${action}`),
     meta: { errorToast: false },
     onSuccess: (r) => qc.setQueryData(qk.settings, r.settings),
   });

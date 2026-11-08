@@ -172,13 +172,16 @@ occurrence.
 
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
-| `GET /api/settings` | — | `SettingsResponse` | General, submit page (including its `key`), Discord (the webhook is never returned, only `webhookSet` and a masked `webhookHint`), and `blockedColumnId`. |
+| `GET /api/settings` | — | `SettingsResponse` | General, submit page (including its `key`), Discord (the webhook is never returned, only `webhookSet` and a masked `webhookHint`), `notify` (`alerts` shared by every channel, and `channels.ntfy/gotify/webhook` with `set`, `hint`, `secretSet`, `events`, `lastDelivery`; addresses and secrets are never returned), and `blockedColumnId`. |
 | `PUT /api/settings/general` | `GeneralSettingsBody {ticketFormat, appUrl, claudeModel}` | `SettingsResponse` | `ticketFormat` must end with `{N}` and can't contain `%` or `_`. |
 | `PUT /api/settings/submit` | `SubmitSettingsBody {enabled, columnId, pageTitle, intro}` | `SettingsResponse` | Turning the page on the first time creates its key. |
 | `POST /api/settings/submit/new-link` | — | `SettingsResponse` | A new key; the old link stops working. |
 | `PUT /api/settings/resolutions` | `ResolutionReasonsBody {reasons}` | `SettingsResponse` | 1–12 reasons, each 1–40 characters, no duplicates (ignoring case). The first is the default. |
-| `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime}` | `SettingsResponse` | `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. |
-| `POST /api/settings/discord/test` | — | `{ok, message, settings}` | Sends a test message. |
+| `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime?, alertPriority?, alertSeverity?}` | `SettingsResponse` | `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. The optional fields keep their saved values when left out. |
+| `POST /api/settings/discord/test` · `POST /api/settings/discord/digest-now` | — | `{ok, message, settings}` | Sends a test message / today's summary. |
+| `PUT /api/settings/notify` | `NotifyAlertsBody {digestTime, alertPriority, alertSeverity}` | `SettingsResponse` | What counts as urgent and when the daily summary goes out, for every channel. |
+| `PUT /api/settings/notify/ntfy` · `…/gotify` · `…/webhook` | `NotifyChannelBody {url, secret, events}` | `SettingsResponse` | `url` and `secret`: `null` keeps the saved value, `''` removes it. `url` must be `http(s)` without a user name or password; for ntfy it's the topic's address. A new `url` on another host forgets the saved secret unless one is sent too. `secret` is ntfy's access token, Gotify's app token (required to send) or the webhook's signing secret. |
+| `POST /api/settings/notify/{ntfy\|gotify\|webhook}/test` · `…/digest-now` | — | `{ok, message, settings}` | Sends a test message / today's summary through that channel. `ok: false` with a message when it isn't set up or the send failed. `503` when the server runs without a notifier (tests). |
 | `GET /api/request-types` | — | `RequestType[]` | |
 | `POST /api/request-types` · `PUT /api/request-types/:id` | `RequestTypeBody` | `201` / `RequestType` | Questions: `{key, label, help, kind: short\|long\|choice\|multi\|datetime\|yesno, required, options}`; the title pattern may use `{summary}` and question keys. |
 | `PUT /api/request-types/order` · `DELETE /api/request-types/:id` | `{ids}` / — | `RequestType[]` / `204` | |
