@@ -4,6 +4,39 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.3.0: Keeping everyone in the loop
+
+- **Status links for people who file tickets.** After sending a ticket from the submit page, people get a link they
+  can bookmark. It opens a page, no sign-in needed, with the ticket's title and number, when it was sent and last
+  moved, and whether it's received, being worked on, waiting on something or done. Once it's done, the page also
+  shows the resolution reason. Descriptions, notes and work logs stay private.
+  - **Status link** on any ticket copies its link, so you can also send one to someone who told you in person.
+  - **Settings → Submit page → Reset status links** cuts off every link handed out so far. See
+    [docs/SUBMIT-PAGE.md](docs/SUBMIT-PAGE.md#status-links).
+- **Seen this before?** An open ticket lists up to five finished tickets that look like it, archived ones included.
+  Each shows the resolution reason and the start of the note, so last time's fix is right there. **Link** links one
+  as related. **Add ticket** shows up to three matches under the title once it has two words.
+- **ntfy, Gotify and webhooks.** Notifications can now go to ntfy, Gotify or any webhook, as well as Discord.
+  - Each channel picks its own events. For example, everything can go to Discord and only urgent tickets to your
+    phone.
+  - Webhooks get a versioned JSON body that can be signed with a secret. See
+    [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md#webhook).
+  - Discord sends the same messages as before.
+- **Ticket counts on your dashboard.** `GET /api/v1/summary` gives counts for Homepage, Home Assistant and similar
+  dashboards: open tickets by state, urgent, overdue, finished today and in the last 7 days, and more.
+  - It uses a new kind of API token that can only read those counts.
+  - **Settings → Automation** shows a ready-to-paste Homepage and Home Assistant setup for it. See
+    [docs/AUTOMATION.md](docs/AUTOMATION.md#dashboards).
+- **Fixes:**
+  - Saving Discord settings without the alert levels no longer resets them.
+  - A daily summary that fails to send now waits 30 minutes before trying again. Before, it retried every minute for
+    the rest of the day.
+  - Deleting the column the submit page files into could let a new column quietly receive submissions. The setting
+    is now cleared along with the column.
+- **Upgrading.** Existing API tokens keep doing everything they did, and backups from every earlier version restore.
+  The database moves to layout 7, so going back to 1.2 means putting back the copy saved before the upgrade (see
+  [docs/UPGRADING.md](docs/UPGRADING.md#if-something-goes-wrong)).
+
 ## 1.2.3: Housekeeping
 
 The app itself hasn't changed. This release tidies up around it.
