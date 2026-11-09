@@ -6,6 +6,7 @@ import { getRoleColumn } from './columns';
 import type { Ctx } from './db';
 import { badRequest, notFound } from './errors';
 import { listRequestTypes } from './settings';
+import { statusLink } from './status';
 
 /** The page is off, or the key is wrong: both look like "no such page" from outside. */
 const NOT_FOUND = () => notFound('This page doesn’t exist');
@@ -128,7 +129,7 @@ export function buildSubmission(type: RequestType, body: SubmitBody): { title: s
 /** Files a ticket from the submit page. A filled-in honeypot pretends to succeed and creates nothing. */
 export function submitTicket(ctx: Ctx, key: string, body: SubmitBody): SubmitResult {
   checkSubmitKey(ctx, key);
-  if (body.website) return { ticketNo: null };
+  if (body.website) return { ticketNo: null, statusPath: null };
   const type = listRequestTypes(ctx).find((t) => t.id === body.typeId && t.enabled);
   if (!type) throw badRequest('validation', 'Pick what you need help with');
   const tags = body.tagLabelIds.filter((id) => type.tagLabelIds.includes(id));
@@ -145,5 +146,5 @@ export function submitTicket(ctx: Ctx, key: string, body: SubmitBody): SubmitRes
     },
     { source: 'api', sourceRef: 'submit', via: `submit page${body.name ? ` (${body.name})` : ''}` },
   );
-  return { ticketNo: card.ticketNo };
+  return { ticketNo: card.ticketNo, statusPath: statusLink(ctx, card.id).path };
 }

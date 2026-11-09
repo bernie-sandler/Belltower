@@ -28,6 +28,7 @@ import {
   updateGeneralSettings,
   updateSubmitSettings,
 } from '../../services/settings';
+import { resetStatusLinks } from '../../services/status';
 import { createToken, listTokens, revokeToken } from '../../services/tokens';
 import { idParam, parse } from '../util';
 
@@ -50,6 +51,10 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps): voi
   });
   app.post('/api/settings/submit/new-link', async () => {
     regenerateSubmitKey(ctx);
+    return current();
+  });
+  app.post('/api/settings/submit/reset-status-links', async () => {
+    resetStatusLinks(ctx);
     return current();
   });
   app.put('/api/settings/discord', async (req) => {

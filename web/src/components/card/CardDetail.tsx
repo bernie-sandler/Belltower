@@ -44,6 +44,7 @@ import { DescriptionEditor, descriptionDraftKey } from './DescriptionEditor';
 import { CompleteWorkDialog } from './CompleteWorkDialog';
 import { ResolutionSection } from './ResolutionSection';
 import { ResolveDialog } from './ResolveDialog';
+import { StatusLinkButton } from './StatusLinkButton';
 import { Family } from './Family';
 import { LabelPicker } from './LabelPicker';
 import { MoveToSheet } from './MoveToSheet';
@@ -352,6 +353,7 @@ function CardDetailBody({
               )}
             </>
           )}
+          {!deleted && card.kind === 'ticket' && <StatusLinkButton cardId={card.id} />}
           {!deleted && (
             <button
               type="button"
