@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CARD_KINDS, CHECKLIST_ITEM_STATES, LIMITS,PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES } from './constants';
+import { CARD_KINDS, CHECKLIST_ITEM_STATES, LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES } from './constants';
 
 const id = z.number().int().positive();
 
