@@ -16,7 +16,14 @@ export function listChecklists(ctx: Ctx, cardId: number): Checklist[] {
       items: ctx.s.checklistItems
         .filter((i) => i.checklistId === l.id)
         .sort(byPosition)
-        .map((i) => ({ id: i.id, text: i.text, checked: i.checked, checkedAt: i.checkedAt, position: i.position })),
+        .map((i) => ({
+          id: i.id,
+          text: i.text,
+          state: i.state,
+          checked: i.state === 'done',
+          checkedAt: i.checkedAt,
+          position: i.position,
+        })),
     }));
 }
 

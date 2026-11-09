@@ -61,8 +61,10 @@ export function toTile(ctx: Ctx, c: CardRow): CardTile {
       const other = findCard(ctx, k.fromCardId === c.id ? k.toCardId : k.fromCardId);
       return Boolean(other && !other.deletedAt);
     }).length,
-    checklistDone: items.filter((i) => i.checked).length,
+    checklistDone: items.filter((i) => i.state === 'done' || i.state === 'failed').length,
     checklistTotal: items.length,
+    checklistFailed: items.filter((i) => i.state === 'failed').length,
+    checklistUnverified: items.filter((i) => i.state === 'unverified').length,
     blockedBy: openBlockers(ctx, c.id).length,
     version: c.version,
   };
@@ -295,7 +297,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
         id: nextId(ctx, 'checklistItems'),
         checklistId: listId,
         text,
-        checked: false,
+        state: 'open',
         checkedAt: null,
         position: j,
         createdAt: now,

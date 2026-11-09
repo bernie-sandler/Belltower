@@ -5,6 +5,7 @@
 import type {
   CardKind,
   CardSource,
+  ChecklistItemState,
   ColumnRole,
   NotifyChannel,
   Priority,
@@ -17,7 +18,7 @@ import type {
  * Bump this whenever DemoState changes shape. Saved data with another version is thrown away and
  * the demo seeds itself again, instead of crashing on data it doesn't understand.
  */
-export const DEMO_SCHEMA_VERSION = 1;
+export const DEMO_SCHEMA_VERSION = 2;
 
 export interface ColumnRow {
   id: number;
@@ -75,7 +76,9 @@ export interface ChecklistItemRow {
   id: number;
   checklistId: number;
   text: string;
-  checked: boolean;
+  /** The API's `checked` is derived: true only when this is 'done'. */
+  state: ChecklistItemState;
+  /** When the current mark was set; null while open. */
   checkedAt: string | null;
   position: number;
   createdAt: string;
