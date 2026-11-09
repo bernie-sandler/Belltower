@@ -39,7 +39,14 @@ function isErrorBody(v: unknown): v is ApiErrorBody {
   return Boolean(v) && typeof v === 'object' && typeof (v as { error?: unknown }).error === 'string';
 }
 
-export async function request<T>(method: Method, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+/** `keepalive` lets a small request finish after the page is hidden or closed. */
+export async function request<T>(
+  method: Method,
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+  opts: { keepalive?: boolean } = {},
+): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (method !== 'GET') headers[CSRF_HEADER] = CSRF_VALUE;
   let payload: string | undefined;
@@ -57,6 +64,7 @@ export async function request<T>(method: Method, path: string, body?: unknown, s
       credentials: 'same-origin',
       cache: 'no-store',
       signal,
+      ...(opts.keepalive ? { keepalive: true } : {}),
     });
   } catch (err) {
     // A cancelled query (TanStack aborts the signal) is not a network failure.

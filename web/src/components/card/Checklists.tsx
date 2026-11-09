@@ -23,7 +23,17 @@ export function Checklists({
   /** Bumped by the sidebar's "Checklist" button to open the "new checklist" field. */
   addRequest: number;
 }) {
-  const actions = useChecklistActions(card.id);
+  const hook = useChecklistActions(card.id);
+  // A focused button's changing label isn't reliably read out, so each click is also announced.
+  const [said, setSaid] = useState('');
+  const actions: Actions = {
+    ...hook,
+    cycle: (item) => {
+      const state = hook.cycle(item);
+      setSaid(`${item.text}: ${STATE_SPOKEN[state]}`);
+      return state;
+    },
+  };
   const [adding, setAdding] = useState(false);
   const seen = useRef(addRequest);
   useEffect(() => {
@@ -53,6 +63,9 @@ export function Checklists({
           onCancel={() => setAdding(false)}
         />
       )}
+      <span className="visually-hidden" role="status">
+        {said}
+      </span>
     </section>
   );
 }
@@ -60,7 +73,7 @@ export function Checklists({
 function ChecklistView({ list, actions, readOnly }: { list: Checklist; actions: Actions; readOnly: boolean }) {
   const { done: answered, failed, unverified, total } = countItems([list]);
   const done = answered - failed;
-  const share = (n: number) => (total ? (n / total) * 100 : 0);
+  const share = (n: number) => (n / total) * 100;
   const summary = [done > 0 && `${done} done`, failed > 0 && `${failed} failed`, unverified > 0 && `${unverified} unverified`].filter(
     Boolean,
   );
@@ -103,24 +116,26 @@ function ChecklistView({ list, actions, readOnly }: { list: Checklist; actions: 
       </div>
 
       {/* Done and failed both count as answered: green then red. The red bar sits underneath,
-          spanning both, so the join is the green bar's rounded end. */}
-      <div className={cls('checklist-progress', total > 0 && done === total && 'is-complete')}>
-        <span className="checklist-pct" aria-hidden>
-          {Math.round(share(answered))}%
-        </span>
-        <span
-          className="progress"
-          role="progressbar"
-          aria-label={`${list.title} progress`}
-          aria-valuemin={0}
-          aria-valuemax={total}
-          aria-valuenow={answered}
-          aria-valuetext={`${answered} of ${total}${summary.length ? `: ${summary.join(', ')}` : ''}`}
-        >
-          {failed > 0 && <span className="progress-bar is-failed" style={{ width: `${share(answered)}%` }} />}
-          <span className="progress-bar is-done" style={{ width: `${share(done)}%` }} />
-        </span>
-      </div>
+          spanning both, so the join is the green bar's rounded end. No bar until there are items. */}
+      {total > 0 && (
+        <div className={cls('checklist-progress', done === total && 'is-complete')}>
+          <span className="checklist-pct" aria-hidden>
+            {Math.round(share(answered))}%
+          </span>
+          <span
+            className="progress"
+            role="progressbar"
+            aria-label={`${list.title} progress`}
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-valuenow={answered}
+            aria-valuetext={`${answered} of ${total}${summary.length ? `: ${summary.join(', ')}` : ''}`}
+          >
+            {failed > 0 && <span className="progress-bar is-failed" style={{ width: `${share(answered)}%` }} />}
+            <span className="progress-bar is-done" style={{ width: `${share(done)}%` }} />
+          </span>
+        </div>
+      )}
 
       <ul className="checklist-items">
         {list.items.map((item, i) => (

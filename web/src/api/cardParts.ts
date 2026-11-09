@@ -19,20 +19,28 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { itemStateIn, nextState, withItemState } from '../lib/checkState';
 import { applyCardDetail } from './cards';
-import { api, ApiError } from './client';
+import { api, ApiError, request } from './client';
 import { qk } from './keys';
 
 function invalidateActivity(qc: QueryClient, cardId: number): void {
   void qc.invalidateQueries({ queryKey: qk.activity(cardId) });
 }
 
-/** A mutation whose response is the updated card. */
-function useCardChange<V>(cardId: number, fn: (v: V) => Promise<CardDetail>) {
+/**
+ * A mutation whose response is the updated card. `overlay` adjusts that card before it's cached
+ * (checklists lay unsaved marks over it); `onMutate` runs when the change starts.
+ */
+function useCardChange<V>(
+  cardId: number,
+  fn: (v: V) => Promise<CardDetail>,
+  opts: { overlay?: (card: CardDetail) => CardDetail; onMutate?: (v: V) => void } = {},
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
+    onMutate: opts.onMutate,
     onSuccess: (card) => {
-      applyCardDetail(qc, card);
+      applyCardDetail(qc, opts.overlay ? opts.overlay(card) : card);
       invalidateActivity(qc, cardId);
     },
     onError: () => {
@@ -61,28 +69,17 @@ interface Burst {
 
 export function useChecklistActions(cardId: number) {
   const qc = useQueryClient();
-  const addList = useCardChange(cardId, (title: string) => api.post<CardDetail>(`/api/cards/${cardId}/checklists`, { title }));
-  const renameList = useCardChange(cardId, (v: { id: number; title: string }) =>
-    api.patch<CardDetail>(`/api/checklists/${v.id}`, { title: v.title }),
-  );
-  const deleteList = useCardChange(cardId, (id: number) => api.del<CardDetail>(`/api/checklists/${id}`));
-  const addItem = useCardChange(cardId, (v: { listId: number; text: string }) =>
-    api.post<CardDetail>(`/api/checklists/${v.listId}/items`, { text: v.text }),
-  );
-  const editItem = useCardChange(cardId, (v: { id: number; text: string }) =>
-    api.patch<CardDetail>(`/api/checklist-items/${v.id}`, { text: v.text }),
-  );
-  const deleteItem = useCardChange(cardId, (id: number) => api.del<CardDetail>(`/api/checklist-items/${id}`));
-  const reorderItems = useCardChange(cardId, (v: { listId: number; ids: number[] }) =>
-    api.put<CardDetail>(`/api/checklists/${v.listId}/items/order`, { ids: v.ids }),
-  );
+  const cachedCard = () => qc.getQueryData<CardDetail>(qk.card(cardId));
 
   // Clicking an item cycles its mark (open, ✓, ✗, ~). Each click shows at once, but the mark is
   // saved only after the item rests for MARK_SAVE_DELAY_MS, and not at all if it ended where it
   // started: the activity log is append-only, so clicking through ✓ ✗ ~ mustn't leave three
-  // entries. Saves flushed on unmount still settle into these maps after the component is gone.
+  // entries. Saves flushed on unmount still settle into these after the component is gone.
   const [marks] = useState(() => new Map<number, Mark>());
   const [bursts] = useState(() => new Map<number, Burst>());
+  // Items whose last save failed: what the cache showed as "before" may never have reached the
+  // server, so their next burst is saved even if it ends where it started.
+  const [unsure] = useState(() => new Set<number>());
 
   /** The server's card with the marks it hasn't confirmed yet laid over it, so they don't flicker back. */
   const withMarks = (card: CardDetail) => {
@@ -96,18 +93,61 @@ export function useChecklistActions(cardId: number) {
     if (m && --m.pending <= 0) marks.delete(id);
   };
 
-  // One scope keeps the saves in click order.
+  /** Items being deleted: their waiting marks have nothing left to save. */
+  const forget = (ids: number[]) => {
+    for (const id of ids) {
+      clearTimeout(bursts.get(id)?.timer);
+      bursts.delete(id);
+      marks.delete(id);
+      unsure.delete(id);
+    }
+  };
+
+  const overlay = { overlay: withMarks };
+  const addList = useCardChange(cardId, (title: string) => api.post<CardDetail>(`/api/cards/${cardId}/checklists`, { title }), overlay);
+  const renameList = useCardChange(
+    cardId,
+    (v: { id: number; title: string }) => api.patch<CardDetail>(`/api/checklists/${v.id}`, { title: v.title }),
+    overlay,
+  );
+  const deleteList = useCardChange(cardId, (id: number) => api.del<CardDetail>(`/api/checklists/${id}`), {
+    ...overlay,
+    onMutate: (id) => forget(cachedCard()?.checklists.find((l) => l.id === id)?.items.map((i) => i.id) ?? []),
+  });
+  const addItem = useCardChange(
+    cardId,
+    (v: { listId: number; text: string }) => api.post<CardDetail>(`/api/checklists/${v.listId}/items`, { text: v.text }),
+    overlay,
+  );
+  const editItem = useCardChange(
+    cardId,
+    (v: { id: number; text: string }) => api.patch<CardDetail>(`/api/checklist-items/${v.id}`, { text: v.text }),
+    overlay,
+  );
+  const deleteItem = useCardChange(cardId, (id: number) => api.del<CardDetail>(`/api/checklist-items/${id}`), {
+    ...overlay,
+    onMutate: (id) => forget([id]),
+  });
+  const reorderItems = useCardChange(
+    cardId,
+    (v: { listId: number; ids: number[] }) => api.put<CardDetail>(`/api/checklists/${v.listId}/items/order`, { ids: v.ids }),
+    overlay,
+  );
+
+  // One scope keeps the saves in click order; keepalive lets one sent as the page closes finish.
   const saveMark = useMutation({
     scope: { id: `card-${cardId}-checks` },
     mutationFn: (v: { id: number; state: ChecklistItemState }) =>
-      api.patch<CardDetail>(`/api/checklist-items/${v.id}`, { state: v.state }),
+      request<CardDetail>('PATCH', `/api/checklist-items/${v.id}`, { state: v.state }, undefined, { keepalive: true }),
     onSuccess: (card, v) => {
       settle(v.id);
+      unsure.delete(v.id);
       applyCardDetail(qc, withMarks(card));
       invalidateActivity(qc, cardId);
     },
     onError: (_err, v) => {
       settle(v.id);
+      unsure.add(v.id);
       void qc.invalidateQueries({ queryKey: qk.card(cardId) });
     },
   });
@@ -119,12 +159,14 @@ export function useChecklistActions(cardId: number) {
     bursts.delete(id);
     const m = marks.get(id);
     if (!m) return;
-    if (m.state === burst.from) settle(id);
+    // Gone (deleted, maybe elsewhere) or back where it started: nothing to save.
+    if (itemStateIn(cachedCard(), id) === null || (m.state === burst.from && !unsure.has(id))) settle(id);
     else saveMark.mutate({ id, state: m.state });
   };
 
-  const cycle = (item: ChecklistItem) => {
-    const current = itemStateIn(qc.getQueryData<CardDetail>(qk.card(cardId)), item.id) ?? item.state;
+  /** Moves the item to its next mark and returns it. */
+  const cycle = (item: ChecklistItem): ChecklistItemState => {
+    const current = itemStateIn(cachedCard(), item.id) ?? item.state;
     const state = nextState(current);
     qc.setQueryData<CardDetail>(qk.card(cardId), (c) => (c ? withItemState(c, item.id, state) : c));
     const burst = bursts.get(item.id);
@@ -134,15 +176,29 @@ export function useChecklistActions(cardId: number) {
     if (!burst) m.pending++;
     marks.set(item.id, m);
     bursts.set(item.id, { from: burst?.from ?? current, timer: setTimeout(() => flush(item.id), MARK_SAVE_DELAY_MS) });
+    return state;
   };
 
-  // Closing the card saves waiting marks right away. A flushed burst is gone, so an extra cleanup
-  // (StrictMode, Fast Refresh) can only save early: it can't send twice or lose a mark.
+  // Waiting marks are saved right away when the card closes, the tab is hidden (often the last
+  // chance on phones) or the page goes away. A flushed burst is gone, so an extra flush
+  // (StrictMode's rehearsal unmount, Fast Refresh) can only save early: never twice, never lost.
   const flushRef = useRef(flush);
   useEffect(() => {
     flushRef.current = flush;
   });
-  useEffect(() => () => [...bursts.keys()].forEach((id) => flushRef.current(id)), [bursts]);
+  useEffect(() => {
+    const flushAll = () => [...bursts.keys()].forEach((id) => flushRef.current(id));
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushAll();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushAll);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushAll);
+      flushAll();
+    };
+  }, [bursts]);
 
   return { addList, renameList, deleteList, addItem, editItem, deleteItem, reorderItems, cycle };
 }
