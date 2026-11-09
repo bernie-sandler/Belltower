@@ -1,4 +1,14 @@
-import type { SearchField, SearchQuery, SearchResult } from '@tt/shared';
+import {
+  plainTextPreview,
+  similarEnough,
+  similarityTerms,
+  stripSubmitScaffolding,
+  stripTypePrefix,
+  type SearchField,
+  type SearchQuery,
+  type SearchResult,
+  type SimilarTicket,
+} from '@tt/shared';
 import { stmt } from '../db/connection';
 import { addDays } from '../lib/localdate';
 import { startOfLocalDay } from '../lib/tz';
@@ -217,4 +227,110 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
       return s && s.includes('\u0002') ? [{ field, snippet: s }] : [];
     }),
   }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// "Seen this before?": finished tickets that look like this one
+// ---------------------------------------------------------------------------------------------
+
+const SIMILAR_CANDIDATES = 20;
+/** A word on more than this share of cards says nothing about what a ticket is about… */
+const COMMON_SHARE = 0.15;
+/** …but only judge that once there are enough cards for the share to mean anything. */
+const COMMON_MIN_CARDS = 20;
+const NOTE_PREVIEW = 300;
+/** How much of the new ticket's description picks words, and how much is looked at to find it. */
+const QUERY_TEXT = 500;
+const QUERY_SCAN = 4000;
+/** How much of a candidate's description is compared. */
+const CANDIDATE_SCAN = 20_000;
+
+/** Sorts after every word that starts with a given prefix. */
+const AFTER_PREFIX = String.fromCodePoint(0x10ffff);
+
+/**
+ * The words among `terms` that appear on too many cards to tell tickets apart. A term of 4 or more
+ * characters is a prefix ("fail" for failed, failing…); it counts as common when its most common
+ * word is.
+ */
+function commonWords(ctx: Ctx, terms: string[]): Set<string> {
+  const total = stmt(ctx.db, 'SELECT count(*) FROM card_search').pluck().get() as number;
+  if (total < COMMON_MIN_CARDS || !terms.length) return new Set();
+  // A temp table: per connection, nothing on disk, nothing in backups.
+  ctx.db.exec('CREATE VIRTUAL TABLE IF NOT EXISTS temp.card_search_vocab USING fts5vocab(main, card_search, row)');
+  const exact = stmt(ctx.db, 'SELECT coalesce(max(doc), 0) FROM temp.card_search_vocab WHERE term = ?').pluck();
+  const prefix = stmt(ctx.db, 'SELECT coalesce(max(doc), 0) FROM temp.card_search_vocab WHERE term >= ? AND term < ?').pluck();
+  const docs = (t: string) => (t.length >= 4 ? prefix.get(t, `${t}${AFTER_PREFIX}`) : exact.get(t)) as number;
+  return new Set(terms.filter((t) => docs(t) / total > COMMON_SHARE));
+}
+
+interface SimilarRow {
+  id: number;
+  ticket_no: string | null;
+  title: string;
+  description_md: string;
+  resolution: string | null;
+  resolution_md: string;
+  completed_at: string;
+  archived_at: string | null;
+  parent_id: number | null;
+}
+
+/**
+ * Finished tickets that look like the given one, best first. Any of its distinctive words may
+ * match (title and description only; attachment names, work logs and checklists are noise here),
+ * ranked by bm25 with the title counting most; then a candidate needs at least two of the words
+ * (one, if there's only one), one of them from the title (see similarEnough). Archived tickets count:
+ * "Archive all done" is where old fixes end up. Tickets already linked to this one are left out.
+ */
+export function similarCards(
+  ctx: Ctx,
+  input: { title: string; description: string; excludeId?: number; limit?: number },
+): SimilarTicket[] {
+  // Submitted titles start with their request type's name ("Plex – …"), which every ticket of that
+  // type shares; the scaffolding around their answers likewise.
+  const typeNames = stmt(ctx.db, 'SELECT name FROM request_types').pluck().all() as string[];
+  const title = stripTypePrefix(input.title, typeNames);
+  const picked = similarityTerms(`${title}\n${stripSubmitScaffolding(input.description.slice(0, QUERY_SCAN)).slice(0, QUERY_TEXT)}`);
+  const titleTerms = similarityTerms(title);
+  const common = commonWords(ctx, picked);
+  const terms = picked.filter((t) => !common.has(t));
+  if (!terms.length) return [];
+
+  // Terms are folded letters and digits only, so they need no escaping inside the quotes.
+  const match = `{title description} : (${terms.map((t) => `"${t}"${t.length >= 4 ? '*' : ''}`).join(' OR ')})`;
+  const self = input.excludeId ?? 0;
+  const rows = stmt(
+    ctx.db,
+    `SELECT c.id, c.ticket_no, c.title, c.description_md, c.resolution, c.resolution_md, c.completed_at, c.archived_at, c.parent_id
+       FROM card_search JOIN cards c ON c.id = card_search.rowid
+      WHERE card_search MATCH ? AND c.completed_at IS NOT NULL AND c.deleted_at IS NULL AND c.kind = 'ticket' AND c.id <> ?
+        AND NOT EXISTS (SELECT 1 FROM card_links k
+                         WHERE (k.from_card_id = ? AND k.to_card_id = c.id) OR (k.to_card_id = ? AND k.from_card_id = c.id))
+      ORDER BY bm25(card_search, 10.0, 4.0, 1.0, 1.0, 1.0), c.completed_at DESC
+      LIMIT ${SIMILAR_CANDIDATES}`,
+  ).all(match, self, self, self) as SimilarRow[];
+
+  const parentOf = stmt(ctx.db, 'SELECT id, ticket_no, title FROM cards WHERE id = ? AND deleted_at IS NULL');
+  return rows
+    .filter((r) => {
+      // Title and description only: resolution reasons ("No longer needed", "Duplicate") and notes
+      // aren't what a ticket is about.
+      const words = `${stripTypePrefix(r.title, typeNames)}\n${stripSubmitScaffolding(r.description_md.slice(0, CANDIDATE_SCAN))}`;
+      return similarEnough(terms, titleTerms, words);
+    })
+    .slice(0, input.limit ?? 5)
+    .map((r) => {
+      const parent = r.parent_id !== null ? (parentOf.get(r.parent_id) as { id: number; ticket_no: string | null; title: string } | undefined) : undefined;
+      return {
+        id: r.id,
+        ticketNo: r.ticket_no,
+        title: r.title,
+        completedAt: r.completed_at,
+        archived: r.archived_at !== null,
+        resolution: r.resolution,
+        note: plainTextPreview(r.resolution_md, NOTE_PREVIEW),
+        parent: parent ? { id: parent.id, ticketNo: parent.ticket_no, title: parent.title } : null,
+      };
+    });
 }

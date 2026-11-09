@@ -2,7 +2,20 @@
 // it searches the same five fields itself: every word is a prefix match, all words must match
 // somewhere on the card, and snippets mark hits with \u0002 … \u0003 the way FTS5's snippet() does.
 
-import type { SearchField, SearchQuery, SearchResult } from '@tt/shared';
+import {
+  plainTextPreview,
+  similarEnough,
+  similarityTerms,
+  stripSubmitScaffolding,
+  stripTypePrefix,
+  termMatchesWord,
+  tokenizeText,
+  type SearchField,
+  type SearchQuery,
+  type SearchResult,
+  type SimilarTicket,
+  type TextToken,
+} from '@tt/shared';
 import { columnName } from './cardParts';
 import type { CardRow, Ctx } from './db';
 import { labelIdsOf } from './labels';
@@ -13,18 +26,9 @@ const FIELDS: SearchField[] = ['title', 'description', 'checklists', 'worklogs',
 const WEIGHTS = [10, 4, 2, 3, 1];
 const SNIPPET_TOKENS = 16;
 
-/** FTS5's unicode61 tokenizer folds case and strips diacritics. */
-const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-
-interface Token {
-  text: string;
-  start: number;
-  end: number;
-}
-
-function tokenize(text: string): Token[] {
-  return [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({ text: fold(m[0]), start: m.index, end: m.index + m[0].length }));
-}
+/** FTS5's unicode61 tokenizer: folded runs of letters and digits (shared with the server's helpers). */
+type Token = TextToken;
+const tokenize = tokenizeText;
 
 /** Each query word becomes a phrase of tokens whose last token is a prefix ("nginx.conf"*). */
 export function queryTerms(text: string): string[][] {
@@ -162,4 +166,86 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
       updatedAt: c.updatedAt,
       matches,
     }));
+}
+
+// ---------------------------------------------------------------------------------------------
+// "Seen this before?" (mirrors similarCards in server/src/services/search.ts)
+// ---------------------------------------------------------------------------------------------
+
+const SIMILAR_CANDIDATES = 20;
+const COMMON_SHARE = 0.15;
+const COMMON_MIN_CARDS = 20;
+const NOTE_PREVIEW = 300;
+const QUERY_TEXT = 500;
+const QUERY_SCAN = 4000;
+const CANDIDATE_SCAN = 20_000;
+
+/** Like the server's fts5vocab lookup: how many cards each word is on, over all five fields. */
+function wordDocCounts(ctx: Ctx, live: CardRow[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const card of live) {
+    const words = new Set(searchFields(ctx, card).flatMap((f) => tokenize(f).map((t) => t.text)));
+    for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export function similarCards(
+  ctx: Ctx,
+  input: { title: string; description: string; excludeId?: number; limit?: number },
+): SimilarTicket[] {
+  const typeNames = ctx.s.requestTypes.map((t) => t.name);
+  const title = stripTypePrefix(input.title, typeNames);
+  const picked = similarityTerms(`${title}\n${stripSubmitScaffolding(input.description.slice(0, QUERY_SCAN)).slice(0, QUERY_TEXT)}`);
+  const titleTerms = similarityTerms(title);
+  const live = ctx.s.cards.filter((c) => !c.deletedAt);
+  let terms = picked;
+  if (live.length >= COMMON_MIN_CARDS && picked.length) {
+    const counts = wordDocCounts(ctx, live);
+    const docs = (t: string) =>
+      t.length >= 4 ? Math.max(0, ...[...counts].filter(([w]) => w.startsWith(t)).map(([, n]) => n)) : (counts.get(t) ?? 0);
+    terms = picked.filter((t) => docs(t) / live.length <= COMMON_SHARE);
+  }
+  if (!terms.length) return [];
+
+  const self = input.excludeId ?? 0;
+  const linked = new Set(
+    ctx.s.links.flatMap((l) => (l.fromCardId === self ? [l.toCardId] : l.toCardId === self ? [l.fromCardId] : [])),
+  );
+  const candidates: { card: CardRow; score: number }[] = [];
+  for (const card of live) {
+    if (!card.completedAt || card.kind !== 'ticket' || card.id === self || linked.has(card.id)) continue;
+    // Title and description only, title weighted most, like the server's column filter and bm25.
+    const [title, description] = searchFields(ctx, card).map((f) => tokenize(f).map((t) => t.text));
+    let score = 0;
+    for (const term of terms) {
+      score += 10 * title!.filter((w) => termMatchesWord(term, w)).length;
+      score += 4 * description!.filter((w) => termMatchesWord(term, w)).length;
+    }
+    if (score > 0) candidates.push({ card, score });
+  }
+
+  return candidates
+    .sort((a, b) => b.score - a.score || b.card.completedAt!.localeCompare(a.card.completedAt!))
+    .slice(0, SIMILAR_CANDIDATES)
+    .map((c) => c.card)
+    .filter((c) => {
+      // Title and description only: resolution reasons and notes aren't what a ticket is about.
+      const words = `${stripTypePrefix(c.title, typeNames)}\n${stripSubmitScaffolding(c.descriptionMd.slice(0, CANDIDATE_SCAN))}`;
+      return similarEnough(terms, titleTerms, words);
+    })
+    .slice(0, input.limit ?? 5)
+    .map((c) => {
+      const parent = c.parentId !== null ? ctx.s.cards.find((p) => p.id === c.parentId && !p.deletedAt) : undefined;
+      return {
+        id: c.id,
+        ticketNo: c.ticketNo,
+        title: c.title,
+        completedAt: c.completedAt!,
+        archived: c.archivedAt !== null,
+        resolution: c.resolution,
+        note: plainTextPreview(c.resolutionMd, NOTE_PREVIEW),
+        parent: parent ? { id: parent.id, ticketNo: parent.ticketNo, title: parent.title } : null,
+      };
+    });
 }

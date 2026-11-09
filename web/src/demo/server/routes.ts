@@ -36,6 +36,7 @@ import {
   RequestTypeBody,
   ResolutionReasonsBody,
   SearchQuery,
+  SimilarQuery,
   SubmitBody,
   SubmitSettingsBody,
   TemplateBody,
@@ -66,6 +67,7 @@ import {
   type RequestType,
   type SearchResult,
   type SettingsResponse,
+  type SimilarTicket,
   type StatusLinkInfo,
   type SubmitResult,
   type PublicTicketStatus,
@@ -110,7 +112,7 @@ import { badRequest, DemoError, idParam, notFound, notInDemo, parse } from './er
 import { createLabel, deleteLabel, reorderLabels, updateLabel } from './labels';
 import { createLink, deleteLink } from './links';
 import { createTemplate, deleteTemplate, getTemplate, listTemplates, runDueTemplates, runTemplateNow, updateTemplate } from './recurring';
-import { searchCards } from './search';
+import { searchCards, similarCards } from './search';
 import { publicStatus, resetStatusLinks, statusLink } from './status';
 import {
   createRequestType,
@@ -204,6 +206,8 @@ export interface DemoApi {
   'GET /api/attachments/:id': never;
   // ---- search, calendar, templates (routes/phase3.ts) ----
   'GET /api/search': SearchResult[];
+  'GET /api/cards/:id/similar': SimilarTicket[];
+  'GET /api/similar': SimilarTicket[];
   'GET /api/calendar': CalendarItem[];
   'GET /api/templates': RecurringTemplate[];
   'GET /api/templates/:id': RecurringTemplate;
@@ -413,6 +417,12 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   }),
 
   'GET /api/search': ok((ctx, req) => searchCards(ctx, parse(SearchQuery, req.query))),
+  'GET /api/cards/:id/similar': ok((ctx, req) => {
+    const card = getCardRow(ctx, id(req));
+    if (card.kind !== 'ticket' || card.deletedAt) return [];
+    return similarCards(ctx, { title: card.title, description: card.descriptionMd, excludeId: card.id });
+  }),
+  'GET /api/similar': ok((ctx, req) => similarCards(ctx, parse(SimilarQuery, req.query))),
   'GET /api/calendar': ok((ctx, req) => {
     const q = parse(CalendarQuery, req.query);
     return calendarItems(ctx, q.from, q.to);

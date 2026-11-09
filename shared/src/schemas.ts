@@ -257,6 +257,13 @@ export const SearchQuery = z.object({
 });
 export type SearchQuery = z.infer<typeof SearchQuery>;
 
+/** GET /api/similar: "Seen this before?" for text that isn't a card yet (Add ticket). */
+export const SimilarQuery = z.object({
+  title: z.string().max(LIMITS.cardTitle).default(''),
+  description: z.string().max(4000).default(''),
+});
+export type SimilarQuery = z.infer<typeof SimilarQuery>;
+
 export const CalendarQuery = z
   .object({ from: LocalDate, to: LocalDate })
   .refine((v) => v.from <= v.to, 'from must not be after to');

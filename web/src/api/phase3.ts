@@ -1,7 +1,7 @@
 // Phase 3: search, calendar, recurring templates.
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CalendarItem, CardDetail, RecurringTemplate, SearchResult, TemplateBody } from '@tt/shared';
+import type { CalendarItem, CardDetail, RecurringTemplate, SearchResult, SimilarTicket, TemplateBody } from '@tt/shared';
 import { applyCardDetail } from './cards';
 import { api } from './client';
 import { qk } from './keys';
@@ -39,6 +39,34 @@ export function useSearch(p: SearchParams) {
     // Nothing to search for: status alone isn't a filter.
     enabled: qs !== '' && qs !== status,
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * "Seen this before?" for a card: finished tickets like it. Keyed on updatedAt so editing the
+ * title or description asks again.
+ */
+export function useSimilarForCard(card: Pick<CardDetail, 'id' | 'updatedAt'>, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.similarForCard(card.id, card.updatedAt),
+    queryFn: ({ signal }) => api.get<SimilarTicket[]>(`/api/cards/${card.id}/similar`, signal),
+    enabled,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+    meta: { errorToast: false },
+  });
+}
+
+/** "Seen this before?" while a ticket is being written (Add ticket). Pass already-debounced text. */
+export function useSimilarForText(title: string, description: string, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.similarForText(title, description),
+    queryFn: ({ signal }) =>
+      api.get<SimilarTicket[]>(`/api/similar?${new URLSearchParams({ title, description }).toString()}`, signal),
+    enabled,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+    meta: { errorToast: false },
   });
 }
 
