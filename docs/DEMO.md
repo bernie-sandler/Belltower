@@ -64,7 +64,8 @@ message that starts "Not available in the demo":
 
 - attachments (upload; there are none to view or delete), and screenshots on the submit page
 - backup export and restore (there are no snapshots either)
-- Discord notifications: saving a webhook, sending a test or a digest
+- notifications: saving an address or token (Discord, ntfy, Gotify, webhook), sending a test or a summary. The
+  alert levels, summary time and each channel's checkboxes can still be changed.
 - Claude drafting (it shows as off, as on an install without `ANTHROPIC_API_KEY`)
 - API tokens and the automation API (`/api/v1`)
 - changing the password

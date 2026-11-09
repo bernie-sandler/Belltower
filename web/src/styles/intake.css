@@ -215,6 +215,32 @@
   gap: 6px;
 }
 
+/* Settings → Notifications */
+.notify-alerts,
+.notify-channel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notify-channel {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.notify-channel > summary {
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.notify-channel-body {
+  padding: 6px 0 4px 16px;
+}
+
+.notify-forget {
+  align-self: flex-start;
+}
+
 .submit-status-link {
   display: flex;
   flex-direction: column;

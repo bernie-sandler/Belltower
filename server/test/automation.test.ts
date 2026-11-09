@@ -3,7 +3,7 @@ import { listActivity } from '../src/services/activity';
 import { createCard, getCard, updateCard } from '../src/services/cards';
 import type { AppEvent } from '../src/services/context';
 import { createLink } from '../src/services/links';
-import { DiscordNotifier } from '../src/services/notify';
+import { DIGEST_RETRY_MS, Notifier } from '../src/services/notify';
 import { lastDelivery, updateDiscordSettings, updateGeneralSettings } from '../src/services/settings';
 import { createToken, listTokens } from '../src/services/tokens';
 import { client, columnId, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
@@ -124,14 +124,14 @@ describe('Discord notifications', () => {
   let t: ReturnType<typeof makeCtx>;
   let sent: { url: string; body: { embeds: { title: string; description?: string; url?: string; fields?: { name: string; value: string }[] }[] } }[];
   let replies: number[];
-  let notifier: DiscordNotifier;
+  let notifier: Notifier;
   const WEBHOOK = 'https://discord.com/api/webhooks/1/abc';
 
   beforeEach(() => {
     t = makeCtx();
     sent = [];
     replies = [];
-    notifier = new DiscordNotifier(async (url, init) => {
+    notifier = new Notifier(async (url, init) => {
       sent.push({ url, body: JSON.parse(init.body) });
       const status = replies.shift() ?? 204;
       return { ok: status < 300, status, headers: { get: () => null }, text: async () => '' };
@@ -257,13 +257,18 @@ describe('Discord notifications', () => {
     expect(JSON.stringify(sent)).not.toContain('Later');
   });
 
-  it('sends an all-clear summary when nothing is due, and retries the next minute if sending failed', async () => {
+  it('sends an all-clear summary when nothing is due, and tries again a while after sending failed', async () => {
     configure({ digest: true });
     replies = [500, 500, 500];
-    expect(await notifier.dailyDigest(t.ctx, new Date('2026-10-10T15:00:00.000Z'))).toBe(false);
-    expect(await notifier.dailyDigest(t.ctx, new Date('2026-10-10T15:01:00.000Z'))).toBe(true);
+    const at = (ms: number) => new Date(Date.parse('2026-10-10T15:00:00.000Z') + ms);
+    expect(await notifier.dailyDigest(t.ctx, at(0))).toBe(false);
+    expect(sent).toHaveLength(3);
+    // A dead endpoint isn't hammered every minute.
+    expect(await notifier.dailyDigest(t.ctx, at(60_000))).toBe(false);
+    expect(sent).toHaveLength(3);
+    expect(await notifier.dailyDigest(t.ctx, at(DIGEST_RETRY_MS))).toBe(true);
     expect(sent.at(-1)!.body.embeds[0]!.description).toBe('Nothing overdue or due today.');
-    expect(await notifier.dailyDigest(t.ctx, new Date('2026-10-10T15:02:00.000Z'))).toBe(false);
+    expect(await notifier.dailyDigest(t.ctx, at(DIGEST_RETRY_MS + 60_000))).toBe(false);
   });
 
   it('the Settings test button goes through the app', async () => {

@@ -1,8 +1,8 @@
 // Settings (/settings): general options, the submit page and its request types, automation
-// tokens, Discord notifications, and password/version.
+// tokens, notifications, and password/version.
 
 import { DEFAULT_TICKET_FORMAT, type SettingsResponse } from '@tt/shared';
-import { Bell, Bot, Copy, Globe, KeyRound, Lock, Palette, RefreshCw, Settings as SettingsIcon, Send } from 'lucide-react';
+import { Bot, Copy, Globe, KeyRound, Lock, Palette, RefreshCw, Settings as SettingsIcon } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { sortedColumns, useBoard } from '../../api/board';
@@ -10,24 +10,16 @@ import { useSetBlockedColumn } from '../../api/columns';
 import { useConfig } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { qk } from '../../api/keys';
-import {
-  useNewSubmitLink,
-  useResetStatusLinks,
-  useSaveDiscord,
-  useSaveGeneral,
-  useSaveSubmit,
-  useSendDigestNow,
-  useSettings,
-  useTestDiscord,
-} from '../../api/settings';
+import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
 import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
-import { formatDateTime, todayLocal, useNow } from '../../lib/time';
+import { todayLocal } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { useShell } from '../shell/ShellContext';
 import { RequestTypesEditor } from './RequestTypesEditor';
+import { NotificationsSection } from './NotificationsSection';
 import { ResolutionReasonsSection } from './ResolutionReasonsSection';
 import { TokensSection } from './TokensSection';
 
@@ -57,7 +49,7 @@ export function SettingsPage() {
       <ResolutionReasonsSection s={s} />
       <SubmitSection s={s} />
       <TokensSection />
-      <DiscordSection s={s} />
+      <NotificationsSection s={s} />
       <AccountSection />
     </div>
   );
@@ -329,147 +321,6 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
             })
           }
         />
-      )}
-    </Section>
-  );
-}
-
-const EVENT_LABELS: [keyof SettingsResponse['discord']['events'], string][] = [
-  ['external', 'New tickets from the submit page or automation'],
-  ['critical', 'Urgent cards: created urgent, or raised to urgent later'],
-  ['blocked', 'A card gets blocked'],
-  ['digest', 'Daily summary of overdue and due-today cards'],
-];
-
-function DiscordSection({ s }: { s: SettingsResponse }) {
-  const now = useNow();
-  const save = useSaveDiscord();
-  const test = useTestDiscord();
-  const digestNow = useSendDigestNow();
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [alertPriority, setAlertPriority] = useState(s.discord.alertPriority);
-  const [alertSeverity, setAlertSeverity] = useState(s.discord.alertSeverity);
-  const [events, setEvents] = useState(s.discord.events);
-  const [digestTime, setDigestTime] = useState(s.discord.digestTime);
-  const [error, setError] = useState<string | null>(null);
-  const changed =
-    webhookUrl.trim() !== '' ||
-    digestTime !== s.discord.digestTime ||
-    alertPriority !== s.discord.alertPriority ||
-    alertSeverity !== s.discord.alertSeverity ||
-    EVENT_LABELS.some(([k]) => events[k] !== s.discord.events[k]);
-
-  function submit(url: string | null) {
-    setError(null);
-    save.mutate(
-      { webhookUrl: url, events, digestTime, alertPriority, alertSeverity },
-      {
-        onSuccess: () => {
-          setWebhookUrl('');
-          toast(url === '' ? 'Webhook removed' : 'Saved', { kind: 'success', durationMs: 2000 });
-        },
-        onError: (err) => setError(errorMessage(err)),
-      },
-    );
-  }
-
-  const last = s.discord.lastDelivery;
-  return (
-    <Section icon={<Bell size={16} aria-hidden />} title="Discord notifications">
-      <p className="muted">
-        Posts to a Discord channel through a webhook (Channel settings → Integrations → Webhooks → Copy URL). Nothing is sent
-        until one is set.
-      </p>
-      <label className="field">
-        <span className="field-label">Webhook URL</span>
-        <input
-          className="input input-mono"
-          type="url"
-          autoComplete="off"
-          placeholder={s.discord.webhookHint ?? 'https://discord.com/api/webhooks/…'}
-          value={webhookUrl}
-          onChange={(e) => setWebhookUrl(e.target.value)}
-        />
-        {s.discord.webhookSet && <span className="field-help">A webhook is saved. Paste a new one to replace it.</span>}
-      </label>
-      <fieldset className="ticket-fieldset">
-        <legend className="field-label">Send a message for</legend>
-        {EVENT_LABELS.map(([k, label]) => (
-          <label key={k} className="checkbox">
-            <input type="checkbox" checked={events[k]} onChange={(e) => setEvents({ ...events, [k]: e.target.checked })} />
-            <span>{label}</span>
-          </label>
-        ))}
-      </fieldset>
-      <div className="field-row">
-        <label className="field-inline settings-inline">
-          <span className="field-inline-label">Urgent means</span>
-          <select className="input select" value={alertPriority} onChange={(e) => setAlertPriority(e.target.value as typeof alertPriority)}>
-            <option value="critical">P0</option>
-            <option value="high">P0–P1</option>
-            <option value="medium">P0–P2</option>
-          </select>
-        </label>
-        <label className="field-inline settings-inline">
-          <span className="field-inline-label">or</span>
-          <select className="input select" value={alertSeverity} onChange={(e) => setAlertSeverity(e.target.value as typeof alertSeverity)}>
-            <option value="blocker">S1</option>
-            <option value="major">S1–S2</option>
-            <option value="minor">S1–S3</option>
-          </select>
-        </label>
-      </div>
-      <label className="field-inline settings-inline">
-        <span className="field-inline-label">Daily summary at</span>
-        <input className="input" type="time" value={digestTime} onChange={(e) => setDigestTime(e.target.value || '08:00')} />
-        <span className="muted small">your time zone; sent within a minute of this time</span>
-      </label>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="editor-actions">
-        <button type="button" className="btn btn-primary" disabled={!changed || save.isPending} onClick={() => submit(webhookUrl.trim() || null)}>
-          Save
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={!s.discord.webhookSet || test.isPending}
-          onClick={() =>
-            test.mutate(undefined, {
-              onSuccess: (r) => toast(r.ok ? 'Test message sent' : r.message, { kind: r.ok ? 'success' : 'error' }),
-              onError: (err) => toast(errorMessage(err), { kind: 'error' }),
-            })
-          }
-        >
-          <Send size={14} aria-hidden /> {test.isPending ? 'Sending…' : 'Send test'}
-        </button>
-        <button
-          type="button"
-          className="btn"
-          disabled={!s.discord.webhookSet || digestNow.isPending}
-          onClick={() =>
-            digestNow.mutate(undefined, {
-              onSuccess: (r) => toast(r.ok ? 'Summary sent' : r.message, { kind: r.ok ? 'success' : 'error' }),
-              onError: (err) => toast(errorMessage(err), { kind: 'error' }),
-            })
-          }
-        >
-          {digestNow.isPending ? 'Sending…' : 'Send summary now'}
-        </button>
-        {s.discord.webhookSet && (
-          <button type="button" className="btn btn-subtle" disabled={save.isPending} onClick={() => submit('')}>
-            Remove webhook
-          </button>
-        )}
-      </div>
-      {last && (
-        <p className={last.ok ? 'muted small' : 'import-warning small'}>
-          Last message {last.ok ? 'delivered' : 'failed'} {formatDateTime(last.at, now)}
-          {!last.ok && `: ${last.message}`}
-        </p>
       )}
     </Section>
   );

@@ -24,6 +24,8 @@ import {
   CSRF_VALUE,
   DeleteColumnQuery,
   DiscordSettingsBody,
+  NotifyAlertsBody,
+  NotifyChannelBody,
   DraftTicketBody,
   GeneralSettingsBody,
   LabelBody,
@@ -118,6 +120,8 @@ import {
   reorderRequestTypes,
   setResolutionReasons,
   settingsResponse,
+  updateAlertSettings,
+  updateChannelEvents,
   updateDiscordSettings,
   updateGeneralSettings,
   updateRequestType,
@@ -225,6 +229,16 @@ export interface DemoApi {
   'PUT /api/settings/discord': SettingsResponse;
   'POST /api/settings/discord/test': { ok: boolean; message: string; settings: SettingsResponse };
   'POST /api/settings/discord/digest-now': { ok: boolean; message: string; settings: SettingsResponse };
+  'PUT /api/settings/notify': SettingsResponse;
+  'PUT /api/settings/notify/ntfy': SettingsResponse;
+  'PUT /api/settings/notify/gotify': SettingsResponse;
+  'PUT /api/settings/notify/webhook': SettingsResponse;
+  'POST /api/settings/notify/ntfy/test': never;
+  'POST /api/settings/notify/gotify/test': never;
+  'POST /api/settings/notify/webhook/test': never;
+  'POST /api/settings/notify/ntfy/digest-now': never;
+  'POST /api/settings/notify/gotify/digest-now': never;
+  'POST /api/settings/notify/webhook/digest-now': never;
   'GET /api/request-types': RequestType[];
   'POST /api/request-types': RequestType;
   'PUT /api/request-types/order': RequestType[];
@@ -271,6 +285,18 @@ const id = (req: DemoRequest, name = 'id') => idParam(req.params, name);
 const NO_FILES = 'attachments need the server’s file storage';
 const NO_BACKUPS = 'backups and restores work on the server’s database';
 const NO_DISCORD = 'Discord notifications are sent by the server';
+const NO_NOTIFY = 'notifications are sent by the server';
+
+/** Saves a channel's event choices; an address or secret needs a real server. */
+const saveChannel = (channel: 'ntfy' | 'gotify' | 'webhook') => (ctx: Ctx, req: DemoRequest) => {
+  const body = parse(NotifyChannelBody, req.body);
+  if (body.url || body.secret) throw notInDemo(NO_NOTIFY);
+  updateChannelEvents(ctx, channel, body);
+  return settingsResponse(ctx);
+};
+const notSent = () => {
+  throw notInDemo(NO_NOTIFY);
+};
 const NO_CLAUDE = 'Claude drafting needs the server and an Anthropic API key';
 const NO_AUTOMATION = 'the automation API is for other tools calling a real server';
 
@@ -466,6 +492,19 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'POST /api/settings/discord/digest-now': ok(() => {
     throw notInDemo(NO_DISCORD);
   }),
+  'PUT /api/settings/notify': ok((ctx, req) => {
+    updateAlertSettings(ctx, parse(NotifyAlertsBody, req.body));
+    return settingsResponse(ctx);
+  }),
+  'PUT /api/settings/notify/ntfy': ok(saveChannel('ntfy')),
+  'PUT /api/settings/notify/gotify': ok(saveChannel('gotify')),
+  'PUT /api/settings/notify/webhook': ok(saveChannel('webhook')),
+  'POST /api/settings/notify/ntfy/test': ok(notSent),
+  'POST /api/settings/notify/gotify/test': ok(notSent),
+  'POST /api/settings/notify/webhook/test': ok(notSent),
+  'POST /api/settings/notify/ntfy/digest-now': ok(notSent),
+  'POST /api/settings/notify/gotify/digest-now': ok(notSent),
+  'POST /api/settings/notify/webhook/digest-now': ok(notSent),
   'GET /api/request-types': ok((ctx) => listRequestTypes(ctx)),
   'POST /api/request-types': created((ctx, req) => createRequestType(ctx, parse(RequestTypeBody, req.body))),
   'PUT /api/request-types/order': ok((ctx, req) => reorderRequestTypes(ctx, parse(ReorderBody, req.body).ids)),
