@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CARD_KINDS, LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES } from './constants';
+import { CARD_KINDS, CHECKLIST_ITEM_STATES, LIMITS,PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES } from './constants';
 
 const id = z.number().int().positive();
 
@@ -161,9 +161,11 @@ export type ChecklistBody = z.infer<typeof ChecklistBody>;
 export const ChecklistItemBody = z.object({ text: ItemText });
 export type ChecklistItemBody = z.infer<typeof ChecklistItemBody>;
 
+/** `state` sets the mark; `checked` (older clients) means done/open. When both are sent, `state` wins. */
 export const UpdateChecklistItemBody = z.object({
   text: ItemText.optional(),
   checked: z.boolean().optional(),
+  state: z.enum(CHECKLIST_ITEM_STATES).optional(),
 });
 export type UpdateChecklistItemBody = z.infer<typeof UpdateChecklistItemBody>;
 

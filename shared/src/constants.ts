@@ -11,6 +11,13 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   low: 'P3 Low',
 };
 
+/**
+ * A checklist item's mark. 'done' is ✓; 'failed' is ✗ (failed, or "no" to a yes/no item); 'unverified' is ~
+ * (couldn't be verified, or still in progress). Progress counts done and failed as answered.
+ */
+export const CHECKLIST_ITEM_STATES = ['open', 'done', 'failed', 'unverified'] as const;
+export type ChecklistItemState = (typeof CHECKLIST_ITEM_STATES)[number];
+
 /** Severity: how bad the impact is. Worst first. */
 export const SEVERITIES = ['blocker', 'major', 'minor', 'trivial'] as const;
 export type Severity = (typeof SEVERITIES)[number];
@@ -114,6 +121,7 @@ export const ACTIVITY_EVENT_TYPES = [
   'checklist_removed',
   'checklist_item_checked',
   'checklist_item_unchecked',
+  'checklist_item_marked',
   'attachment_added',
   'attachment_removed',
   'linked',
