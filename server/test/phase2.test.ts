@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppError } from '../src/errors';
 import { listActivity } from '../src/services/activity';
 import { cardSummary, listCards } from '../src/services/cardParts';
-import { archiveAllDone, createCard, deleteCard, getCard, moveCard, updateCard } from '../src/services/cards';
+import { archiveAllDone, createCard, deleteCard, getBoard, getCard, moveCard, updateCard } from '../src/services/cards';
 import {
   addChecklist,
   addChecklistItem,
@@ -15,7 +15,7 @@ import {
 } from '../src/services/checklists';
 import { createLink, deleteLink } from '../src/services/links';
 import { addWorklog, listRevisions, updateWorklog } from '../src/services/worklog';
-import { client, columnId, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
+import { client, columnId, makeApp, makeCtx, setupAndLogin, T0, type TestApp } from './helpers';
 
 function code(fn: () => unknown): string {
   try {
@@ -60,6 +60,55 @@ describe('services', () => {
       ]);
       expect(listActivity(t.ctx, card.id)[0]!.data).toMatchObject({ checklist: 'Steps', text: 'Confirm no disks are emulated' });
       expect(search(t, 'emulated')).toEqual([card.id]);
+    });
+
+    it('marks items done, failed, unverified or open, with progress counts, the checked mirror and one event per change', () => {
+      const card = createCard(t.ctx, { title: 'Pre-flight' });
+      const listId = addChecklist(t.ctx, card.id, 'Checks').checklists[0]!.id;
+      const item = addChecklistItem(t.ctx, listId, 'UPS on battery?').checklists[0]!.items[0]!;
+      addChecklistItem(t.ctx, listId, 'Spare drive on the shelf');
+      expect(item).toMatchObject({ state: 'open', checked: false, checkedAt: null });
+      const at = (min: number) => new Date(Date.parse(T0) + min * 60_000).toISOString();
+      const mark = (patch: Parameters<typeof updateChecklistItem>[2]) => {
+        t.clock.advance(60_000);
+        const d = updateChecklistItem(t.ctx, item.id, patch);
+        const i = d.checklists[0]!.items[0]!;
+        return {
+          done: d.checklistDone,
+          failed: d.checklistFailed,
+          unverified: d.checklistUnverified,
+          total: d.checklistTotal,
+          item: { state: i.state, checked: i.checked, checkedAt: i.checkedAt },
+        };
+      };
+
+      expect(mark({ state: 'done' })).toEqual({ done: 1, failed: 0, unverified: 0, total: 2, item: { state: 'done', checked: true, checkedAt: at(1) } });
+      // Failed counts as answered; unverified doesn't.
+      expect(mark({ state: 'failed' })).toEqual({ done: 1, failed: 1, unverified: 0, total: 2, item: { state: 'failed', checked: false, checkedAt: at(2) } });
+      expect(mark({ state: 'unverified' })).toEqual({ done: 0, failed: 0, unverified: 1, total: 2, item: { state: 'unverified', checked: false, checkedAt: at(3) } });
+      expect(getBoard(t.ctx).cards.find((c) => c.id === card.id)).toMatchObject({ checklistDone: 0, checklistUnverified: 1, checklistTotal: 2 });
+      // The same mark again changes nothing: no event, and the time stays.
+      expect(mark({ state: 'unverified' }).item).toEqual({ state: 'unverified', checked: false, checkedAt: at(3) });
+      expect(mark({ state: 'open' })).toEqual({ done: 0, failed: 0, unverified: 0, total: 2, item: { state: 'open', checked: false, checkedAt: null } });
+      // Older clients send checked: true/false for done/open. When both are sent, state wins.
+      expect(mark({ checked: true }).item).toEqual({ state: 'done', checked: true, checkedAt: at(6) });
+      expect(mark({ checked: true, state: 'failed' }).item).toEqual({ state: 'failed', checked: false, checkedAt: at(7) });
+      expect(mark({ checked: false }).item).toEqual({ state: 'open', checked: false, checkedAt: null });
+
+      const data = { checklistId: listId, checklist: 'Checks', itemId: item.id, text: 'UPS on battery?' };
+      const events = listActivity(t.ctx, card.id)
+        .filter((e) => e.type.startsWith('checklist_item_'))
+        .map((e) => ({ type: e.type, data: e.data }))
+        .reverse();
+      expect(events).toEqual([
+        { type: 'checklist_item_checked', data },
+        { type: 'checklist_item_marked', data: { ...data, state: 'failed' } },
+        { type: 'checklist_item_marked', data: { ...data, state: 'unverified' } },
+        { type: 'checklist_item_unchecked', data },
+        { type: 'checklist_item_checked', data },
+        { type: 'checklist_item_marked', data: { ...data, state: 'failed' } },
+        { type: 'checklist_item_unchecked', data },
+      ]);
     });
 
     it('reorders items and logs removal of a whole checklist', () => {
@@ -378,5 +427,49 @@ describe('Phase 2 routes', () => {
     const live = (await api('GET', '/api/cards?status=live&q=b')).json() as CardSummary[];
     expect(live.map((c) => c.id)).toEqual([b.id]);
     expect((await api('GET', '/api/cards?status=nope')).statusCode).toBe(400);
+  });
+
+  it('marks checklist items done, failed, unverified and open over HTTP', async () => {
+    t = await makeApp();
+    const api = client(t.app, await setupAndLogin(t));
+    const card = (await api('POST', '/api/cards', { title: 'Pre-flight' })).json() as CardDetail;
+    let d = (await api('POST', `/api/cards/${card.id}/checklists`, { title: 'Checks' })).json() as CardDetail;
+    const listId = d.checklists[0]!.id;
+    await api('POST', `/api/checklists/${listId}/items`, { text: 'UPS on battery?' });
+    d = (await api('POST', `/api/checklists/${listId}/items`, { text: 'Spare drive on the shelf' })).json() as CardDetail;
+    const itemId = d.checklists[0]!.items[0]!.id;
+    const mark = async (body: object) => {
+      const res = await api('PATCH', `/api/checklist-items/${itemId}`, body);
+      expect(res.statusCode, res.body).toBe(200);
+      const c = res.json() as CardDetail;
+      const i = c.checklists[0]!.items[0]!;
+      return [i.state, i.checked, i.checkedAt !== null, c.checklistDone, c.checklistFailed, c.checklistUnverified, c.checklistTotal];
+    };
+
+    // state, checked, has a time, then the tile counts: done (done + failed), failed, unverified, total.
+    expect(await mark({ state: 'done' })).toEqual(['done', true, true, 1, 0, 0, 2]);
+    expect(await mark({ state: 'failed' })).toEqual(['failed', false, true, 1, 1, 0, 2]);
+    expect(await mark({ state: 'unverified' })).toEqual(['unverified', false, true, 0, 0, 1, 2]);
+    expect(await mark({ state: 'unverified' })).toEqual(['unverified', false, true, 0, 0, 1, 2]); // no change, no event
+    expect(await mark({ state: 'open' })).toEqual(['open', false, false, 0, 0, 0, 2]);
+    expect(await mark({ checked: true })).toEqual(['done', true, true, 1, 0, 0, 2]);
+    expect(await mark({ checked: true, state: 'unverified' })).toEqual(['unverified', false, true, 0, 0, 1, 2]);
+    const board = (await api('GET', '/api/board')).json() as { cards: CardDetail[] };
+    expect(board.cards.find((c) => c.id === card.id)).toMatchObject({ checklistDone: 0, checklistFailed: 0, checklistUnverified: 1, checklistTotal: 2 });
+
+    const bad = await api('PATCH', `/api/checklist-items/${itemId}`, { state: 'maybe' });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json()).toMatchObject({ error: 'validation' });
+
+    const log = (await api('GET', `/api/cards/${card.id}/activity`)).json() as ActivityEntry[];
+    const data = { checklistId: listId, checklist: 'Checks', itemId, text: 'UPS on battery?' };
+    expect(log.filter((e) => e.type.startsWith('checklist_item_')).map((e) => ({ type: e.type, data: e.data })).reverse()).toEqual([
+      { type: 'checklist_item_checked', data },
+      { type: 'checklist_item_marked', data: { ...data, state: 'failed' } },
+      { type: 'checklist_item_marked', data: { ...data, state: 'unverified' } },
+      { type: 'checklist_item_unchecked', data },
+      { type: 'checklist_item_checked', data },
+      { type: 'checklist_item_marked', data: { ...data, state: 'unverified' } },
+    ]);
   });
 });

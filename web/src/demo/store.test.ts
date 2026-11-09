@@ -1,7 +1,14 @@
 // The demo's data store: seeding, the API's create/read/update/delete through the same routes the
 // app calls, persistence under the versioned key, and reset.
 
-import { CSRF_HEADER, CSRF_VALUE, type BoardResponse, type CardDetail, type SettingsResponse } from '@tt/shared';
+import {
+  CSRF_HEADER,
+  CSRF_VALUE,
+  type ActivityEntry,
+  type BoardResponse,
+  type CardDetail,
+  type SettingsResponse,
+} from '@tt/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { seedDemo } from './seed';
 import { DEMO_SCHEMA_VERSION } from './server/db';
@@ -81,6 +88,13 @@ describe('seed', () => {
     expect(settings.general.appUrl).toBe('https://example.test/Belltower/#');
     expect(call(store, 'GET', `/api/public/submit/${settings.submit.key}`).status).toBe(200);
     expect(ok<{ authenticated: boolean }>(call(store, 'GET', '/api/auth/status')).authenticated).toBe(true);
+  });
+
+  it('shows every checklist mark on the disk 3 card', () => {
+    const disk3 = board(store).cards.find((c) => c.title === 'Disk 3 reallocated sectors climbing')!;
+    expect(disk3).toMatchObject({ checklistDone: 3, checklistFailed: 1, checklistUnverified: 1, checklistTotal: 5 });
+    const items = ok<CardDetail>(call(store, 'GET', `/api/cards/${disk3.id}`)).checklists[0]!.items;
+    expect(items.map((i) => i.state)).toEqual(['failed', 'done', 'done', 'unverified', 'open']);
   });
 });
 
@@ -174,6 +188,96 @@ describe('CRUD through the routes', () => {
   it('refuses changes without the CSRF header, like the server', () => {
     const res = dispatch(store, { method: 'POST', path: '/api/cards', query: {}, body: { title: 'x' }, form: null, headers: new Headers() });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('checklist item marks', () => {
+  let clock: Date;
+  let store: DemoStore;
+  beforeEach(() => {
+    clock = NOW;
+    store = new DemoStore({ storage: memoryStorage(), timeZone: TZ, now: () => clock, seed: (n, tz) => seedDemo(n, tz) });
+  });
+
+  /** A new card with a "Restore test" checklist of two items. */
+  function setup() {
+    const card = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Verify the backups' }));
+    const listId = ok<CardDetail>(call(store, 'POST', `/api/cards/${card.id}/checklists`, { title: 'Restore test' })).checklists[0]!.id;
+    ok(call(store, 'POST', `/api/checklists/${listId}/items`, { text: 'Restore one file' }));
+    const full = ok<CardDetail>(call(store, 'POST', `/api/checklists/${listId}/items`, { text: 'Check the logs' }));
+    return { cardId: card.id, listId, itemId: full.checklists[0]!.items[0]!.id };
+  }
+  const patch = (itemId: number, body: unknown) => ok<CardDetail>(call(store, 'PATCH', `/api/checklist-items/${itemId}`, body));
+  const itemOf = (card: CardDetail, id: number) => card.checklists.flatMap((l) => l.items).find((i) => i.id === id)!;
+  /** The card's checklist item events, oldest first. */
+  const marks = (cardId: number) =>
+    ok<ActivityEntry[]>(call(store, 'GET', `/api/cards/${cardId}/activity`))
+      .filter((a) => a.type.startsWith('checklist_item_'))
+      .reverse();
+
+  it('walks an item through every state, with the counts on the tile and one event each', () => {
+    const { cardId, listId, itemId } = setup();
+    const start = ok<CardDetail>(call(store, 'GET', `/api/cards/${cardId}`));
+    expect(itemOf(start, itemId)).toEqual({ id: itemId, text: 'Restore one file', state: 'open', checked: false, checkedAt: null, position: 0 });
+    expect(start).toMatchObject({ checklistDone: 0, checklistFailed: 0, checklistUnverified: 0, checklistTotal: 2 });
+
+    const cycle = [
+      ['done', { checklistDone: 1, checklistFailed: 0, checklistUnverified: 0 }],
+      ['failed', { checklistDone: 1, checklistFailed: 1, checklistUnverified: 0 }],
+      ['unverified', { checklistDone: 0, checklistFailed: 0, checklistUnverified: 1 }],
+      ['open', { checklistDone: 0, checklistFailed: 0, checklistUnverified: 0 }],
+    ] as const;
+    for (const [n, [state, counts]] of cycle.entries()) {
+      clock = new Date(NOW.getTime() + (n + 1) * 60_000);
+      const card = patch(itemId, { state });
+      expect(itemOf(card, itemId), state).toEqual({
+        id: itemId,
+        text: 'Restore one file',
+        state,
+        checked: state === 'done',
+        checkedAt: state === 'open' ? null : clock.toISOString(),
+        position: 0,
+      });
+      expect(card, state).toMatchObject({ ...counts, checklistTotal: 2 });
+      expect(board(store).cards.find((c) => c.id === cardId), state).toMatchObject({ ...counts, checklistTotal: 2 });
+    }
+
+    const data = { checklistId: listId, checklist: 'Restore test', itemId, text: 'Restore one file' };
+    expect(marks(cardId).map((a) => [a.type, a.data])).toEqual([
+      ['checklist_item_checked', data],
+      ['checklist_item_marked', { ...data, state: 'failed' }],
+      ['checklist_item_marked', { ...data, state: 'unverified' }],
+      ['checklist_item_unchecked', data],
+    ]);
+  });
+
+  it('still takes `checked` from older clients, lets `state` win, and records nothing when unchanged', () => {
+    const { cardId, itemId } = setup();
+    expect(itemOf(patch(itemId, { checked: true }), itemId)).toMatchObject({ state: 'done', checked: true, checkedAt: NOW.toISOString() });
+
+    clock = new Date(NOW.getTime() + 60_000);
+    // Already done: the mark and its time stay, and nothing is recorded.
+    expect(itemOf(patch(itemId, { checked: true }), itemId).checkedAt).toBe(NOW.toISOString());
+    expect(itemOf(patch(itemId, { state: 'done' }), itemId).checkedAt).toBe(NOW.toISOString());
+
+    expect(itemOf(patch(itemId, { checked: true, state: 'failed' }), itemId)).toMatchObject({ state: 'failed', checked: false });
+    expect(itemOf(patch(itemId, { checked: false }), itemId)).toMatchObject({ state: 'open', checked: false, checkedAt: null });
+    patch(itemId, { checked: false });
+    patch(itemId, { text: 'Restore two files' });
+    // A rename and a mark in one request: the event carries the new text.
+    expect(itemOf(patch(itemId, { text: 'Restore three files', state: 'unverified' }), itemId)).toMatchObject({
+      text: 'Restore three files',
+      state: 'unverified',
+    });
+
+    expect(marks(cardId).map((a) => a.type)).toEqual([
+      'checklist_item_checked',
+      'checklist_item_marked',
+      'checklist_item_unchecked',
+      'checklist_item_marked',
+    ]);
+    expect(marks(cardId).at(-1)!.data).toMatchObject({ text: 'Restore three files', state: 'unverified' });
+    expect(call(store, 'PATCH', `/api/checklist-items/${itemId}`, { state: 'maybe' }).status).toBe(400);
   });
 });
 

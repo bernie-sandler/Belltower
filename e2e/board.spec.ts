@@ -90,3 +90,33 @@ test('link cards from the card view; the blocked one moves to Blocked/Waiting', 
   const blockedCol = await api.columnId('Blocked/Waiting');
   expect((await api.board()).cards.find((c) => c.id === card.id)?.columnId).toBe(blockedCol);
 });
+
+test('a checklist item cycles ✓ ✗ ~ and only the mark it stops on is recorded', async ({ page, api }) => {
+  type Detail = { checklists: { id: number; items: { id: number; state: string }[] }[] };
+  const card = await api.createCard({ title: unique('Check the UPS') });
+  const listId = (await api.call<Detail>('POST', `/api/cards/${card.id}/checklists`, { title: 'Checks' })).checklists[0]!.id;
+  const itemId = (await api.call<Detail>('POST', `/api/checklists/${listId}/items`, { text: 'Battery holds' })).checklists[0]!.items[0]!.id;
+
+  await page.goto('/');
+  await tileByTitle(page, card.title).click();
+  const item = page.getByRole('button', { name: /^Battery holds, / });
+  await expect(item).toHaveAccessibleName('Battery holds, not checked');
+  await item.click({ clickCount: 3 }); // three quick clicks: ✓ then ✗ then ~
+  await expect(item).toHaveAccessibleName('Battery holds, unverified');
+
+  // Saved once the clicks stop, as a single history entry (not ✓, ✗ and ~).
+  await expect
+    .poll(async () => (await api.call<Detail>('GET', `/api/cards/${card.id}`)).checklists[0]!.items[0]!.state)
+    .toBe('unverified');
+  await expect
+    .poll(async () => {
+      const activity = await api.call<{ type: string; data: { itemId?: number; state?: string } | null }[]>('GET', `/api/cards/${card.id}/activity`);
+      return activity.filter((e) => e.type.startsWith('checklist_item_') && e.data?.itemId === itemId).map((e) => [e.type, e.data?.state]);
+    })
+    .toEqual([['checklist_item_marked', 'unverified']]);
+
+  await page.getByRole('button', { name: 'Close card' }).click();
+  const badge = tileByTitle(page, card.title).locator('.checklist-badge');
+  await expect(badge).toHaveClass(/\bis-unverified\b/);
+  await expect(badge).toHaveAttribute('title', 'Checklist: 0/1, 1 unverified');
+});

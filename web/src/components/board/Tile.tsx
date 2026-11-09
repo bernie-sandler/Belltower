@@ -134,19 +134,32 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
               {tile.linkCount}
             </span>
           )}
-          {tile.checklistTotal > 0 && (
-            <span
-              className={cls('badge', tile.checklistDone === tile.checklistTotal && 'is-complete')}
-              title="Checklist items"
-            >
-              <SquareCheckBig size={12} aria-hidden />
-              <span className="visually-hidden">Checklist: </span>
-              {tile.checklistDone}/{tile.checklistTotal}
-            </span>
-          )}
+          {tile.checklistTotal > 0 && <ChecklistBadge tile={tile} />}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * "3/5" counts done and failed items, so a failure can't hide behind "5/5": any ✗ turns the badge
+ * red, else any ~ turns it yellow; green only when every item is done.
+ */
+function ChecklistBadge({ tile }: { tile: CardTile }) {
+  const { checklistDone: done, checklistTotal: total, checklistFailed: failed, checklistUnverified: unverified } = tile;
+  const text = [`Checklist: ${done}/${total}`, failed > 0 && `${failed} failed`, unverified > 0 && `${unverified} unverified`]
+    .filter(Boolean)
+    .join(', ');
+  const tone = failed > 0 ? 'is-failed' : unverified > 0 ? 'is-unverified' : done === total ? 'is-complete' : null;
+  // One hidden span for the whole text: browsers pad each badge part with spaces ("3/5 , 1 failed").
+  return (
+    <span className={cls('badge', 'checklist-badge', tone)} title={text}>
+      <SquareCheckBig size={12} aria-hidden />
+      <span className="visually-hidden">{text}</span>
+      <span aria-hidden>
+        {done}/{total}
+      </span>
+    </span>
   );
 }
 

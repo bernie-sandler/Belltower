@@ -1,6 +1,6 @@
 // Mirrors server/src/services/checklists.ts. Every change returns the full card.
 
-import type { CardDetail } from '@tt/shared';
+import type { CardDetail, ChecklistItemState } from '@tt/shared';
 import { recordEvent } from './activity';
 import { getCard, getEditableCard, touchCard } from './cards';
 import { byPosition, nextId, nowIso, type ChecklistItemRow, type ChecklistRow, type Ctx } from './db';
@@ -78,7 +78,7 @@ export function addChecklistItem(ctx: Ctx, checklistId: number, text: string): C
     id: nextId(ctx, 'checklistItems'),
     checklistId,
     text,
-    checked: false,
+    state: 'open',
     checkedAt: null,
     position: pos,
     createdAt: nowIso(ctx),
@@ -86,20 +86,24 @@ export function addChecklistItem(ctx: Ctx, checklistId: number, text: string): C
   return changed(ctx, list.cardId);
 }
 
-export function updateChecklistItem(ctx: Ctx, itemId: number, patch: { text?: string; checked?: boolean }): CardDetail {
+/** `state` wins over `checked` (older clients), which means done/open. Only a real change is recorded. */
+export function updateChecklistItem(
+  ctx: Ctx,
+  itemId: number,
+  patch: { text?: string; checked?: boolean; state?: ChecklistItemState },
+): CardDetail {
   const item = itemRow(ctx, itemId);
   const list = checklistRow(ctx, item.checklistId);
   getEditableCard(ctx, list.cardId);
   if (patch.text !== undefined && patch.text !== item.text) item.text = patch.text;
-  if (patch.checked !== undefined && patch.checked !== item.checked) {
-    item.checked = patch.checked;
-    item.checkedAt = patch.checked ? nowIso(ctx) : null;
-    recordEvent(ctx, list.cardId, patch.checked ? 'checklist_item_checked' : 'checklist_item_unchecked', {
-      checklistId: list.id,
-      checklist: list.title,
-      itemId,
-      text: item.text,
-    });
+  const state = patch.state ?? (patch.checked === undefined ? undefined : patch.checked ? 'done' : 'open');
+  if (state !== undefined && state !== item.state) {
+    item.state = state;
+    item.checkedAt = state === 'open' ? null : nowIso(ctx);
+    const data = { checklistId: list.id, checklist: list.title, itemId, text: item.text };
+    if (state === 'done') recordEvent(ctx, list.cardId, 'checklist_item_checked', data);
+    else if (state === 'open') recordEvent(ctx, list.cardId, 'checklist_item_unchecked', data);
+    else recordEvent(ctx, list.cardId, 'checklist_item_marked', { ...data, state });
   }
   return changed(ctx, list.cardId);
 }

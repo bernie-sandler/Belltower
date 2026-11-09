@@ -264,6 +264,17 @@
   color: var(--on-color);
 }
 
+/* A checklist with a ✗ (failed) or ~ (unverified) item: these win over "complete". */
+.badge.is-failed {
+  background: var(--danger);
+  color: var(--on-color);
+}
+
+.badge.is-unverified {
+  background: var(--warning);
+  color: var(--on-color);
+}
+
 .due-overdue {
   background: var(--danger);
   color: var(--on-color);

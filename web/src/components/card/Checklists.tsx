@@ -1,11 +1,12 @@
-// Checklists: named lists of items with a progress bar. Ticking a box is optimistic; item text
-// edits inline (Enter saves, Esc cancels); items reorder via their ⋯ menu (works the same with
-// mouse, touch and keyboard).
+// Checklists: named lists of items with a progress bar. Clicking an item cycles its mark (open,
+// ✓ done, ✗ failed, ~ unverified) and shows at once; item text edits inline (Enter saves, Esc
+// cancels); items reorder via their ⋯ menu (works the same with mouse, touch and keyboard).
 
-import { LIMITS, type CardDetail, type Checklist, type ChecklistItem } from '@tt/shared';
-import { ArrowDown, ArrowUp, Ellipsis, ListChecks, Pencil, Plus, Trash2 } from 'lucide-react';
+import { LIMITS, type CardDetail, type Checklist, type ChecklistItem, type ChecklistItemState } from '@tt/shared';
+import { ArrowDown, ArrowUp, Check, Ellipsis, ListChecks, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useChecklistActions } from '../../api/cardParts';
+import { countItems, nextState, STATE_LABELS, STATE_SPOKEN } from '../../lib/checkState';
 import { cls } from '../../lib/cls';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Menu } from '../common/Menu';
@@ -22,7 +23,17 @@ export function Checklists({
   /** Bumped by the sidebar's "Checklist" button to open the "new checklist" field. */
   addRequest: number;
 }) {
-  const actions = useChecklistActions(card.id);
+  const hook = useChecklistActions(card.id);
+  // A focused button's changing label isn't reliably read out, so each click is also announced.
+  const [said, setSaid] = useState('');
+  const actions: Actions = {
+    ...hook,
+    cycle: (item) => {
+      const state = hook.cycle(item);
+      setSaid(`${item.text}: ${STATE_SPOKEN[state]}`);
+      return state;
+    },
+  };
   const [adding, setAdding] = useState(false);
   const seen = useRef(addRequest);
   useEffect(() => {
@@ -52,14 +63,20 @@ export function Checklists({
           onCancel={() => setAdding(false)}
         />
       )}
+      <span className="visually-hidden" role="status">
+        {said}
+      </span>
     </section>
   );
 }
 
 function ChecklistView({ list, actions, readOnly }: { list: Checklist; actions: Actions; readOnly: boolean }) {
-  const done = list.items.filter((i) => i.checked).length;
-  const total = list.items.length;
-  const pct = total ? Math.round((done / total) * 100) : 0;
+  const { done: answered, failed, unverified, total } = countItems([list]);
+  const done = answered - failed;
+  const share = (n: number) => (n / total) * 100;
+  const summary = [done > 0 && `${done} done`, failed > 0 && `${failed} failed`, unverified > 0 && `${unverified} unverified`].filter(
+    Boolean,
+  );
   const [renaming, setRenaming] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -98,12 +115,27 @@ function ChecklistView({ list, actions, readOnly }: { list: Checklist; actions: 
         )}
       </div>
 
-      <div className="checklist-progress" aria-label={`${done} of ${total} done`}>
-        <span className="checklist-pct">{pct}%</span>
-        <span className="progress">
-          <span className={cls('progress-bar', total > 0 && done === total && 'is-complete')} style={{ width: `${pct}%` }} />
-        </span>
-      </div>
+      {/* Done and failed both count as answered: green then red. The red bar sits underneath,
+          spanning both, so the join is the green bar's rounded end. No bar until there are items. */}
+      {total > 0 && (
+        <div className={cls('checklist-progress', done === total && 'is-complete')}>
+          <span className="checklist-pct" aria-hidden>
+            {Math.round(share(answered))}%
+          </span>
+          <span
+            className="progress"
+            role="progressbar"
+            aria-label={`${list.title} progress`}
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-valuenow={answered}
+            aria-valuetext={`${answered} of ${total}${summary.length ? `: ${summary.join(', ')}` : ''}`}
+          >
+            {failed > 0 && <span className="progress-bar is-failed" style={{ width: `${share(answered)}%` }} />}
+            <span className="progress-bar is-done" style={{ width: `${share(done)}%` }} />
+          </span>
+        </div>
+      )}
 
       <ul className="checklist-items">
         {list.items.map((item, i) => (
@@ -196,16 +228,22 @@ function ItemRow({
   }
 
   return (
-    <li className={cls('checklist-item', item.checked && 'is-checked')}>
-      <label className="checklist-check">
-        <input
-          type="checkbox"
-          checked={item.checked}
-          disabled={readOnly}
-          onChange={(e) => actions.toggle.mutate({ id: item.id, checked: e.target.checked })}
-        />
+    <li className={cls('checklist-item', `is-${item.state}`)}>
+      {/* An aria-label rather than visually-hidden text: browsers pad a flex item's text with
+          spaces, which would read as "Order battery , failed". */}
+      <button
+        type="button"
+        className="checklist-check"
+        disabled={readOnly}
+        aria-label={`${item.text}, ${STATE_SPOKEN[item.state]}`}
+        title={readOnly ? STATE_LABELS[item.state] : `${STATE_LABELS[item.state]} — click for ${STATE_LABELS[nextState(item.state)]}`}
+        onClick={() => actions.cycle(item)}
+      >
+        <span className="check-box" aria-hidden>
+          <StateGlyph state={item.state} />
+        </span>
         <span className="checklist-text">{item.text}</span>
-      </label>
+      </button>
       {!readOnly && (
         <button
           type="button"
@@ -240,6 +278,20 @@ function ItemRow({
       )}
     </li>
   );
+}
+
+function StateGlyph({ state }: { state: ChecklistItemState }) {
+  if (state === 'done') return <Check size={14} strokeWidth={3} />;
+  if (state === 'failed') return <X size={14} strokeWidth={3} />;
+  if (state === 'unverified') {
+    // lucide has no tilde.
+    return (
+      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" aria-hidden>
+        <path d="M4 14c2-5 5-5 8-2s6 3 8-2" />
+      </svg>
+    );
+  }
+  return null;
 }
 
 /** A one-line text field with Save/Cancel; Enter saves, Esc cancels. `keepOpen` for rapid entry. */

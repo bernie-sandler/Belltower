@@ -48,6 +48,15 @@ describe('activityText', () => {
     expect(activityText(entry('child_added', { child: { title: 'Back up DB' } }))).toMatch(/^Ticket .*Back up DB.* filed here$/);
   });
 
+  it('describes checklist marks', () => {
+    const item = { checklistId: 1, checklist: 'Checklist', itemId: 2, text: 'Order battery' };
+    expect(activityText(entry('checklist_item_checked', item))).toBe('Checked ‘Order battery’');
+    expect(activityText(entry('checklist_item_unchecked', item))).toBe('Unchecked ‘Order battery’');
+    expect(activityText(entry('checklist_item_marked', { ...item, state: 'failed' }))).toBe('Marked ‘Order battery’ failed');
+    expect(activityText(entry('checklist_item_marked', { ...item, state: 'unverified' }))).toBe('Marked ‘Order battery’ unverified');
+    expect(activityText(entry('checklist_item_marked', { ...item, state: 'later' }))).toBe('Marked ‘Order battery’');
+  });
+
   it('never throws on unknown or malformed data', () => {
     expect(() => activityText(entry('moved', {}))).not.toThrow();
     expect(() => activityText(entry('child_removed', { child: 'nope' }))).not.toThrow();

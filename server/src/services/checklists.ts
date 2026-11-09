@@ -1,8 +1,9 @@
 // Checklists and their items. Every change returns the full card (the UI re-renders it in one go)
-// and keeps the search index in step. Adding/removing a checklist and checking/unchecking an item
-// are logged; editing item text and reordering aren't (they'd drown the log).
+// and keeps the search index in step. Adding/removing a checklist and marking an item (done,
+// failed, unverified or back to open) are logged; editing item text and reordering aren't (they'd
+// drown the log).
 
-import type { CardDetail } from '@tt/shared';
+import type { CardDetail, ChecklistItemState } from '@tt/shared';
 import { stmt } from '../db/connection';
 import { badRequest, notFound } from '../errors';
 import { recordEvent } from './activity';
@@ -108,7 +109,12 @@ export function addChecklistItem(ctx: Ctx, checklistId: number, text: string): C
   });
 }
 
-export function updateChecklistItem(ctx: Ctx, itemId: number, patch: { text?: string; checked?: boolean }): CardDetail {
+/** `state` sets the mark; `checked` (older clients) means done/open. When both are sent, `state` wins. */
+export function updateChecklistItem(
+  ctx: Ctx,
+  itemId: number,
+  patch: { text?: string; checked?: boolean; state?: ChecklistItemState },
+): CardDetail {
   return tx(ctx, () => {
     const item = itemRow(ctx, itemId);
     const list = checklistRow(ctx, item.checklist_id);
@@ -118,18 +124,22 @@ export function updateChecklistItem(ctx: Ctx, itemId: number, patch: { text?: st
       stmt(ctx.db, 'UPDATE checklist_items SET text = ? WHERE id = ?').run(patch.text, itemId);
       reindex = true;
     }
-    if (patch.checked !== undefined && patch.checked !== (item.checked === 1)) {
-      stmt(ctx.db, 'UPDATE checklist_items SET checked = ?, checked_at = ? WHERE id = ?').run(
-        patch.checked ? 1 : 0,
-        patch.checked ? nowIso(ctx) : null,
+    const state = patch.state ?? (patch.checked === undefined ? undefined : patch.checked ? 'done' : 'open');
+    if (state !== undefined && state !== item.state) {
+      // checked/checked_at stay in step for older readers: checked only for done, the time of any mark.
+      stmt(ctx.db, 'UPDATE checklist_items SET state = ?, checked = ?, checked_at = ? WHERE id = ?').run(
+        state,
+        state === 'done' ? 1 : 0,
+        state === 'open' ? null : nowIso(ctx),
         itemId,
       );
-      recordEvent(ctx, list.card_id, patch.checked ? 'checklist_item_checked' : 'checklist_item_unchecked', {
-        checklistId: list.id,
-        checklist: list.title,
-        itemId,
-        text: patch.text ?? item.text,
-      });
+      // Done/open keep their pre-1.4 event types, so they read the same as history logged before 1.4.
+      const data = { checklistId: list.id, checklist: list.title, itemId, text: patch.text ?? item.text };
+      if (state === 'done' || state === 'open') {
+        recordEvent(ctx, list.card_id, state === 'done' ? 'checklist_item_checked' : 'checklist_item_unchecked', data);
+      } else {
+        recordEvent(ctx, list.card_id, 'checklist_item_marked', { ...data, state });
+      }
     }
     return changed(ctx, list.card_id, reindex);
   });

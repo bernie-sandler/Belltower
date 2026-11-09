@@ -5,7 +5,7 @@
 // Mostly the owner's own tickets, with a few from other people through the submit page and two
 // from recurring templates. Dates are relative to the moment the demo is seeded.
 
-import { SubmitBody, type Priority, type Severity } from '@tt/shared';
+import { SubmitBody, type ChecklistItemState, type Priority, type Severity } from '@tt/shared';
 import { archiveCard, completeCard, createCard, getCardRow, moveCard } from './server/cards';
 import { updateChecklistItem } from './server/checklists';
 import { emptyState, nextId, type Ctx, type DemoState } from './server/db';
@@ -175,6 +175,9 @@ const REQUEST_TYPES = [
 /** [days ago, 'HH:MM' local time]. */
 type When = [number, string];
 
+/** A checklist item: plain text stays open, or it gets a mark (✓, ✗ or ~) at a time. */
+type SampleItem = string | { text: string; mark: Exclude<ChecklistItemState, 'open'>; at: When };
+
 interface SampleCard {
   ref: string;
   created: When;
@@ -189,7 +192,7 @@ interface SampleCard {
   dueTime?: string;
   kind?: 'work';
   partOf?: string;
-  checklists?: { title: string; items: (string | { text: string; ticked: When })[] }[];
+  checklists?: { title: string; items: SampleItem[] }[];
   worklog?: { text: string; at: When }[];
   blockedBy?: { ref: string; at: When }[];
   relatedTo?: { ref: string; at: When }[];
@@ -293,8 +296,8 @@ const SAMPLE_CARDS: SampleCard[] = [
       {
         title: 'Test plan',
         items: [
-          { text: 'Start a second Plex container on a spare port', ticked: [2, '21:40'] },
-          { text: 'Play a 4K HDR file on the TV', ticked: [1, '20:25'] },
+          { text: 'Start a second Plex container on a spare port', mark: 'done', at: [2, '21:40'] },
+          { text: 'Play a 4K HDR file on the TV', mark: 'done', at: [1, '20:25'] },
           'Play it on a phone over Tailscale',
           'Check tone mapping on a remote stream',
         ],
@@ -330,9 +333,10 @@ const SAMPLE_CARDS: SampleCard[] = [
       {
         title: 'Before replacing it',
         items: [
-          { text: 'Run an extended SMART self-test', ticked: [3, '08:20'] },
-          { text: 'Rule out the cable: swap the SATA port', ticked: [5, '20:00'] },
-          { text: 'Open the warranty claim', ticked: [1, '19:10'] },
+          { text: 'Run an extended SMART self-test', mark: 'failed', at: [1, '19:05'] },
+          { text: 'Rule out the cable: swap the SATA port', mark: 'done', at: [5, '20:00'] },
+          { text: 'Open the warranty claim', mark: 'done', at: [1, '19:10'] },
+          { text: "Check the replacement isn't bigger than the parity disk", mark: 'unverified', at: [1, '19:15'] },
           'Preclear the replacement when it arrives',
         ],
       },
@@ -340,7 +344,7 @@ const SAMPLE_CARDS: SampleCard[] = [
     worklog: [
       { text: 'Reallocated sectors went from 8 to 16 during the parity check. Pending still 0. Keeping an eye on it.', at: [6, '21:40'] },
       { text: "Up to 24 reallocated, 2 pending. SMART still says PASSED, which doesn't mean much. Started an extended self-test.", at: [3, '08:15'] },
-      { text: 'Extended test failed at 62%. Still under warranty, so the claim is open.', at: [1, '19:05'] },
+      { text: "Extended test failed at 62%. Still under warranty, so the claim is open. They won't say which model comes back.", at: [1, '19:05'] },
     ],
     relatedTo: [{ ref: 'parity', at: [7, '10:06'] }],
   },
@@ -576,11 +580,11 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
     c.checklists?.forEach((l) =>
       l.items.forEach((item) => {
         if (typeof item === 'string') return;
-        step(item.ticked, () => {
+        step(item.at, () => {
           const it = s.checklistItems.find(
             (x) => x.text === item.text && s.checklists.some((cl) => cl.id === x.checklistId && cl.cardId === ids.get(c.ref)),
           )!;
-          updateChecklistItem(ctx, it.id, { checked: true });
+          updateChecklistItem(ctx, it.id, { state: item.mark });
         });
       }),
     );
@@ -611,7 +615,7 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
   step([7, '09:30'], () => {
     const card = getCardRow(ctx, ids.get('parity')!);
     for (const it of s.checklistItems.filter((i) => s.checklists.some((l) => l.id === i.checklistId && l.cardId === card.id))) {
-      updateChecklistItem(ctx, it.id, { checked: true });
+      updateChecklistItem(ctx, it.id, { state: 'done' });
     }
     addWorklog(ctx, card.id, {
       bodyMd: 'Duration 19h 12m, average 116 MB/s, 0 sync errors. Disk 3 picked up more reallocated sectors, though.',

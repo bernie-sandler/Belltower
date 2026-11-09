@@ -102,6 +102,8 @@ export function toTile(card: CardTile | CardDetail): CardTile {
     linkCount: card.linkCount,
     checklistDone: card.checklistDone,
     checklistTotal: card.checklistTotal,
+    checklistFailed: card.checklistFailed,
+    checklistUnverified: card.checklistUnverified,
     blockedBy: card.blockedBy,
     version: card.version,
   };
@@ -313,6 +315,8 @@ export function tempTile(board: BoardResponse, v: CreateCardVars): CardTile {
     linkCount: 0,
     checklistDone: 0,
     checklistTotal: 0,
+    checklistFailed: 0,
+    checklistUnverified: 0,
     blockedBy: 0,
     version: 0,
   };

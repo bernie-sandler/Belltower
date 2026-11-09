@@ -101,7 +101,7 @@ Every route below that changes a card returns the updated `CardDetail`, which no
 | `DELETE /api/checklists/:id` | — | `CardDetail` | Logs `checklist_removed`. |
 | `POST /api/checklists/:id/items` | `ChecklistItemBody {text}` | `CardDetail` | |
 | `PUT /api/checklists/:id/items/order` | `ReorderBody` | `CardDetail` | |
-| `PATCH /api/checklist-items/:id` | `UpdateChecklistItemBody {text?, checked?}` | `CardDetail` | Checking or unchecking logs an event; text edits don't. |
+| `PATCH /api/checklist-items/:id` | `UpdateChecklistItemBody {text?, checked?, state?}` | `CardDetail` | `state`: `open`, `done`, `failed` or `unverified`. `checked: true`/`false` (older clients) means `done`/`open`; when both are sent, `state` wins. A new mark logs one event: `checklist_item_checked` (now done), `checklist_item_unchecked` (now open) or `checklist_item_marked` with `state` (now failed or unverified). Sending the current mark again, or editing the text, logs nothing. |
 | `DELETE /api/checklist-items/:id` | — | `CardDetail` | |
 | `POST /api/cards/:id/links` | `CreateLinkBody {otherCardId, direction}` | `CardDetail` | `direction` from this card's view: `relates`, `blocks` or `blocked_by`. `409 duplicate_link`. Logged on both cards. |
 | `DELETE /api/cards/:id/links/:linkId` | — | `CardDetail` | Logged on both cards. |
@@ -130,6 +130,11 @@ or null) and `CardDetail.resolutionNote` (Markdown, `''` when none). Set them wi
 change logs `resolved` `{reason, note, from}`. The reasons offered are in `BoardResponse.resolutionReasons` and
 `SettingsResponse.resolutionReasons` (first = default); any reason up to 40 characters is accepted, so renaming one
 in Settings doesn't touch history. The note is included in search.
+
+**Checklist marks (1.4).** Each `ChecklistItem` has a `state`: `open`, `done` (✓), `failed` (✗: failed, or "no" to
+a yes/no item) or `unverified` (~: couldn't be verified, or still in progress). `checked` stays for older clients and
+is true only for `done`; `checkedAt` is when the current mark was set (null while open). Tiles count
+`checklistDone` (answered items: done plus failed), `checklistFailed`, `checklistUnverified` and `checklistTotal`.
 
 ## Phase 3: search, calendar, recurring maintenance
 

@@ -1,4 +1,14 @@
-import type { ActivityType, CardKind, CardSource, ColumnRole, Level, Priority, RequestFieldKind, Severity } from './constants';
+import type {
+  ActivityType,
+  CardKind,
+  CardSource,
+  ChecklistItemState,
+  ColumnRole,
+  Level,
+  Priority,
+  RequestFieldKind,
+  Severity,
+} from './constants';
 import type { NotifyChannel, TokenScope } from './schemas';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
@@ -77,8 +87,13 @@ export interface CardTile {
   labelIds: number[];
   attachmentCount: number;
   linkCount: number;
+  /** Answered checklist items: done (✓) plus failed (✗). */
   checklistDone: number;
   checklistTotal: number;
+  /** Checklist items marked failed (✗). Also counted in checklistDone. */
+  checklistFailed: number;
+  /** Checklist items marked unverified (~). Not counted in checklistDone. */
+  checklistUnverified: number;
   /** Open cards blocking this one (not done, not in Trash); it can't be completed while > 0. */
   blockedBy: number;
   version: number;
@@ -106,7 +121,10 @@ export interface CardDetail extends CardTile {
 export interface ChecklistItem {
   id: number;
   text: string;
+  state: ChecklistItemState;
+  /** True only when state is 'done' (kept for tabs still running an older bundle). */
   checked: boolean;
+  /** When the current mark was set; null while open. */
   checkedAt: IsoTimestamp | null;
   position: number;
 }
@@ -220,7 +238,8 @@ export interface LabelRef {
  * - deleted/undeleted/archived/restored: { column: ColumnRef }
  * - completion_changed:  { from: IsoTimestamp|null, to: IsoTimestamp|null }
  * - checklist_added/removed: { checklistId, title }
- * - checklist_item_checked/unchecked: { checklistId, checklist, itemId, text }
+ * - checklist_item_checked/unchecked: { checklistId, checklist, itemId, text } (now done / now open)
+ * - checklist_item_marked: { checklistId, checklist, itemId, text, state: 'failed'|'unverified' }
  * - attachment_added/removed: { attachmentId, name, sizeBytes }
  * - linked/unlinked:     { linkId, direction: LinkDirection, otherId, otherTitle }
  * - worklog:             {} (the text is bodyMd; occurredAt may be backdated)
