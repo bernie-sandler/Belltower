@@ -47,7 +47,7 @@ It's built for small setups where a full help desk is overkill and a sticky note
 ## Features
 
 - **Board view:** a Trello-style board for moving tickets from Triage to Done, with columns you can rename, add, or reorder
-- **Detailed tickets:** priority, severity, due dates, checklists, attachments, and links between related tickets
+- **Detailed tickets:** priority, severity, due dates, checklists (each step done, failed or unverified), attachments, and links between related tickets
 - **Labels:** tag tickets by area, like Network, Storage, or Docker
 - **History and work log:** every change is recorded automatically, and you can add your own notes, backdated if needed
 - **Search and calendar:** search everything, including archived tickets, or see what was due and what got done by month or week

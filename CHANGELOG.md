@@ -4,6 +4,18 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.4.0: Not every check passes
+
+- **Checklist marks.** Clicking a checklist item now cycles through three marks, then back to empty: ✓ done, ✗ failed
+  (or "no" to a yes/no question), and ~ couldn't verify or still in progress.
+  - ✓ and ✗ both count toward progress. The card's progress bar shows ✓ in green and ✗ in red.
+  - On the board, a ticket's checklist badge turns red when any item failed and yellow when any couldn't be verified,
+    so a failure doesn't hide behind "5/5".
+  - Clicking through several marks quickly records only the one you stop on in the history.
+- **Upgrading.** Items checked before 1.4 show as ✓, the automation API hasn't changed, and backups from every
+  earlier version restore. The database moves to layout 8, so going back to 1.3 means putting back the copy saved
+  before the upgrade (see [docs/UPGRADING.md](docs/UPGRADING.md#if-something-goes-wrong)).
+
 ## 1.3.0: Keeping everyone in the loop
 
 - **Status links for people who file tickets.** After sending a ticket from the submit page, people get a link they
