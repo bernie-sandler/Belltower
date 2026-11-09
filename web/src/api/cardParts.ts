@@ -11,9 +11,13 @@ import {
   type CardDetail,
   type CardKind,
   type CardSummary,
+  type ChecklistItem,
+  type ChecklistItemState,
   type LinkDirection,
   type TextPreview,
 } from '@tt/shared';
+import { useEffect, useRef, useState } from 'react';
+import { itemStateIn, nextState, withItemState } from '../lib/checkState';
 import { applyCardDetail } from './cards';
 import { api, ApiError } from './client';
 import { qk } from './keys';
@@ -39,6 +43,22 @@ function useCardChange<V>(cardId: number, fn: (v: V) => Promise<CardDetail>) {
 
 // ---- checklists ----
 
+/** How long an item has to rest after a click before its mark is saved. */
+export const MARK_SAVE_DELAY_MS = 600;
+
+interface Mark {
+  /** The mark the user picked last. */
+  state: ChecklistItemState;
+  /** Unfinished work for the item: a burst waiting for its timer, plus saves not yet answered. */
+  pending: number;
+}
+
+interface Burst {
+  /** The mark the item had before the burst's first click. */
+  from: ChecklistItemState;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export function useChecklistActions(cardId: number) {
   const qc = useQueryClient();
   const addList = useCardChange(cardId, (title: string) => api.post<CardDetail>(`/api/cards/${cardId}/checklists`, { title }));
@@ -57,35 +77,74 @@ export function useChecklistActions(cardId: number) {
     api.put<CardDetail>(`/api/checklists/${v.listId}/items/order`, { ids: v.ids }),
   );
 
-  // Ticking a box should feel instant: flip it in the cache first, undo on failure.
-  const toggle = useMutation({
+  // Clicking an item cycles its mark (open, ✓, ✗, ~). Each click shows at once, but the mark is
+  // saved only after the item rests for MARK_SAVE_DELAY_MS, and not at all if it ended where it
+  // started: the activity log is append-only, so clicking through ✓ ✗ ~ mustn't leave three
+  // entries. Saves flushed on unmount still settle into these maps after the component is gone.
+  const [marks] = useState(() => new Map<number, Mark>());
+  const [bursts] = useState(() => new Map<number, Burst>());
+
+  /** The server's card with the marks it hasn't confirmed yet laid over it, so they don't flicker back. */
+  const withMarks = (card: CardDetail) => {
+    let c = card;
+    for (const [id, m] of marks) c = withItemState(c, id, m.state);
+    return c;
+  };
+
+  const settle = (id: number) => {
+    const m = marks.get(id);
+    if (m && --m.pending <= 0) marks.delete(id);
+  };
+
+  // One scope keeps the saves in click order.
+  const saveMark = useMutation({
     scope: { id: `card-${cardId}-checks` },
-    mutationFn: (v: { id: number; checked: boolean }) =>
-      api.patch<CardDetail>(`/api/checklist-items/${v.id}`, { checked: v.checked }),
-    onMutate: (v) => {
-      qc.setQueryData<CardDetail>(qk.card(cardId), (c) =>
-        c
-          ? {
-              ...c,
-              checklistDone: c.checklistDone + (v.checked ? 1 : -1),
-              checklists: c.checklists.map((l) => ({
-                ...l,
-                items: l.items.map((i) => (i.id === v.id ? { ...i, checked: v.checked } : i)),
-              })),
-            }
-          : c,
-      );
-    },
-    onSuccess: (card) => {
-      applyCardDetail(qc, card);
+    mutationFn: (v: { id: number; state: ChecklistItemState }) =>
+      api.patch<CardDetail>(`/api/checklist-items/${v.id}`, { state: v.state }),
+    onSuccess: (card, v) => {
+      settle(v.id);
+      applyCardDetail(qc, withMarks(card));
       invalidateActivity(qc, cardId);
     },
-    onError: () => {
+    onError: (_err, v) => {
+      settle(v.id);
       void qc.invalidateQueries({ queryKey: qk.card(cardId) });
     },
   });
 
-  return { addList, renameList, deleteList, addItem, editItem, deleteItem, reorderItems, toggle };
+  const flush = (id: number) => {
+    const burst = bursts.get(id);
+    if (!burst) return;
+    clearTimeout(burst.timer);
+    bursts.delete(id);
+    const m = marks.get(id);
+    if (!m) return;
+    if (m.state === burst.from) settle(id);
+    else saveMark.mutate({ id, state: m.state });
+  };
+
+  const cycle = (item: ChecklistItem) => {
+    const current = itemStateIn(qc.getQueryData<CardDetail>(qk.card(cardId)), item.id) ?? item.state;
+    const state = nextState(current);
+    qc.setQueryData<CardDetail>(qk.card(cardId), (c) => (c ? withItemState(c, item.id, state) : c));
+    const burst = bursts.get(item.id);
+    if (burst) clearTimeout(burst.timer);
+    const m = marks.get(item.id) ?? { state, pending: 0 };
+    m.state = state;
+    if (!burst) m.pending++;
+    marks.set(item.id, m);
+    bursts.set(item.id, { from: burst?.from ?? current, timer: setTimeout(() => flush(item.id), MARK_SAVE_DELAY_MS) });
+  };
+
+  // Closing the card saves waiting marks right away. A flushed burst is gone, so an extra cleanup
+  // (StrictMode, Fast Refresh) can only save early: it can't send twice or lose a mark.
+  const flushRef = useRef(flush);
+  useEffect(() => {
+    flushRef.current = flush;
+  });
+  useEffect(() => () => [...bursts.keys()].forEach((id) => flushRef.current(id)), [bursts]);
+
+  return { addList, renameList, deleteList, addItem, editItem, deleteItem, reorderItems, cycle };
 }
 
 // ---- links ----

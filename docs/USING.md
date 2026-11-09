@@ -29,7 +29,9 @@ Inside a card you'll find:
 - **Priority** (P0–P3) and **severity** (S1–S4). Unsure about priority? The helper next to it asks how much is
   affected (impact) and how soon it matters (urgency), and works it out.
 - A **Markdown description** and a **due date** (with an optional time).
-- **Checklists** for the steps.
+- **Checklists** for the steps. Click an item to cycle its mark: ✓ done, ✗ failed (or "no" to a yes/no question),
+  ~ couldn't verify or still in progress, then back to empty. ✓ and ✗ count toward progress, and the card's badge on
+  the board turns red for any ✗ and yellow for any ~, so a failure doesn't hide behind "5/5".
 - **Attachments.** Drag files in, paste a screenshot, or pick a file. Images show inline and logs open in a viewer.
 - **Linked cards:** "related to", "blocks" or "blocked by". A card that's blocked by an open card moves to
   Blocked/Waiting by itself, and it can't be marked done until the blocker is.

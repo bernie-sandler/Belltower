@@ -146,6 +146,10 @@ export function activityText(entry: ActivityEntry): string {
       return `Checked ${quoted(str(d.text) ?? str(d.title))}`;
     case 'checklist_item_unchecked':
       return `Unchecked ${quoted(str(d.text) ?? str(d.title))}`;
+    case 'checklist_item_marked': {
+      const what = quoted(str(d.text) ?? str(d.title));
+      return d.state === 'failed' || d.state === 'unverified' ? `Marked ${what} ${d.state}` : `Marked ${what}`;
+    }
     case 'attachment_added':
       return `Attached ${quoted(str(d.name) ?? str(d.filename))}`;
     case 'attachment_removed':

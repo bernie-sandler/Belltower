@@ -230,6 +230,15 @@
   background: var(--success);
 }
 
+/* Checklist progress: done (green) over failed (red); both count as answered. */
+.progress-bar.is-done {
+  background: var(--success);
+}
+
+.progress-bar.is-failed {
+  background: var(--danger);
+}
+
 /* Checklists */
 .checklist + .checklist {
   margin-top: 20px;
@@ -252,6 +261,10 @@
   min-width: 34px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.checklist-progress.is-complete .checklist-pct {
+  color: var(--success-text);
 }
 
 .checklist-items {
@@ -285,22 +298,64 @@
   }
 }
 
+/* The whole row (box and text) is one button that cycles the item's mark. */
 .checklist-check {
   display: flex;
   flex: 1;
   align-items: flex-start;
   gap: 10px;
+  min-width: 0;
   min-height: var(--tap);
   padding: 6px 4px;
-  cursor: pointer;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
 }
 
-.checklist-check input {
+/* Inset, so the scrolling card body can't clip the ring. */
+.checklist-check:focus-visible {
+  outline-offset: -2px;
+}
+
+.checklist-check:disabled {
+  cursor: default;
+}
+
+/* Open: an empty outlined box. Marked: a colored fill with a dark glyph (✓ green, ✗ red, ~ yellow). */
+.check-box {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 18px;
   margin-top: 1px;
-  accent-color: var(--success);
+  border: 2px solid var(--border-input);
+  border-radius: 3px;
+  color: var(--on-color);
+  transition: background-color var(--dur), border-color var(--dur);
+}
+
+@media (hover: hover) {
+  .checklist-item.is-open .checklist-check:hover:not(:disabled) .check-box {
+    border-color: var(--text-strong);
+  }
+}
+
+.checklist-item.is-done .check-box {
+  border-color: var(--success);
+  background: var(--success);
+}
+
+.checklist-item.is-failed .check-box {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.checklist-item.is-unverified .check-box {
+  border-color: var(--warning);
+  background: var(--warning);
 }
 
 .checklist-text {
@@ -308,7 +363,8 @@
   overflow-wrap: anywhere;
 }
 
-.checklist-item.is-checked .checklist-text {
+/* Only done items fade: a failed or unverified one still needs reading. */
+.checklist-item.is-done .checklist-text {
   color: var(--muted);
   text-decoration: line-through;
 }
