@@ -221,6 +221,18 @@ export function openBlockers(ctx: Ctx, cardId: number): { id: number; title: str
   ).all(cardId) as { id: number; title: string }[];
 }
 
+/** Ids of every card that an open card blocks: openBlockers() for many cards in one query. */
+export function cardsWithOpenBlockers(ctx: Ctx): Set<number> {
+  const ids = stmt(
+    ctx.db,
+    `SELECT DISTINCT k.to_card_id FROM card_links k JOIN cards b ON b.id = k.from_card_id
+      WHERE k.type = 'blocks' AND b.deleted_at IS NULL AND b.completed_at IS NULL`,
+  )
+    .pluck()
+    .all() as number[];
+  return new Set(ids);
+}
+
 /** A blocked card can't be completed until every card blocking it is done. 409 `blocked`. */
 export function assertNotBlocked(ctx: Ctx, card: { id: number; title: string }): void {
   const blockers = openBlockers(ctx, card.id);

@@ -1,5 +1,5 @@
 // A ticket's state as people outside the board see it: the status page now, the dashboard summary
-// later. Kept in one place so they always agree. Checked in this order:
+// (GET /api/v1/summary). Kept in one place so they always agree. Checked in this order:
 //   done         completed
 //   waiting      in the blocked column, or blocked by an open card
 //   received     in the triage column, or the column the submit page files into
@@ -7,7 +7,7 @@
 
 import type { TicketState } from '@tt/shared';
 import { stmt } from '../db/connection';
-import { openBlockers } from './cardParts';
+import { cardsWithOpenBlockers, openBlockers } from './cardParts';
 import { getBlockedColumnId, getRoleColumn } from './columns';
 import type { Ctx } from './context';
 import { getSubmitSettings } from './settings';
@@ -25,13 +25,22 @@ export function stateColumns(ctx: Ctx): StateColumns {
   return { blocked: getBlockedColumnId(ctx), received };
 }
 
-export function ticketState(
-  ctx: Ctx,
-  card: { id: number; column_id: number; completed_at: string | null },
-  cols: StateColumns = stateColumns(ctx),
-): TicketState {
+type StateCard = { id: number; column_id: number; completed_at: string | null };
+
+function classify(card: StateCard, cols: StateColumns, hasOpenBlocker: boolean): TicketState {
   if (card.completed_at) return 'done';
-  if (card.column_id === cols.blocked || openBlockers(ctx, card.id).length > 0) return 'waiting';
+  if (card.column_id === cols.blocked || hasOpenBlocker) return 'waiting';
   if (cols.received.has(card.column_id)) return 'received';
   return 'in_progress';
+}
+
+export function ticketState(ctx: Ctx, card: StateCard, cols: StateColumns = stateColumns(ctx)): TicketState {
+  return classify(card, cols, !card.completed_at && openBlockers(ctx, card.id).length > 0);
+}
+
+/** The same rule for many cards, with a fixed number of queries. */
+export function ticketStates(ctx: Ctx, cards: readonly StateCard[]): TicketState[] {
+  const cols = stateColumns(ctx);
+  const blocked = cardsWithOpenBlockers(ctx);
+  return cards.map((c) => classify(c, cols, blocked.has(c.id)));
 }

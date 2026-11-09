@@ -251,6 +251,12 @@ ALTER TABLE cards ADD COLUMN resolution TEXT CHECK (resolution IS NULL OR length
 ALTER TABLE cards ADD COLUMN resolution_md TEXT NOT NULL DEFAULT '';
 `;
 
+// 1.3: read-only API tokens, for dashboards that only read GET /api/v1/summary. Existing tokens
+// keep doing everything they did ('full').
+const v7 = `
+ALTER TABLE api_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'full' CHECK (scope IN ('full', 'read'));
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -258,6 +264,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 4, name: 'work cards', sql: v4 },
   { version: 5, name: 'submit page and API tokens', sql: v5 },
   { version: 6, name: 'resolution notes', sql: v6 },
+  { version: 7, name: 'read-only API tokens', sql: v7 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

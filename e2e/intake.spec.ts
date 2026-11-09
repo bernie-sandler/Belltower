@@ -66,3 +66,22 @@ test('Settings: create an API token and use it like a monitor would', async ({ p
   await page.reload();
   await expect(page.locator('.token-list')).toContainText('last used');
 });
+
+test('Settings: a read-only token reads the summary and can’t open tickets', async ({ page, api: _signedIn, request }) => {
+  await page.goto('/settings');
+  await page.getByLabel('Only read ticket counts').check();
+  await page.getByLabel('New token for').fill(unique('Homepage'));
+  await page.getByRole('button', { name: 'Create token' }).click();
+  await expect(page.getByText('Homepage: an environment variable for its container')).toBeVisible();
+  const token = (await page.locator('.token-fresh .settings-link-url').first().textContent())!;
+  const auth = { Authorization: `Bearer ${token}` };
+
+  const summary = await request.get('/api/v1/summary', { headers: auth });
+  expect(summary.status()).toBe(200);
+  expect(await summary.json()).toMatchObject({ open: expect.any(Number), urgent: expect.any(Number), byPriority: expect.any(Object) });
+  const refused = await request.post('/api/v1/cards', { headers: auth, data: { title: unique('Not allowed') } });
+  expect(refused.status()).toBe(403);
+
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.locator('.token-list')).toContainText('read-only');
+});

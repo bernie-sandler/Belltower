@@ -66,5 +66,8 @@ together with the safety copy:
 4. Set `TT_VERSION` back to the version you came from and run `docker compose up -d`. Images go back to 1.2.1, so to
    return to anything older you'd have to build it yourself from its commit in the git history.
 
+For example, 1.3 upgrades the database to layout 7 (for read-only API tokens), so a 1.2 image refuses to start on it
+until you put the `pre-migrate-v6-to-v7-…db` copy back.
+
 Anything you changed after the upgrade is lost this way. Export a backup first if that matters, then open an issue so
 it can be fixed.

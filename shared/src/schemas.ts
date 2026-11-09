@@ -466,10 +466,15 @@ export const NotifyChannelBody = z.object({
 });
 export type NotifyChannelBody = z.infer<typeof NotifyChannelBody>;
 
+/** 'full': everything in /api/v1. 'read': GET only (dashboards); never completes tickets. */
+export const TOKEN_SCOPES = ['full', 'read'] as const;
+export type TokenScope = (typeof TOKEN_SCOPES)[number];
+
 export const ApiTokenBody = z.object({
   name: z.string().trim().min(1).max(60).refine(noNul, NUL_MESSAGE),
-  /** Lets "event": "resolved" mark the matching ticket done. */
+  /** Lets "event": "resolved" mark the matching ticket done. Ignored for read-only tokens. */
   canComplete: z.boolean().default(false),
+  scope: z.enum(TOKEN_SCOPES).default('full'),
 });
 export type ApiTokenBody = z.infer<typeof ApiTokenBody>;
 

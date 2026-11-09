@@ -6,6 +6,9 @@ from Uptime Kuma, Unraid's notifications, Home Assistant, or any script that can
 It's built for noisy monitors. A flapping service updates one ticket instead of opening twenty, and when the
 problem goes away the ticket can close itself.
 
+Going the other way, a dashboard like Homepage or Home Assistant can show how many tickets are open, urgent or
+overdue. See [Dashboards](#dashboards).
+
 The exact rules are in [API-V1.md](API-V1.md); this page is the friendly version.
 
 ## 1. Create a token
@@ -15,6 +18,7 @@ Go to **Settings → Automation**, give the token a name (say "Uptime Kuma"), an
 - **Copy it straight away.** It's shown once; the app only keeps a hash. It starts with `tt_`.
 - **Tick "Recoveries may mark the ticket done"** if this tool should close its own tickets when things recover.
   Without it, a recovery just adds a note and leaves closing to you.
+- For a dashboard, choose **Only read ticket counts**. A read-only token can read the counts and nothing else.
 - To stop a tool, **revoke** its token in the same place. It stops working immediately.
 
 Every request carries the token in a header:
@@ -123,6 +127,88 @@ rest_command:
 
 Call it from an automation with `service: rest_command.tower_ticket` and `data: { title: …, message: …, key: … }`.
 
+## Dashboards
+
+`GET /api/v1/summary` answers with ticket counts: open, by state, urgent, overdue, due today, done today and this week,
+and the age of the oldest open ticket. Every field is described in [API-V1.md](API-V1.md#get-apiv1summary).
+
+Create a **read-only** token for it (**Settings → Automation → Only read ticket counts**). The app shows these
+examples with your address and token filled in.
+
+The dashboard has to call Belltower from its own server, not from your browser: Belltower doesn't send CORS headers.
+Homepage and Home Assistant both work that way.
+
+### Homepage
+
+Give Homepage's container the token as an environment variable, so it isn't written into `services.yaml`:
+
+```
+HOMEPAGE_VAR_BELLTOWER_TOKEN=tt_…
+```
+
+Then add a service to one of your groups in `services.yaml`, using the
+[Custom API widget](https://gethomepage.dev/widgets/services/customapi/):
+
+```yaml
+- Belltower:
+    href: http://192.168.1.50:8080
+    widget:
+      type: customapi
+      url: http://192.168.1.50:8080/api/v1/summary
+      refreshInterval: 60000
+      headers:
+        Authorization: Bearer {{HOMEPAGE_VAR_BELLTOWER_TOKEN}}
+      mappings:
+        - field: open
+          label: Open
+        - field: urgent
+          label: Urgent
+        - field: overdue
+          label: Overdue
+        - field: completedToday
+          label: Done today
+```
+
+Swap in other fields if you like, such as `waiting` or `dueToday`.
+
+### Home Assistant
+
+In `secrets.yaml`:
+
+```yaml
+belltower_token: "Bearer tt_…"
+```
+
+and in `configuration.yaml`, a [RESTful sensor](https://www.home-assistant.io/integrations/rest/) that reads the
+summary once a minute:
+
+```yaml
+rest:
+  - resource: http://192.168.1.50:8080/api/v1/summary
+    scan_interval: 60
+    headers:
+      Authorization: !secret belltower_token
+    sensor:
+      - name: Belltower open tickets
+        value_template: "{{ value_json.open }}"
+        unit_of_measurement: tickets
+      - name: Belltower urgent tickets
+        value_template: "{{ value_json.urgent }}"
+        unit_of_measurement: tickets
+      - name: Belltower overdue
+        value_template: "{{ value_json.overdue }}"
+        unit_of_measurement: cards
+```
+
+The sensors work in automations like any other, for example to flash a light while `sensor.belltower_urgent_tickets`
+is above 0. If you also open tickets from Home Assistant (above), use a separate full token for that.
+
+### Homarr and others
+
+Anything that can call a JSON API from its server with an `Authorization` header can show the counts. Homarr's
+[Custom Widgets](https://homarr.dev/docs/management/custom-widgets) make server-side requests, for example. There's
+no ready-made definition for them yet.
+
 ## From Windows (PowerShell)
 
 The curl example above is for Linux, macOS and the Unraid shell; its `\` line breaks and single quotes don't work in
@@ -160,6 +246,8 @@ Belltower. Check these:
 
 **`401` "Send an API token".** The header is missing, mistyped, or the token was revoked. It has to be exactly
 `Authorization: Bearer tt_…`.
+
+**`403` "This token is read-only".** A dashboard token was used to open a ticket. Create a full token for that tool.
 
 **`429`.** More than 120 requests a minute from one token. A monitor stuck in a loop, usually. It's told when to
 retry.
