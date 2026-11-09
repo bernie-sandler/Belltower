@@ -97,7 +97,8 @@ generically.
 `discord_settings` (which includes the webhook URL, and the alert levels and summary time every channel uses),
 `notify_channels` (ntfy, Gotify and webhook addresses and tokens), `<channel>_last_delivery` and
 `<channel>_digest_last` for `discord`, `ntfy`, `gotify` and `webhook`,
-`resolution_reasons`, `blocked_column_id`, `app_tz_at_seed`, `seeded` and `request_types_seeded`.
+`resolution_reasons`, `blocked_column_id`, `status_link_secret` (signs ticket status links), `app_tz_at_seed`,
+`seeded` and `request_types_seeded`.
 
 ## What's left out
 
@@ -105,8 +106,8 @@ generically.
   ones already on the server, so it never locks you out.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.
 
-Because a backup does include the submit page's link, notification addresses and tokens and API token hashes, keep
-exports somewhere private.
+Because a backup does include the submit page's link, the secret that signs status links, notification addresses and
+tokens and API token hashes, keep exports somewhere private.
 
 ## Schema history
 

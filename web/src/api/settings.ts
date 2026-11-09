@@ -32,6 +32,8 @@ function useSettingsMutation<V>(method: 'put' | 'post', path: string) {
       qc.setQueryData(qk.settings, s);
       // The ticket format or blocked column may change what the board shows.
       void qc.invalidateQueries({ queryKey: qk.board });
+      // Turning the submit page on or off, or resetting links, changes cards' status links.
+      void qc.invalidateQueries({ queryKey: qk.statusLinks });
     },
   });
 }
@@ -39,6 +41,8 @@ function useSettingsMutation<V>(method: 'put' | 'post', path: string) {
 export const useSaveGeneral = () => useSettingsMutation<GeneralSettingsBody>('put', '/api/settings/general');
 export const useSaveSubmit = () => useSettingsMutation<SubmitSettingsBody>('put', '/api/settings/submit');
 export const useNewSubmitLink = () => useSettingsMutation<void>('post', '/api/settings/submit/new-link');
+/** Cuts off every ticket status link handed out so far. */
+export const useResetStatusLinks = () => useSettingsMutation<void>('post', '/api/settings/submit/reset-status-links');
 export const useSaveResolutions = () => useSettingsMutation<ResolutionReasonsBody>('put', '/api/settings/resolutions');
 export const useSaveDiscord = () => useSettingsMutation<DiscordSettingsBody>('put', '/api/settings/discord');
 /** What counts as urgent, and when the daily summary goes out (every channel). */

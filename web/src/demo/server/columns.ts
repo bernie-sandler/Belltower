@@ -123,6 +123,8 @@ export function deleteColumn(ctx: Ctx, id: number, targetColumnId?: number): voi
     }
   }
   ctx.s.columns = ctx.s.columns.filter((c) => c.id !== id);
+  // Like the server: a later column could get the same id and take the submit page's place.
+  if (ctx.s.settings.submit.columnId === id) ctx.s.settings.submit = { ...ctx.s.settings.submit, columnId: null };
   if (ctx.s.settings.blockedColumn === id) ctx.s.settings.blockedColumn = 'none';
   renumberColumns(ctx, [...ctx.s.columns].sort(byPosition).map((c) => c.id));
 }

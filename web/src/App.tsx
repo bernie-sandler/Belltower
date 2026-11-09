@@ -8,8 +8,9 @@ import { LoadingScreen } from './components/common/Status';
 import { Toaster } from './components/common/Toaster';
 import { AppShell } from './components/shell/AppShell';
 
-// The public submit page needs no sign-in and none of the board's code.
+// The public submit page and ticket status links need no sign-in and none of the board's code.
 const SubmitPage = lazy(() => import('./components/submit/SubmitPage').then((m) => ({ default: m.SubmitPage })));
+const StatusPage = lazy(() => import('./components/submit/StatusPage').then((m) => ({ default: m.StatusPage })));
 
 export function App() {
   return (
@@ -17,6 +18,14 @@ export function App() {
       <ErrorBoundary>
         <BrowserRouter>
           <Routes>
+            <Route
+              path="/submit/status/:id/:sig"
+              element={
+                <Suspense fallback={<LoadingScreen />}>
+                  <StatusPage />
+                </Suspense>
+              }
+            />
             <Route
               path="/submit/:key"
               element={

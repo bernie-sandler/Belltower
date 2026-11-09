@@ -20,6 +20,8 @@ const PUBLIC_ROUTES = new Set([
   // The submit page: its secret key is checked by the route (wrong key → 404).
   'GET /api/public/submit/:key',
   'POST /api/public/submit/:key',
+  // Status links: the signature in the address is checked by the route (wrong → 404).
+  'GET /api/public/status/:id/:sig',
 ]);
 
 /** Automation API: bearer tokens only (no cookies, no CSRF header, which tools like Uptime Kuma can't send). */

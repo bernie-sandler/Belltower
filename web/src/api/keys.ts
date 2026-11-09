@@ -18,4 +18,6 @@ export const qk = {
   settings: ['settings'] as const,
   requestTypes: ['requestTypes'] as const,
   tokens: ['tokens'] as const,
+  statusLinks: ['statusLink'] as const,
+  statusLink: (cardId: number) => ['statusLink', cardId] as const,
 };
