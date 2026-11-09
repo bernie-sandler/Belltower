@@ -51,8 +51,9 @@ It's built for small setups where a full help desk is overkill and a sticky note
 - **Labels:** tag tickets by area, like Network, Storage, or Docker
 - **History and work log:** every change is recorded automatically, and you can add your own notes, backdated if needed
 - **Search and calendar:** search everything, including archived tickets, or see what was due and what got done by month or week
-- **Ring the bell:** a simple page where other people can submit a ticket, without a login or access to your board
-- **Automation:** Uptime Kuma, Unraid, Home Assistant, or your own scripts can open tickets when something fails
+- **Seen this before?:** an open ticket lists similar finished ones and how each was fixed
+- **Ring the bell:** a simple page where other people can submit a ticket, without a login or access to your board, and check on it later through a status link
+- **Automation:** Uptime Kuma, Unraid, Home Assistant, or your own scripts can open tickets when something fails, and dashboards like Homepage can show ticket counts
 - **Notifications:** hear about urgent and blocked tickets, plus a daily summary of what's due, through Discord,
   ntfy, Gotify or any webhook
 - **Claude drafting (optional):** with your own Anthropic API key, describe a problem in your own words and review the ticket Claude writes
@@ -93,9 +94,9 @@ The full walkthrough (where the data should live, every setting) is in
 | [Using Belltower](docs/USING.md) | A tour of the board, cards, work cards, history, search and settings |
 | [Phone and remote access](docs/REMOTE-ACCESS.md) | Tailscale, Nginx Proxy Manager, the Home Screen app |
 | [Backups](docs/BACKUP.md) | Snapshots, export and restore, moving to a new server |
-| [Submit page](docs/SUBMIT-PAGE.md) | Letting other people file tickets |
+| [Submit page](docs/SUBMIT-PAGE.md) | Letting other people file tickets and check on them |
 | [Notifications](docs/NOTIFICATIONS.md) | Discord, ntfy, Gotify and webhooks: what gets announced and how to set it up |
-| [Automation](docs/AUTOMATION.md) | Uptime Kuma, Unraid, Home Assistant and scripts |
+| [Automation](docs/AUTOMATION.md) | Uptime Kuma, Unraid, Home Assistant, scripts and dashboards |
 | [Claude drafting](docs/AI-DRAFTING.md) | Turning a description into tickets, cost and privacy |
 | [Card import format](docs/CARD-IMPORT.md) | Creating cards from JSON (handy with any AI chat) |
 | [Automation API (v1)](docs/API-V1.md) | The stable API contract for tools and scripts |
