@@ -427,18 +427,61 @@ export const DiscordSettingsBody = z.object({
     .refine((s) => s === '' || DISCORD_WEBHOOK.test(s), 'Paste a Discord webhook URL (https://discord.com/api/webhooks/…)')
     .nullable(),
   events: z.object({ external: z.boolean(), critical: z.boolean(), digest: z.boolean(), blocked: z.boolean() }),
-  digestTime: LocalTime,
+  /**
+   * The alert levels and summary time are shared by every channel (PUT /api/settings/notify). Left
+   * out here, they keep their saved values; older clients still send them.
+   */
+  digestTime: LocalTime.optional(),
   /** "Urgent" means this priority or higher… */
-  alertPriority: z.enum(['critical', 'high', 'medium']).default('high'),
+  alertPriority: z.enum(['critical', 'high', 'medium']).optional(),
   /** …or this severity or worse. */
-  alertSeverity: z.enum(['blocker', 'major', 'minor']).default('blocker'),
+  alertSeverity: z.enum(['blocker', 'major', 'minor']).optional(),
 });
 export type DiscordSettingsBody = z.infer<typeof DiscordSettingsBody>;
 
+/** Notification channels besides Discord. */
+export const NOTIFY_CHANNELS = ['ntfy', 'gotify', 'webhook'] as const;
+export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
+
+const ChannelEvents = z.object({ external: z.boolean(), critical: z.boolean(), digest: z.boolean(), blocked: z.boolean() });
+
+/** PUT /api/settings/notify: what counts as urgent, and when the daily summary goes out (every channel). */
+export const NotifyAlertsBody = z.object({
+  digestTime: LocalTime,
+  alertPriority: z.enum(['critical', 'high', 'medium']),
+  alertSeverity: z.enum(['blocker', 'major', 'minor']),
+});
+export type NotifyAlertsBody = z.infer<typeof NotifyAlertsBody>;
+
+/** An http(s) address with no user name or password in it (the server parses it properly). */
+const HTTP_URL = /^https?:\/\/[^\s/?#@]+(?:[/?#]\S*)?$/i;
+const ChannelUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((s) => s === '' || HTTP_URL.test(s), 'Enter an http:// or https:// address (without a user name or password in it)');
+
+/**
+ * PUT /api/settings/notify/{ntfy|gotify|webhook}. `url` and `secret`: null keeps the saved value,
+ * '' removes it. The secret is ntfy's access token, Gotify's app token or the webhook's signing
+ * secret. Changing the address to another host clears a saved secret unless a new one is sent.
+ */
+export const NotifyChannelBody = z.object({
+  url: ChannelUrl.nullable(),
+  secret: z.string().trim().max(500).refine(noNul, NUL_MESSAGE).nullable(),
+  events: ChannelEvents,
+});
+export type NotifyChannelBody = z.infer<typeof NotifyChannelBody>;
+
+/** 'full': everything in /api/v1. 'read': GET only (dashboards); never completes tickets. */
+export const TOKEN_SCOPES = ['full', 'read'] as const;
+export type TokenScope = (typeof TOKEN_SCOPES)[number];
+
 export const ApiTokenBody = z.object({
   name: z.string().trim().min(1).max(60).refine(noNul, NUL_MESSAGE),
-  /** Lets "event": "resolved" mark the matching ticket done. */
+  /** Lets "event": "resolved" mark the matching ticket done. Ignored for read-only tokens. */
   canComplete: z.boolean().default(false),
+  scope: z.enum(TOKEN_SCOPES).default('full'),
 });
 export type ApiTokenBody = z.infer<typeof ApiTokenBody>;
 

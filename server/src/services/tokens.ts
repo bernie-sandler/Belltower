@@ -2,7 +2,7 @@
 // it's created; only its SHA-256 hash is stored, like session tokens.
 
 import { createHash, randomBytes } from 'node:crypto';
-import type { ApiTokenBody, ApiTokenInfo } from '@tt/shared';
+import type { ApiTokenBody, ApiTokenInfo, TokenScope } from '@tt/shared';
 import { stmt } from '../db/connection';
 import { notFound } from '../errors';
 import { nowIso, type Ctx } from './context';
@@ -13,6 +13,7 @@ interface Row {
   token_hash: string;
   prefix: string;
   can_complete: 0 | 1;
+  scope: TokenScope;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
@@ -25,6 +26,7 @@ const toInfo = (r: Row): ApiTokenInfo => ({
   name: r.name,
   prefix: r.prefix,
   canComplete: r.can_complete === 1,
+  scope: r.scope,
   createdAt: r.created_at,
   lastUsedAt: r.last_used_at,
   revokedAt: r.revoked_at,
@@ -34,15 +36,17 @@ export function listTokens(ctx: Ctx): ApiTokenInfo[] {
   return (stmt(ctx.db, 'SELECT * FROM api_tokens ORDER BY revoked_at IS NOT NULL, id DESC').all() as Row[]).map(toInfo);
 }
 
-/** Creates a token; the returned `token` is never retrievable again. */
-export function createToken(ctx: Ctx, body: ApiTokenBody): { token: string; info: ApiTokenInfo } {
+/** Creates a token; the returned `token` is never retrievable again. A read-only token can't complete tickets. */
+export function createToken(ctx: Ctx, body: Omit<ApiTokenBody, 'scope'> & { scope?: TokenScope }): { token: string; info: ApiTokenInfo } {
+  const scope = body.scope ?? 'full';
   const token = `tt_${randomBytes(24).toString('base64url')}`;
   const id = Number(
-    stmt(ctx.db, 'INSERT INTO api_tokens (name, token_hash, prefix, can_complete, created_at) VALUES (?, ?, ?, ?, ?)').run(
+    stmt(ctx.db, 'INSERT INTO api_tokens (name, token_hash, prefix, can_complete, scope, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
       body.name,
       hash(token),
       token.slice(0, 7),
-      body.canComplete ? 1 : 0,
+      body.canComplete && scope === 'full' ? 1 : 0,
+      scope,
       nowIso(ctx),
     ).lastInsertRowid,
   );
@@ -58,6 +62,7 @@ export interface TokenIdentity {
   id: number;
   name: string;
   canComplete: boolean;
+  scope: TokenScope;
 }
 
 /** The token's identity, or null for unknown or revoked tokens. Notes when it was last used. */
@@ -70,5 +75,5 @@ export function authenticateToken(ctx: Ctx, token: string): TokenIdentity | null
   if (!row.last_used_at || now - Date.parse(row.last_used_at) > 60_000) {
     stmt(ctx.db, 'UPDATE api_tokens SET last_used_at = ? WHERE id = ?').run(nowIso(ctx), row.id);
   }
-  return { id: row.id, name: row.name, canComplete: row.can_complete === 1 };
+  return { id: row.id, name: row.name, canComplete: row.can_complete === 1, scope: row.scope };
 }

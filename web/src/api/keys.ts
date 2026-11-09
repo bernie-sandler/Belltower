@@ -21,4 +21,6 @@ export const qk = {
   similar: ['similar'] as const,
   similarForCard: (id: number, updatedAt: string) => ['similar', 'card', id, updatedAt] as const,
   similarForText: (title: string, description: string) => ['similar', 'text', title, description] as const,
+  statusLinks: ['statusLink'] as const,
+  statusLink: (cardId: number) => ['statusLink', cardId] as const,
 };

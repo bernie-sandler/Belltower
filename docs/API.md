@@ -84,6 +84,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 | `POST /api/cards/:id/archive` | — | `CardDetail` | Only allowed for cards in the Done column (`409 not_done`). |
 | `POST /api/cards/:id/restore` | — | `CardDetail` | Un-archives the card to the bottom of its column. |
 | `GET /api/cards/:id/activity` | — | `ActivityEntry[]` | Newest first. |
+| `GET /api/cards/:id/status-link` | — | `StatusLinkInfo {path, active}` | The ticket's status page path (`/submit/status/<id>/<sig>`). `active` is false while the submit page is off. `409 not_ticket` for work cards, `409 deleted` in the Trash. Creates the signing secret the first time. |
 
 ## Card parts (Phase 2)
 
@@ -174,20 +175,26 @@ occurrence.
 
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
-| `GET /api/settings` | — | `SettingsResponse` | General, submit page (including its `key`), Discord (the webhook is never returned, only `webhookSet` and a masked `webhookHint`), and `blockedColumnId`. |
+| `GET /api/settings` | — | `SettingsResponse` | General, submit page (including its `key`), Discord (the webhook is never returned, only `webhookSet` and a masked `webhookHint`), `notify` (`alerts` shared by every channel, and `channels.ntfy/gotify/webhook` with `set`, `hint`, `secretSet`, `events`, `lastDelivery`; addresses and secrets are never returned), and `blockedColumnId`. |
 | `PUT /api/settings/general` | `GeneralSettingsBody {ticketFormat, appUrl, claudeModel}` | `SettingsResponse` | `ticketFormat` must end with `{N}` and can't contain `%` or `_`. |
 | `PUT /api/settings/submit` | `SubmitSettingsBody {enabled, columnId, pageTitle, intro}` | `SettingsResponse` | Turning the page on the first time creates its key. |
 | `POST /api/settings/submit/new-link` | — | `SettingsResponse` | A new key; the old link stops working. |
+| `POST /api/settings/submit/reset-status-links` | — | `SettingsResponse` | A new signing secret; every status link handed out so far stops working. |
 | `PUT /api/settings/resolutions` | `ResolutionReasonsBody {reasons}` | `SettingsResponse` | 1–12 reasons, each 1–40 characters, no duplicates (ignoring case). The first is the default. |
-| `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime}` | `SettingsResponse` | `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. |
-| `POST /api/settings/discord/test` | — | `{ok, message, settings}` | Sends a test message. |
+| `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime?, alertPriority?, alertSeverity?}` | `SettingsResponse` | `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. The optional fields keep their saved values when left out. |
+| `POST /api/settings/discord/test` · `POST /api/settings/discord/digest-now` | — | `{ok, message, settings}` | Sends a test message / today's summary. |
+| `PUT /api/settings/notify` | `NotifyAlertsBody {digestTime, alertPriority, alertSeverity}` | `SettingsResponse` | What counts as urgent and when the daily summary goes out, for every channel. |
+| `PUT /api/settings/notify/ntfy` · `…/gotify` · `…/webhook` | `NotifyChannelBody {url, secret, events}` | `SettingsResponse` | `url` and `secret`: `null` keeps the saved value, `''` removes it. `url` must be `http(s)` without a user name or password; for ntfy it's the topic's address. A new `url` on another host forgets the saved secret unless one is sent too. `secret` is ntfy's access token, Gotify's app token (required to send) or the webhook's signing secret. |
+| `POST /api/settings/notify/{ntfy\|gotify\|webhook}/test` · `…/digest-now` | — | `{ok, message, settings}` | Sends a test message / today's summary through that channel. `ok: false` with a message when it isn't set up or the send failed. `503` when the server runs without a notifier (tests). |
 | `GET /api/request-types` | — | `RequestType[]` | |
 | `POST /api/request-types` · `PUT /api/request-types/:id` | `RequestTypeBody` | `201` / `RequestType` | Questions: `{key, label, help, kind: short\|long\|choice\|multi\|datetime\|yesno, required, options}`; the title pattern may use `{summary}` and question keys. |
 | `PUT /api/request-types/order` · `DELETE /api/request-types/:id` | `{ids}` / — | `RequestType[]` / `204` | |
-| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` | — / `{name, canComplete}` / — | `ApiTokenInfo[]` / `201 {token, info}` / `204` | The token is only in the create response. Delete revokes. |
+| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` | — / `{name, canComplete, scope?}` / — | `ApiTokenInfo[]` / `201 {token, info}` / `204` | The token is only in the create response. Delete revokes. `scope` is `full` (default) or `read`; a `read` token only gets `GET /api/v1/summary` and never completes tickets. |
 | `GET /api/public/submit/:key` | — | `PublicSubmitConfig` | **No session.** `404` when the page is off or the key is wrong. |
-| `POST /api/public/submit/:key` | multipart: `data` (JSON `SubmitBody`) + up to 3 `screenshots` | `201 {ticketNo}` | **No session**, but needs `X-Requested-With`. `429 rate_limited` (5 per 10 min per address, 30 per hour overall). |
-| `POST /api/v1/cards` | one card in the import format + `dedupeKey?`, `event?` | `201`/`200 {status, card}` | **API token only** (`Authorization: Bearer tt_…`). See [AUTOMATION.md](AUTOMATION.md). |
+| `POST /api/public/submit/:key` | multipart: `data` (JSON `SubmitBody`) + up to 3 `screenshots` | `201 {ticketNo, statusPath}` | **No session**, but needs `X-Requested-With`. `429 rate_limited` (5 per 10 min per address, 30 per hour overall). `statusPath` is the new ticket's status page. |
+| `GET /api/public/status/:id/:sig` | — | `PublicTicketStatus {ticketNo, title, submittedAt, state, resolution, changedAt}` | **No session.** `state` is `received`, `in_progress`, `waiting` or `done`; `resolution` is the reason only. The same `404` for a bad signature, a work card, a card in the Trash or the page being off. `429 rate_limited` past 60 a minute per address. |
+| `GET /api/v1/summary` | — | `ApiSummary` | **API token only**, read-only tokens included. Ticket counts for dashboards; see [API-V1.md](API-V1.md#get-apiv1summary). |
+| `POST /api/v1/cards` | one card in the import format + `dedupeKey?`, `event?` | `201`/`200 {status, card}` | **API token only** (`Authorization: Bearer tt_…`), not read-only ones (`403 forbidden`). See [AUTOMATION.md](AUTOMATION.md). |
 | `POST /api/v1/hooks/uptime-kuma` | Uptime Kuma's webhook JSON | `{status, card}` | Query: `labels`, `priority`, `severity`, `column`. |
 
 ## Health

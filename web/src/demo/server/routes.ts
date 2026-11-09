@@ -24,6 +24,8 @@ import {
   CSRF_VALUE,
   DeleteColumnQuery,
   DiscordSettingsBody,
+  NotifyAlertsBody,
+  NotifyChannelBody,
   DraftTicketBody,
   GeneralSettingsBody,
   LabelBody,
@@ -66,7 +68,9 @@ import {
   type SearchResult,
   type SettingsResponse,
   type SimilarTicket,
+  type StatusLinkInfo,
   type SubmitResult,
+  type PublicTicketStatus,
   type TextPreview,
   type TicketDraft,
 } from '@tt/shared';
@@ -109,6 +113,7 @@ import { createLabel, deleteLabel, reorderLabels, updateLabel } from './labels';
 import { createLink, deleteLink } from './links';
 import { createTemplate, deleteTemplate, getTemplate, listTemplates, runDueTemplates, runTemplateNow, updateTemplate } from './recurring';
 import { searchCards, similarCards } from './search';
+import { publicStatus, resetStatusLinks, statusLink } from './status';
 import {
   createRequestType,
   deleteRequestType,
@@ -117,6 +122,8 @@ import {
   reorderRequestTypes,
   setResolutionReasons,
   settingsResponse,
+  updateAlertSettings,
+  updateChannelEvents,
   updateDiscordSettings,
   updateGeneralSettings,
   updateRequestType,
@@ -176,6 +183,7 @@ export interface DemoApi {
   'POST /api/cards/:id/archive': CardDetail;
   'POST /api/cards/:id/restore': CardDetail;
   'GET /api/cards/:id/activity': ActivityEntry[];
+  'GET /api/cards/:id/status-link': StatusLinkInfo;
   // ---- card parts (routes/cardParts.ts) ----
   'GET /api/cards': CardSummary[];
   'POST /api/cards/archive-done': { archived: number };
@@ -221,9 +229,20 @@ export interface DemoApi {
   'PUT /api/settings/submit': SettingsResponse;
   'PUT /api/settings/resolutions': SettingsResponse;
   'POST /api/settings/submit/new-link': SettingsResponse;
+  'POST /api/settings/submit/reset-status-links': SettingsResponse;
   'PUT /api/settings/discord': SettingsResponse;
   'POST /api/settings/discord/test': { ok: boolean; message: string; settings: SettingsResponse };
   'POST /api/settings/discord/digest-now': { ok: boolean; message: string; settings: SettingsResponse };
+  'PUT /api/settings/notify': SettingsResponse;
+  'PUT /api/settings/notify/ntfy': SettingsResponse;
+  'PUT /api/settings/notify/gotify': SettingsResponse;
+  'PUT /api/settings/notify/webhook': SettingsResponse;
+  'POST /api/settings/notify/ntfy/test': never;
+  'POST /api/settings/notify/gotify/test': never;
+  'POST /api/settings/notify/webhook/test': never;
+  'POST /api/settings/notify/ntfy/digest-now': never;
+  'POST /api/settings/notify/gotify/digest-now': never;
+  'POST /api/settings/notify/webhook/digest-now': never;
   'GET /api/request-types': RequestType[];
   'POST /api/request-types': RequestType;
   'PUT /api/request-types/order': RequestType[];
@@ -235,12 +254,14 @@ export interface DemoApi {
   // ---- the public submit page (routes/submit.ts) ----
   'GET /api/public/submit/:key': PublicSubmitConfig;
   'POST /api/public/submit/:key': SubmitResult;
+  'GET /api/public/status/:id/:sig': PublicTicketStatus;
   // ---- Add ticket (routes/tickets.ts) ----
   'GET /api/ai/status': AiStatus;
   'POST /api/ai/draft': TicketDraft;
   'POST /api/ai/draft-many': BulkDraft;
   'POST /api/tickets': CardDetail;
   // ---- automation API (routes/v1.ts): bearer tokens from other tools, never the web app ----
+  'GET /api/v1/summary': never;
   'POST /api/v1/cards': never;
   'POST /api/v1/hooks/uptime-kuma': never;
 }
@@ -269,6 +290,18 @@ const id = (req: DemoRequest, name = 'id') => idParam(req.params, name);
 const NO_FILES = 'attachments need the server’s file storage';
 const NO_BACKUPS = 'backups and restores work on the server’s database';
 const NO_DISCORD = 'Discord notifications are sent by the server';
+const NO_NOTIFY = 'notifications are sent by the server';
+
+/** Saves a channel's event choices; an address or secret needs a real server. */
+const saveChannel = (channel: 'ntfy' | 'gotify' | 'webhook') => (ctx: Ctx, req: DemoRequest) => {
+  const body = parse(NotifyChannelBody, req.body);
+  if (body.url || body.secret) throw notInDemo(NO_NOTIFY);
+  updateChannelEvents(ctx, channel, body);
+  return settingsResponse(ctx);
+};
+const notSent = () => {
+  throw notInDemo(NO_NOTIFY);
+};
 const NO_CLAUDE = 'Claude drafting needs the server and an Anthropic API key';
 const NO_AUTOMATION = 'the automation API is for other tools calling a real server';
 
@@ -347,6 +380,8 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     getCardRow(ctx, id(req));
     return listActivity(ctx, id(req));
   }),
+  // Creates the signing secret the first time, like the server.
+  'GET /api/cards/:id/status-link': ok((ctx, req) => statusLink(ctx, id(req)), { writes: true }),
 
   'GET /api/cards': ok((ctx, req) => listCards(ctx, parse(CardListQuery, req.query))),
   'POST /api/cards/archive-done': ok((ctx) => ({ archived: archiveAllDone(ctx) })),
@@ -452,6 +487,10 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     regenerateSubmitKey(ctx);
     return settingsResponse(ctx);
   }),
+  'POST /api/settings/submit/reset-status-links': ok((ctx) => {
+    resetStatusLinks(ctx);
+    return settingsResponse(ctx);
+  }),
   'PUT /api/settings/discord': ok((ctx, req) => {
     const body = parse(DiscordSettingsBody, req.body);
     if (body.webhookUrl) throw notInDemo(NO_DISCORD);
@@ -464,6 +503,19 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'POST /api/settings/discord/digest-now': ok(() => {
     throw notInDemo(NO_DISCORD);
   }),
+  'PUT /api/settings/notify': ok((ctx, req) => {
+    updateAlertSettings(ctx, parse(NotifyAlertsBody, req.body));
+    return settingsResponse(ctx);
+  }),
+  'PUT /api/settings/notify/ntfy': ok(saveChannel('ntfy')),
+  'PUT /api/settings/notify/gotify': ok(saveChannel('gotify')),
+  'PUT /api/settings/notify/webhook': ok(saveChannel('webhook')),
+  'POST /api/settings/notify/ntfy/test': ok(notSent),
+  'POST /api/settings/notify/gotify/test': ok(notSent),
+  'POST /api/settings/notify/webhook/test': ok(notSent),
+  'POST /api/settings/notify/ntfy/digest-now': ok(notSent),
+  'POST /api/settings/notify/gotify/digest-now': ok(notSent),
+  'POST /api/settings/notify/webhook/digest-now': ok(notSent),
   'GET /api/request-types': ok((ctx) => listRequestTypes(ctx)),
   'POST /api/request-types': created((ctx, req) => createRequestType(ctx, parse(RequestTypeBody, req.body))),
   'PUT /api/request-types/order': ok((ctx, req) => reorderRequestTypes(ctx, parse(ReorderBody, req.body).ids)),
@@ -472,13 +524,14 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'GET /api/tokens': ok(() => []),
   'POST /api/tokens': ok((_ctx, req) => {
     parse(ApiTokenBody, req.body);
-    throw notInDemo(`API tokens are for tools like Uptime Kuma, and ${NO_AUTOMATION}`);
+    throw notInDemo(`API tokens are for tools like Uptime Kuma and dashboards like Homepage, and ${NO_AUTOMATION}`);
   }),
   'DELETE /api/tokens/:id': noContent(() => {
     throw notFound('Token not found');
   }),
 
   'GET /api/public/submit/:key': ok((ctx, req) => publicSubmitConfig(ctx, req.params.key ?? ''), { public: true }),
+  'GET /api/public/status/:id/:sig': ok((ctx, req) => publicStatus(ctx, req.params.id ?? '', req.params.sig ?? ''), { public: true }),
   'POST /api/public/submit/:key': {
     status: 201,
     public: true,
@@ -518,6 +571,9 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     return links?.length ? getCard(ctx, card.id) : card;
   }),
 
+  'GET /api/v1/summary': ok(() => {
+    throw notInDemo(NO_AUTOMATION);
+  }),
   'POST /api/v1/cards': ok(() => {
     throw notInDemo(NO_AUTOMATION);
   }),

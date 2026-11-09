@@ -24,6 +24,12 @@ test('someone without the password files a ticket through the submit page @mobil
   await v.getByRole('button', { name: 'Send' }).click();
   await expect(v.getByRole('heading', { name: 'Thanks!' })).toBeVisible();
   const ticketNo = (await v.locator('.submit-done .ticket-no').textContent())!;
+
+  // The thank-you screen's status link opens the ticket's status page, still signed out.
+  await v.locator('.submit-status-link a').click();
+  await expect(v.getByRole('heading', { name: 'We’ve got it' })).toBeVisible();
+  await expect(v.getByText(`Plex – Interstellar – ${summary}`)).toBeVisible();
+  await expect(v.getByText(ticketNo)).toBeVisible();
   await visitor.close();
 
   const card = (await api.board()).cards.find((c) => c.title === `Plex – Interstellar – ${summary}`);
@@ -59,4 +65,23 @@ test('Settings: create an API token and use it like a monitor would', async ({ p
   await page.getByRole('button', { name: 'Done' }).click();
   await page.reload();
   await expect(page.locator('.token-list')).toContainText('last used');
+});
+
+test('Settings: a read-only token reads the summary and can’t open tickets', async ({ page, api: _signedIn, request }) => {
+  await page.goto('/settings');
+  await page.getByLabel('Only read ticket counts').check();
+  await page.getByLabel('New token for').fill(unique('Homepage'));
+  await page.getByRole('button', { name: 'Create token' }).click();
+  await expect(page.getByText('Homepage: an environment variable for its container')).toBeVisible();
+  const token = (await page.locator('.token-fresh .settings-link-url').first().textContent())!;
+  const auth = { Authorization: `Bearer ${token}` };
+
+  const summary = await request.get('/api/v1/summary', { headers: auth });
+  expect(summary.status()).toBe(200);
+  expect(await summary.json()).toMatchObject({ open: expect.any(Number), urgent: expect.any(Number), byPriority: expect.any(Object) });
+  const refused = await request.post('/api/v1/cards', { headers: auth, data: { title: unique('Not allowed') } });
+  expect(refused.status()).toBe(403);
+
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.locator('.token-list')).toContainText('read-only');
 });

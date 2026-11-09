@@ -13,7 +13,7 @@ import { createLogger } from './logger';
 import type { Ctx } from './services/context';
 import { createClaudeDrafter } from './services/aiDraft';
 import { backupBeforeMigrate, dailySnapshot } from './services/backup';
-import { DiscordNotifier } from './services/notify';
+import { Notifier } from './services/notify';
 import { runDueTemplates } from './services/recurring';
 import { getGeneralSettings } from './services/settings';
 import { localDateOf } from './lib/localdate';
@@ -61,11 +61,11 @@ async function main(): Promise<void> {
   if (applied.length) log.info(`Applied database migration(s): ${applied.join(', ')}`);
 
   const ctx: Ctx = { db, clock: systemClock, tz: config.timeZone };
-  // Discord: events are handled after the change commits (and never break the request).
-  const notifier = new DiscordNotifier();
+  // Notifications: events are handled after the change commits (and never break the request).
+  const notifier = new Notifier();
   ctx.emit = (event) => {
     setImmediate(() => {
-      notifier.handle(ctx, event).catch((err) => log.warn(`Discord notification failed: ${(err as Error).message}`));
+      notifier.handle(ctx, event).catch((err) => log.warn(`Notification failed: ${(err as Error).message}`));
     });
   };
   const prepared = prepareData(ctx);
@@ -102,9 +102,9 @@ async function main(): Promise<void> {
   runTemplates();
   const scheduler = setInterval(runTemplates, 10 * 60 * 1000);
   scheduler.unref();
-  // Discord daily summary: checked every minute, sent once a day at or after the chosen time.
+  // Daily summary: checked every minute, sent once a day per channel at or after the chosen time.
   const digest = setInterval(() => {
-    notifier.dailyDigest(ctx, new Date()).catch((err) => log.warn(`Discord daily summary failed: ${(err as Error).message}`));
+    notifier.dailyDigest(ctx, new Date()).catch((err) => log.warn(`Daily summary failed: ${(err as Error).message}`));
   }, 60 * 1000);
   digest.unref();
   const housekeeping = setInterval(() => {

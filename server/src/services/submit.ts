@@ -2,7 +2,6 @@
 // files a ticket. The answers are appended to their description; the title follows the type's
 // pattern ("Plex – {title} – {summary}"). Tickets land in the column set in Settings.
 
-import { timingSafeEqual } from 'node:crypto';
 import {
   LIMITS,
   type PublicSubmitConfig,
@@ -12,24 +11,21 @@ import {
   type SubmitResult,
 } from '@tt/shared';
 import { stmt } from '../db/connection';
-import { AppError, badRequest, notFound } from '../errors';
+import { AppError, badRequest, pageNotFound } from '../errors';
+import { safeEqual } from '../lib/safeEqual';
 import { addAttachments, sniff, type UploadedFile } from './attachments';
 import { createCard } from './cards';
 import { getRoleColumn } from './columns';
 import type { Ctx } from './context';
 import { listRequestTypes } from './requestTypes';
 import { getSubmitSettings } from './settings';
-
-/** The page is off, or the key is wrong: both look like "no such page" from outside. */
-const NOT_FOUND = () => notFound('This page doesn’t exist');
+import { statusLink } from './status';
 
 /** Checks the key in the address (constant time). */
 export function checkSubmitKey(ctx: Ctx, key: string): void {
   const s = getSubmitSettings(ctx);
-  if (!s.enabled || !s.key) throw NOT_FOUND();
-  const a = Buffer.from(key);
-  const b = Buffer.from(s.key);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) throw NOT_FOUND();
+  // The page is off, or the key is wrong: both look like "no such page" from outside.
+  if (!s.enabled || !s.key || !safeEqual(key, s.key)) throw pageNotFound();
 }
 
 export function publicSubmitConfig(ctx: Ctx, key: string, maxUploadBytes: number): PublicSubmitConfig {
@@ -160,7 +156,7 @@ export function submitTicket(
   attachmentsDir: string,
 ): SubmitResult {
   checkSubmitKey(ctx, key);
-  if (body.website) return { ticketNo: null };
+  if (body.website) return { ticketNo: null, statusPath: null };
   if (files.length > LIMITS.submitFiles) throw new AppError(413, 'too_large', `Add at most ${LIMITS.submitFiles} screenshots`);
   for (const f of files) {
     if (sniff(f.head, f.originalName).kind !== 'image') {
@@ -192,5 +188,5 @@ export function submitTicket(
     },
   );
   if (files.length) addAttachments(ctx, attachmentsDir, card.id, files);
-  return { ticketNo: card.ticketNo };
+  return { ticketNo: card.ticketNo, statusPath: statusLink(ctx, card.id).path };
 }

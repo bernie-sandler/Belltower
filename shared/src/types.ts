@@ -1,4 +1,5 @@
 import type { ActivityType, CardKind, CardSource, ColumnRole, Level, Priority, RequestFieldKind, Severity } from './constants';
+import type { NotifyChannel, TokenScope } from './schemas';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
 export type IsoTimestamp = string;
@@ -444,6 +445,36 @@ export interface PublicSubmitConfig {
 
 export interface SubmitResult {
   ticketNo: string | null;
+  /** Where the submitter can check on the ticket later ("/submit/status/42/…"); null for the honeypot. */
+  statusPath: string | null;
+}
+
+/**
+ * A ticket's state as people outside see it (the status page). Checked in this order: done, then
+ * waiting (blocked column or an open blocker), then received (triage or the submit page's column),
+ * else in progress.
+ */
+export type TicketState = 'received' | 'waiting' | 'in_progress' | 'done';
+
+/** GET /api/public/status/:id/:sig — deliberately little: nothing private from the card. */
+export interface PublicTicketStatus {
+  ticketNo: string | null;
+  title: string;
+  submittedAt: IsoTimestamp;
+  state: TicketState;
+  /** The resolution reason once done ("Fixed"), never the note. */
+  resolution: string | null;
+  /**
+   * When it last moved, was completed or got a different resolution reason. Not every edit, so
+   * private notes don't show up.
+   */
+  changedAt: IsoTimestamp;
+}
+
+/** GET /api/cards/:id/status-link. `active` is false while the submit page is off (links answer 404). */
+export interface StatusLinkInfo {
+  path: string;
+  active: boolean;
 }
 
 export interface ApiTokenInfo {
@@ -452,9 +483,37 @@ export interface ApiTokenInfo {
   /** First characters, to tell tokens apart ("tt_a1b2…"). */
   prefix: string;
   canComplete: boolean;
+  /** 'read' tokens can only call GET routes (the dashboard summary). */
+  scope: TokenScope;
   createdAt: IsoTimestamp;
   lastUsedAt: IsoTimestamp | null;
   revokedAt: IsoTimestamp | null;
+}
+
+/**
+ * GET /api/v1/summary: ticket counts for dashboards. Part of the frozen v1 contract (docs/API-V1.md):
+ * fields may be added, never removed or redefined.
+ */
+export interface ApiSummary {
+  /** Open tickets on the board (not completed, archived or in the Trash) = received + inProgress + waiting. */
+  open: number;
+  received: number;
+  inProgress: number;
+  waiting: number;
+  /** Open tickets that are urgent under the notification alert levels. */
+  urgent: number;
+  /** Open cards past their due date / due today: the same cards as the daily summary (work cards included). */
+  overdue: number;
+  dueToday: number;
+  /** Tickets completed since local midnight / in the last 7 local days including today (archived ones too). */
+  completedToday: number;
+  completed7d: number;
+  /** Local days since the oldest open ticket was created, or null when nothing is open. */
+  oldestOpenDays: number | null;
+  /** Open tickets by priority and severity code. */
+  byPriority: { P0: number; P1: number; P2: number; P3: number; none: number };
+  bySeverity: { S1: number; S2: number; S3: number; S4: number; none: number };
+  generatedAt: IsoTimestamp;
 }
 
 export interface SettingsResponse {
@@ -470,6 +529,22 @@ export interface SettingsResponse {
     alertSeverity: 'blocker' | 'major' | 'minor';
     lastDelivery: { at: IsoTimestamp; ok: boolean; message: string } | null;
   };
+  notify: {
+    /** Shared by every channel (they also still appear under `discord`). */
+    alerts: { digestTime: string; alertPriority: 'critical' | 'high' | 'medium'; alertSeverity: 'blocker' | 'major' | 'minor' };
+    channels: Record<NotifyChannel, NotifyChannelInfo>;
+  };
   blockedColumnId: number | null;
   resolutionReasons: string[];
+}
+
+/** A notification channel as Settings shows it. Saved addresses and secrets are never sent back. */
+export interface NotifyChannelInfo {
+  /** Ready to send: has an address (and, for Gotify, its app token). */
+  set: boolean;
+  /** Enough of the address to recognise it, not enough to use it ("https://ntfy.sh/…"). */
+  hint: string | null;
+  secretSet: boolean;
+  events: { external: boolean; critical: boolean; digest: boolean; blocked: boolean };
+  lastDelivery: { at: IsoTimestamp; ok: boolean; message: string } | null;
 }

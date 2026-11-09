@@ -4,6 +4,10 @@ import {
   DEFAULT_RESOLUTION_REASONS,
   type DiscordSettingsBody,
   type GeneralSettingsBody,
+  NOTIFY_CHANNELS,
+  type NotifyAlertsBody,
+  type NotifyChannel,
+  type NotifyChannelBody,
   type RequestType,
   type RequestTypeBody,
   type SettingsResponse,
@@ -55,10 +59,22 @@ export function updateDiscordSettings(ctx: Ctx, body: DiscordSettingsBody): void
   ctx.s.settings.discord = {
     webhookUrl: body.webhookUrl === null ? current.webhookUrl : body.webhookUrl || null,
     events: body.events,
-    digestTime: body.digestTime,
-    alertPriority: body.alertPriority,
-    alertSeverity: body.alertSeverity,
+    digestTime: body.digestTime ?? current.digestTime,
+    alertPriority: body.alertPriority ?? current.alertPriority,
+    alertSeverity: body.alertSeverity ?? current.alertSeverity,
   };
+}
+
+/** Like the server: the shared levels live with Discord's settings. */
+export function updateAlertSettings(ctx: Ctx, body: NotifyAlertsBody): void {
+  ctx.s.settings.discord = { ...ctx.s.settings.discord, ...body };
+}
+
+const CHANNEL_EVENTS = { external: true, critical: true, digest: false, blocked: false };
+
+/** The demo can't send, so only a channel's event choices are kept (the route refuses addresses). */
+export function updateChannelEvents(ctx: Ctx, channel: NotifyChannel, body: NotifyChannelBody): void {
+  ctx.s.settings.notifyChannels = { ...ctx.s.settings.notifyChannels, [channel]: { events: body.events } };
 }
 
 export function settingsResponse(ctx: Ctx): SettingsResponse {
@@ -75,6 +91,15 @@ export function settingsResponse(ctx: Ctx): SettingsResponse {
       alertPriority: discord.alertPriority,
       alertSeverity: discord.alertSeverity,
       lastDelivery: null,
+    },
+    notify: {
+      alerts: { digestTime: discord.digestTime, alertPriority: discord.alertPriority, alertSeverity: discord.alertSeverity },
+      channels: Object.fromEntries(
+        NOTIFY_CHANNELS.map((c) => [
+          c,
+          { set: false, hint: null, secretSet: false, events: { ...(ctx.s.settings.notifyChannels?.[c]?.events ?? CHANNEL_EVENTS) }, lastDelivery: null },
+        ]),
+      ) as SettingsResponse['notify']['channels'],
     },
     blockedColumnId: getBlockedColumnId(ctx),
     resolutionReasons: getResolutionReasons(ctx),

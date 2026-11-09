@@ -109,10 +109,10 @@ Tickets can also come from other people through the [submit page](SUBMIT-PAGE.md
 
 - **Appearance:** Light, Dark or System. This is saved per device, so the phone can follow the system while the
   desktop stays dark.
-- **General:** the ticket number format, the app's address (for links in Discord), the Claude model, and where
+- **General:** the ticket number format, the app's address (for links in notifications), the Claude model, and where
   blocked cards go.
 - **Resolution reasons:** the list offered on Mark done. The first one is the default.
-- **Submit page**, **Automation** tokens and **Discord notifications.**
+- **Submit page**, **Automation** tokens and **[Notifications](NOTIFICATIONS.md)** (Discord, ntfy, Gotify, webhook).
 - **Password** and the app's version.
 
 ## Keyboard shortcuts

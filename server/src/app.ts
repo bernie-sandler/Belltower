@@ -18,7 +18,7 @@ import { registerSubmitRoutes } from './http/routes/submit';
 import { registerTicketRoutes } from './http/routes/tickets';
 import { registerV1Routes } from './http/routes/v1';
 import type { TicketDrafter } from './services/aiDraft';
-import type { DiscordNotifier } from './services/notify';
+import type { Notifier } from './services/notify';
 import type { Ctx } from './services/context';
 
 export interface AppDeps {
@@ -30,7 +30,7 @@ export interface AppDeps {
   /** Claude ticket drafting; null when ANTHROPIC_API_KEY isn't set. */
   ai: TicketDrafter | null;
   /** Discord notifications (Settings → Send test uses it). Optional in tests. */
-  notifier?: DiscordNotifier;
+  notifier?: Notifier;
 }
 
 // Explicit CSP rather than helmet defaults: those add upgrade-insecure-requests and HSTS, which

@@ -33,6 +33,7 @@ import {
 } from '../../services/cards';
 import { createColumn, deleteColumn, renameColumn, reorderColumns, setBlockedColumn } from '../../services/columns';
 import { createLabel, deleteLabel, reorderLabels, updateLabel } from '../../services/labels';
+import { statusLink } from '../../services/status';
 import { idParam, parse } from '../util';
 
 export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
@@ -104,6 +105,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.post('/api/cards/:id/undelete', async (req) => undeleteCard(ctx, idParam(req)));
   app.post('/api/cards/:id/archive', async (req) => archiveCard(ctx, idParam(req)));
   app.post('/api/cards/:id/restore', async (req) => restoreCard(ctx, idParam(req)));
+  app.get('/api/cards/:id/status-link', async (req) => statusLink(ctx, idParam(req)));
   app.get('/api/cards/:id/activity', async (req) => {
     const id = idParam(req);
     getCard(ctx, id); // 404 for unknown cards

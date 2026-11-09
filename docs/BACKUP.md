@@ -33,7 +33,8 @@ back.
 - **Download JSON** is the data without attachment files. It's smaller, and handy for scripts.
 
 Your password and signed-in devices are never part of an export. Everything else is, including API token hashes,
-your Discord webhook address and the submit page's link, so keep exports somewhere private. (The format is
+your notification addresses and tokens (Discord, ntfy, Gotify, webhook) and the submit page's link, so keep exports
+somewhere private. (The format is
 documented in [BACKUP-FORMAT.md](BACKUP-FORMAT.md).)
 
 **Restoring** works on the same page. Choose a `.zip` or `.json` export, then:

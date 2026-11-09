@@ -117,6 +117,23 @@ function getCardTitle(ctx: Ctx, id: number): { id: number; title: string } {
   return { id, title: stmt(ctx.db, 'SELECT title FROM cards WHERE id = ?').pluck().get(id) as string };
 }
 
+/**
+ * The submit page files into a column chosen in Settings. Once that column is gone, forget it:
+ * ids can be handed out again, and a later column with the same id would silently take its place
+ * (tickets landing there, status links calling its cards "received"). Read raw because
+ * settings.ts imports this module.
+ */
+function forgetSubmitColumn(ctx: Ctx, id: number): void {
+  const raw = getSetting(ctx.db, 'submit_settings');
+  if (!raw) return;
+  try {
+    const submit = JSON.parse(raw) as { columnId?: number | null };
+    if (submit.columnId === id) setSetting(ctx.db, 'submit_settings', JSON.stringify({ ...submit, columnId: null }));
+  } catch {
+    /* unreadable settings fall back to the defaults anyway */
+  }
+}
+
 export function deleteColumn(ctx: Ctx, id: number, targetColumnId?: number): void {
   tx(ctx, () => {
     const col = getColumnRow(ctx, id);
@@ -160,6 +177,7 @@ export function deleteColumn(ctx: Ctx, id: number, targetColumnId?: number): voi
     }
     stmt(ctx.db, 'DELETE FROM columns WHERE id = ?').run(id);
     if (getSetting(ctx.db, BLOCKED_COLUMN_KEY) === String(id)) setSetting(ctx.db, BLOCKED_COLUMN_KEY, 'none');
+    forgetSubmitColumn(ctx, id);
     renumberColumns(ctx, stmt(ctx.db, 'SELECT id FROM columns ORDER BY position, id').pluck().all() as number[]);
   });
 }

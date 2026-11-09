@@ -232,6 +232,7 @@ describe('submit page over HTTP', () => {
     expect(res.statusCode).toBe(201);
     const ticketNo = res.json().ticketNo as string;
     expect(ticketNo).toMatch(/^\d{6}-\d+$/);
+    expect(res.json().statusPath).toMatch(/^\/submit\/status\/\d+\/[\w-]{22}$/);
 
     const id = app.ctx.db.prepare('SELECT id FROM cards WHERE ticket_no = ?').pluck().get(ticketNo) as number;
     const card = getCard(app.ctx, id);
@@ -251,7 +252,7 @@ describe('submit page over HTTP', () => {
     expect(bad.statusCode).toBe(400);
     const bot = await app.app.inject({ method: 'POST', url: `/api/public/submit/${key}`, ...multipart(submission(typeId, { website: 'http://spam' })) });
     expect(bot.statusCode).toBe(201);
-    expect(bot.json()).toEqual({ ticketNo: null });
+    expect(bot.json()).toEqual({ ticketNo: null, statusPath: null });
     expect(app.ctx.db.prepare('SELECT count(*) FROM cards').pluck().get()).toBe(0);
   });
 

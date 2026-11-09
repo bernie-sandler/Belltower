@@ -6,6 +6,7 @@ import type {
   CardKind,
   CardSource,
   ColumnRole,
+  NotifyChannel,
   Priority,
   RequestFieldDef,
   Severity,
@@ -163,6 +164,10 @@ export interface DemoSettings {
   blockedColumn: number | 'none' | null;
   /** null = the defaults. */
   resolutionReasons: string[] | null;
+  /** ntfy, Gotify, webhook: only their event choices (the demo can't send). Optional for older saved data. */
+  notifyChannels?: Partial<Record<NotifyChannel, { events: { external: boolean; critical: boolean; digest: boolean; blocked: boolean } }>>;
+  /** Signs ticket status links (status.ts). Optional, so data saved before it existed still loads. */
+  statusSecret?: string | null;
 }
 
 export type TableName =

@@ -87,15 +87,18 @@ definitions, with every constraint, are the migrations in
 | `activity_revisions` | Earlier versions of edited work-log entries | `activity_id`, `body_md`, `occurred_at`, `revised_at` |
 | `template_runs` | What each recurring template created, and when | `template_id`, `occurrence_date`, `outcome`, `card_id` |
 | `request_types` | Submit page request types | `name`, `title_pattern`, `fields` (JSON), `tag_label_ids` (JSON), `enabled` |
-| `api_tokens` | Automation tokens: **hashes only**, never the token itself | `name`, `token_hash`, `prefix`, `can_complete`, `revoked_at` |
+| `api_tokens` | Automation tokens: **hashes only**, never the token itself | `name`, `token_hash`, `prefix`, `can_complete`, `scope` (`full` or `read`), `revoked_at` |
 
 The shapes of `activity.data` for each event type are documented with `ActivityEntry` in
 [`shared/src/types.ts`](../shared/src/types.ts). New event types may appear in later versions, so treat unknown ones
 generically.
 
 **Settings keys** you'll see: `general_settings`, `submit_settings` (which includes the submit page's key),
-`discord_settings` (which includes the webhook URL), `discord_last_delivery`, `discord_digest_last`,
-`resolution_reasons`, `blocked_column_id`, `app_tz_at_seed`, `seeded` and `request_types_seeded`.
+`discord_settings` (which includes the webhook URL, and the alert levels and summary time every channel uses),
+`notify_channels` (ntfy, Gotify and webhook addresses and tokens), `<channel>_last_delivery` and
+`<channel>_digest_last` for `discord`, `ntfy`, `gotify` and `webhook`,
+`resolution_reasons`, `blocked_column_id`, `status_link_secret` (signs ticket status links), `app_tz_at_seed`,
+`seeded` and `request_types_seeded`.
 
 ## What's left out
 
@@ -103,8 +106,8 @@ generically.
   ones already on the server, so it never locks you out.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.
 
-Because a backup does include the submit page's link, the Discord webhook URL and token hashes, keep exports
-somewhere private.
+Because a backup does include the submit page's link, the secret that signs status links, notification addresses and
+tokens and API token hashes, keep exports somewhere private.
 
 ## Schema history
 
@@ -116,3 +119,4 @@ somewhere private.
 | 4 | 0.7 | `cards.kind`, `cards.parent_id` (work cards) |
 | 5 | 0.9 | `request_types`, `api_tokens` |
 | 6 | 0.10 | `cards.resolution`, `cards.resolution_md` |
+| 7 | 1.3 | `api_tokens.scope` (`full` or `read`; tokens from older backups come back as `full`) |
