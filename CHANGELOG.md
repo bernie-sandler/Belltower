@@ -28,7 +28,6 @@ the container log on start, and in every backup export.
   - **Settings → Automation** shows a ready-to-paste Homepage and Home Assistant setup for it. See
     [docs/AUTOMATION.md](docs/AUTOMATION.md#dashboards).
 - **Fixes:**
-  - Saving Discord settings without the alert levels no longer resets them.
   - A daily summary that fails to send now waits 30 minutes before trying again. Before, it retried every minute for
     the rest of the day.
   - Deleting the column the submit page files into could let a new column quietly receive submissions. The setting
