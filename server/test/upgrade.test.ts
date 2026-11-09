@@ -5,7 +5,7 @@
 // The old databases are built with the real migrations stopped at that version, so the tables
 // match what that release created.
 
-import { SearchQuery } from '@tt/shared';
+import { SearchQuery, type ChecklistItemState } from '@tt/shared';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import { LATEST_SCHEMA_VERSION } from '../src/db/schema';
 import { listActivity } from '../src/services/activity';
 import { backupBeforeMigrate, buildRestoreDb, exportData, type BackupData } from '../src/services/backup';
 import { completeCard, createCard, getBoard, getCard, updateCard } from '../src/services/cards';
+import { updateChecklistItem } from '../src/services/checklists';
 import type { Ctx } from '../src/services/context';
 import { createLink } from '../src/services/links';
 import { searchCards } from '../src/services/search';
@@ -76,7 +77,12 @@ function oldDatabase(v: number): DB {
   run('INSERT INTO card_labels (card_id, label_id) VALUES (?, ?)', disk, hardware);
   run(`INSERT INTO card_links (from_card_id, to_card_id, type, created_at) VALUES (?, ?, 'blocks', ?)`, order, disk, at(2));
   const list = run(`INSERT INTO checklists (card_id, title, position, created_at) VALUES (?, 'Steps', 0, ?)`, disk, at(2));
-  run(`INSERT INTO checklist_items (checklist_id, text, checked, checked_at, position, created_at) VALUES (?, 'Run a SMART long test', 1, ?, 0, ?)`, list, at(3), at(2));
+  const smart = run(`INSERT INTO checklist_items (checklist_id, text, checked, checked_at, position, created_at) VALUES (?, 'Run a SMART long test', 1, ?, 0, ?)`, list, at(3), at(2));
+  if (v >= 8) {
+    // 1.4 stores the mark as a state, and an item can be failed (checked stays 0).
+    db.prepare(`UPDATE checklist_items SET state = 'done' WHERE id = ?`).run(smart);
+    run(`INSERT INTO checklist_items (checklist_id, text, state, checked_at, position, created_at) VALUES (?, 'Swap the backplane', 'failed', ?, 1, ?)`, list, at(4), at(2));
+  }
   run(
     `INSERT INTO attachments (card_id, original_name, stored_name, mime_type, kind, size_bytes, sha256, created_at)
      VALUES (?, 'smart.txt', '0f8fad5b-d9cb-469f-a165-70867728950e', 'text/plain', 'text', 10, ?, ?)`,
@@ -129,8 +135,11 @@ function oldDatabase(v: number): DB {
 const count = (db: DB, table: string) => db.prepare(`SELECT count(*) FROM ${table}`).pluck().get() as number;
 const COUNTED = ['columns', 'labels', 'cards', 'card_labels', 'card_links', 'checklists', 'checklist_items', 'attachments', 'activity', 'activity_revisions', 'recurring_templates', 'template_runs'];
 
-/** Everything the app does with a board still works on the upgraded data. */
-function checkWorks(ctx: Ctx) {
+/**
+ * Everything the app does with a board still works on the upgraded data. `marks` is the drive card's
+ * checklist as it should come back (item text → state).
+ */
+function checkWorks(ctx: Ctx, marks: Record<string, ChecklistItemState>) {
   const db = ctx.db;
   expect(schemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
   expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
@@ -141,8 +150,22 @@ function checkWorks(ctx: Ctx) {
   expect(board.cards.map((c) => c.title)).not.toContain('Archived idea');
   for (const c of board.cards) expect(c.ticketNo).toMatch(/^\d{6}-\d+$/);
   const disk = board.cards.find((c) => c.title === 'Drive 3 CRC errors')!;
-  expect(disk).toMatchObject({ priority: 'high', blockedBy: 1, checklistTotal: 1, attachmentCount: 1, resolution: null });
-  expect(getCard(ctx, disk.id).description).toBe('UDMA CRC count climbing');
+  expect(disk).toMatchObject({ priority: 'high', blockedBy: 1, attachmentCount: 1, resolution: null });
+  const detail = getCard(ctx, disk.id);
+  expect(detail.description).toBe('UDMA CRC count climbing');
+
+  // Checked items from before 1.4 are done; the tile counts done and failed as answered.
+  const items = detail.checklists[0]!.items;
+  expect(Object.fromEntries(items.map((i) => [i.text, i.state]))).toEqual(marks);
+  expect(items[0]).toMatchObject({ text: 'Run a SMART long test', state: 'done', checked: true, checkedAt: at(3) });
+  for (const i of items) expect(i.checkedAt === null, i.text).toBe(i.state === 'open');
+  const marked = (...states: ChecklistItemState[]) => items.filter((i) => states.includes(i.state)).length;
+  expect(disk).toMatchObject({
+    checklistTotal: items.length,
+    checklistDone: marked('done', 'failed'),
+    checklistFailed: marked('failed'),
+    checklistUnverified: marked('unverified'),
+  });
 
   // Search covers what the old version stored (work log, checklist, description).
   expect(searchCards(ctx, SearchQuery.parse({ q: 'reseated cable' })).map((r) => r.id)).toEqual([disk.id]);
@@ -152,8 +175,9 @@ function checkWorks(ctx: Ctx) {
   expect(() => db.prepare('DELETE FROM activity WHERE card_id = ?').run(disk.id)).toThrow(/append-only/);
   expect(listActivity(ctx, disk.id).find((e) => e.kind === 'worklog')!.bodyMd).toBe('Reseated the SATA cable on drive 3');
 
-  // Newer features on old cards: severity, completing a blocker then the blocked card, resolutions.
+  // Newer features on old cards: severity, checklist marks, completing a blocker then the blocked card, resolutions.
   updateCard(ctx, disk.id, { severity: 'blocker' });
+  expect(updateChecklistItem(ctx, items[0]!.id, { state: 'unverified' })).toMatchObject({ checklistUnverified: 1 });
   completeCard(ctx, id('Order a SATA cable'), { includeChildren: false, resolution: { reason: 'Fixed', note: 'Arrived.' } });
   const doneDisk = completeCard(ctx, disk.id, { includeChildren: false, resolution: { reason: 'Fixed', note: 'New cable.' } }).card;
   expect(doneDisk).toMatchObject({ severity: 'blocker', resolution: 'Fixed', resolutionNote: 'New cable.' });
@@ -164,11 +188,12 @@ function checkWorks(ctx: Ctx) {
   createToken(ctx, { name: 'New token', canComplete: false });
   createToken(ctx, { name: 'Dashboard', canComplete: true, scope: 'read' });
 
-  // Tokens from before read-only tokens existed keep doing everything they did.
-  const scopes = (d: DB) => d.prepare('SELECT name, scope, can_complete FROM api_tokens WHERE name != ?').all('Dashboard');
-  for (const tk of scopes(db) as { scope: string }[]) expect(tk.scope).toBe('full');
+  // Tokens from before read-only tokens existed keep doing everything they did. Homepage was made
+  // read-only (schema 7 data on), Dashboard just now.
+  const scopes = (d: DB) => d.prepare('SELECT name, scope, can_complete FROM api_tokens ORDER BY id').all() as { name: string; scope: string }[];
+  for (const tk of scopes(db)) if (tk.name !== 'Dashboard' && tk.name !== 'Homepage') expect(tk.scope, tk.name).toBe('full');
 
-  // And it can be backed up and restored again, read-only tokens included.
+  // And it can be backed up and restored again, read-only tokens and checklist marks included.
   const data = exportData(ctx, 'test');
   const file = path.join(tempDir(), 'restored.db');
   const counts = buildRestoreDb(data, file, ctx.tz, ctx.clock);
@@ -177,6 +202,8 @@ function checkWorks(ctx: Ctx) {
   dbs.push(again);
   expect(again.prepare('SELECT scope, can_complete FROM api_tokens WHERE name = ?').get('Dashboard')).toEqual({ scope: 'read', can_complete: 0 });
   expect(scopes(again)).toEqual(scopes(db));
+  const itemMarks = (d: DB) => d.prepare('SELECT id, state, checked, checked_at FROM checklist_items ORDER BY id').all();
+  expect(itemMarks(again)).toEqual(itemMarks(db));
 }
 
 describe('upgrading a database left by an older version', () => {
@@ -195,11 +222,11 @@ describe('upgrading a database left by an older version', () => {
     expect(prepared.numbered).toBe(v >= 3 ? 0 : before.cards);
     for (const t of COUNTED) expect(count(db, t), t).toBe(before[t]);
     expect(count(db, 'request_types')).toBe(v >= 5 ? 1 : 3); // older installs get the default types
-    checkWorks(ctx);
+    checkWorks(ctx, { 'Run a SMART long test': 'done' });
   });
 });
 
-/** Turns a current export into what schema `v` exported: no tables or columns added after it. */
+/** Turns a current export into what schema `v` exported: no tables or columns added after it, and no values it couldn't store. */
 function asExportFrom(data: BackupData, v: number): BackupData {
   const out: BackupData = JSON.parse(JSON.stringify(data));
   out.schemaVersion = v;
@@ -209,6 +236,7 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     [4, 'cards', ['kind', 'parent_id']],
     [6, 'cards', ['resolution', 'resolution_md']],
     [7, 'api_tokens', ['scope']],
+    [8, 'checklist_items', ['state']],
   ];
   for (const [added, table, columns] of dropColumns) {
     if (v >= added) continue;
@@ -217,6 +245,10 @@ function asExportFrom(data: BackupData, v: number): BackupData {
   if (v < 5) {
     delete out.tables.request_types;
     delete out.tables.api_tokens;
+  }
+  if (v < 8) {
+    // Before 1.4 only checked items had a time.
+    for (const row of out.tables.checklist_items ?? []) if (row.checked === 0) row.checked_at = null;
   }
   return out;
 }
@@ -234,6 +266,20 @@ describe('restoring a backup exported by an older version', () => {
     const restored = openDatabase(file);
     dbs.push(restored);
     for (const tbl of COUNTED) expect(count(restored, tbl), tbl).toBe(count(db, tbl));
-    checkWorks({ db: restored, clock, tz: TZ });
+    // Before 1.4 the failed item was just not checked.
+    checkWorks({ db: restored, clock, tz: TZ }, { 'Run a SMART long test': 'done', 'Swap the backplane': 'open' });
+  });
+});
+
+describe('restoring a backup exported by this version', () => {
+  it('keeps every checklist mark, failed included', () => {
+    const db = oldDatabase(LATEST_SCHEMA_VERSION);
+    const src: Ctx = { db, clock, tz: TZ };
+    prepareData(src);
+    const file = path.join(tempDir(), 'restored.db');
+    buildRestoreDb(exportData(src, 'current'), file, TZ, clock);
+    const restored = openDatabase(file);
+    dbs.push(restored);
+    checkWorks({ db: restored, clock, tz: TZ }, { 'Run a SMART long test': 'done', 'Swap the backplane': 'failed' });
   });
 });

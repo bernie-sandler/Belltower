@@ -51,13 +51,19 @@ interface TileRow extends CardRow {
   label_ids: string | null;
   attachment_count: number;
   link_count: number;
-  checklist_done: number;
-  checklist_total: number;
+  /** JSON ChecklistCounts. */
+  checklist_counts: string;
   blocked_by: number;
   eff_parent_id: number | null;
   child_count: number;
   child_open: number;
 }
+
+/**
+ * A card's checklist items: all, answered (done + failed), failed, unverified. One subquery returns all
+ * four, because four separate count subqueries made a 2,000-ticket board noticeably slower.
+ */
+type ChecklistCounts = [total: number, done: number, failed: number, unverified: number];
 
 const TILE_SELECT = `
 SELECT c.*,
@@ -67,10 +73,9 @@ SELECT c.*,
   (SELECT count(*) FROM card_links k
      JOIN cards o ON o.id = CASE WHEN k.from_card_id = c.id THEN k.to_card_id ELSE k.from_card_id END
     WHERE (k.from_card_id = c.id OR k.to_card_id = c.id) AND o.deleted_at IS NULL) AS link_count,
-  (SELECT count(*) FROM checklist_items i JOIN checklists ch ON ch.id = i.checklist_id
-    WHERE ch.card_id = c.id AND i.checked = 1) AS checklist_done,
-  (SELECT count(*) FROM checklist_items i JOIN checklists ch ON ch.id = i.checklist_id
-    WHERE ch.card_id = c.id) AS checklist_total,
+  (SELECT json_array(count(*), count(*) FILTER (WHERE i.state IN ('done', 'failed')),
+          count(*) FILTER (WHERE i.state = 'failed'), count(*) FILTER (WHERE i.state = 'unverified'))
+     FROM checklist_items i JOIN checklists ch ON ch.id = i.checklist_id WHERE ch.card_id = c.id) AS checklist_counts,
   (SELECT count(*) FROM card_links k JOIN cards b ON b.id = k.from_card_id
     WHERE k.to_card_id = c.id AND k.type = 'blocks' AND b.deleted_at IS NULL AND b.completed_at IS NULL) AS blocked_by,
   (SELECT p.id FROM cards p WHERE p.id = c.parent_id AND p.deleted_at IS NULL AND p.archived_at IS NULL) AS eff_parent_id,
@@ -82,6 +87,7 @@ FROM cards c`;
 const VISIBLE = 'deleted_at IS NULL AND archived_at IS NULL';
 
 function toTile(r: TileRow): CardTile {
+  const [checklistTotal, checklistDone, checklistFailed, checklistUnverified] = JSON.parse(r.checklist_counts) as ChecklistCounts;
   return {
     id: r.id,
     ticketNo: r.ticket_no,
@@ -101,8 +107,10 @@ function toTile(r: TileRow): CardTile {
     labelIds: r.label_ids ? r.label_ids.split(',').map(Number) : [],
     attachmentCount: r.attachment_count,
     linkCount: r.link_count,
-    checklistDone: r.checklist_done,
-    checklistTotal: r.checklist_total,
+    checklistDone,
+    checklistTotal,
+    checklistFailed,
+    checklistUnverified,
     blockedBy: r.blocked_by,
     version: r.version,
   };

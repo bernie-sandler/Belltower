@@ -10,6 +10,7 @@ import type {
   CardSummary,
   Checklist,
   ChecklistItem,
+  ChecklistItemState,
   LinkDirection,
 } from '@tt/shared';
 import { stmt } from '../db/connection';
@@ -28,6 +29,8 @@ export interface ChecklistItemRow {
   id: number;
   checklist_id: number;
   text: string;
+  state: ChecklistItemState;
+  /** 1 only while state is 'done'; kept in step for older readers. */
   checked: 0 | 1;
   checked_at: string | null;
   position: number;
@@ -57,7 +60,8 @@ export interface LinkRow {
 const toItem = (r: ChecklistItemRow): ChecklistItem => ({
   id: r.id,
   text: r.text,
-  checked: r.checked === 1,
+  state: r.state,
+  checked: r.state === 'done',
   checkedAt: r.checked_at,
   position: r.position,
 });

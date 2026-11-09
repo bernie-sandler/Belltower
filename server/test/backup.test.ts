@@ -32,7 +32,12 @@ async function populate(t: TestApp, cookie: string) {
   const b = (await api('POST', '/api/cards', { title: 'Order replacement drive', columnId: done })).json() as CardDetail;
   let d = (await api('POST', `/api/cards/${a.id}/checklists`, { title: 'Steps' })).json() as CardDetail;
   d = (await api('POST', `/api/checklists/${d.checklists[0]!.id}/items`, { text: 'Reseat cable' })).json() as CardDetail;
-  await api('PATCH', `/api/checklist-items/${d.checklists[0]!.items[0]!.id}`, { checked: true });
+  d = (await api('POST', `/api/checklists/${d.checklists[0]!.id}/items`, { text: 'Swap the HBA' })).json() as CardDetail;
+  d = (await api('POST', `/api/checklists/${d.checklists[0]!.id}/items`, { text: 'Errors gone after a scrub?' })).json() as CardDetail;
+  const [reseat, hba, scrub] = d.checklists[0]!.items;
+  await api('PATCH', `/api/checklist-items/${reseat!.id}`, { checked: true });
+  await api('PATCH', `/api/checklist-items/${hba!.id}`, { state: 'failed' });
+  await api('PATCH', `/api/checklist-items/${scrub!.id}`, { state: 'unverified' });
   await api('POST', `/api/cards/${a.id}/links`, { otherCardId: b.id, direction: 'blocked_by' });
   const w = (await api('POST', `/api/cards/${a.id}/worklog`, { bodyMd: 'Swapped cable' })).json();
   await api('PATCH', `/api/activity/${w.id}`, { bodyMd: 'Swapped SATA cable' });
@@ -96,6 +101,8 @@ describe('backup round trip', () => {
 
     // Attachments are byte-identical, and search works on the restored data.
     const card = (await dstApi('GET', `/api/cards/${a.id}`)).json() as CardDetail;
+    expect(card.checklists[0]!.items.map((i) => i.state)).toEqual(['done', 'failed', 'unverified']);
+    expect(card).toMatchObject({ checklistDone: 2, checklistFailed: 1, checklistUnverified: 1, checklistTotal: 3 });
     const img = await dstApi('GET', `/api/attachments/${card.attachments[0]!.id}`);
     expect(img.rawPayload.equals(PNG)).toBe(true);
     expect((await dstApi('GET', '/api/search?q=sata')).json().map((r: { id: number }) => r.id)).toEqual([a.id]);

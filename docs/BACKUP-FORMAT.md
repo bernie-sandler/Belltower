@@ -66,7 +66,7 @@ Rows are ordered by `id`, or by their key for tables without one.
 
 ## Tables
 
-Listed in the order restore loads them (parents first). Columns are those of the current schema (6); the full
+Listed in the order restore loads them (parents first). Columns are those of the current schema (8); the full
 definitions, with every constraint, are the migrations in
 [`server/src/db/schema.ts`](../server/src/db/schema.ts).
 
@@ -80,7 +80,7 @@ definitions, with every constraint, are the migrations in
 | `cards` | Every card, including archived and trashed ones | `column_id`, `title`, `description_md`, `priority`, `severity`, `due_date`, `due_time`, `position`, `completed_at`, `archived_at`, `deleted_at`, `source` (`manual`, `recurring`, `api`), `source_ref` (an automation `dedupeKey`), `ticket_no`, `kind` (`ticket`, `work`), `parent_id`, `resolution`, `resolution_md` |
 | `card_labels` | Labels on cards | `card_id`, `label_id` |
 | `checklists` | Checklists | `card_id`, `title`, `position` |
-| `checklist_items` | Their items | `checklist_id`, `text`, `checked`, `checked_at`, `position` |
+| `checklist_items` | Their items | `checklist_id`, `text`, `state` (`open`, `done`, `failed`, `unverified`), `checked` (`1` only when `done`), `checked_at` (when the current mark was set), `position` |
 | `attachments` | Attachment metadata (the file is in the ZIP) | `card_id`, `original_name`, `stored_name` (UUID), `mime_type`, `kind` (`image`, `text`, `file`), `size_bytes`, `sha256` |
 | `card_links` | Links between cards | `from_card_id`, `to_card_id`, `type`: `blocks` (from blocks to) or `relates` (stored once, lower id first) |
 | `activity` | The history and work log | `card_id`, `kind` (`event`, `worklog`), `type`, `data` (JSON), `body_md` (work log text), `occurred_at`, `edited_at`, `retracted_at` |
@@ -120,3 +120,4 @@ tokens and API token hashes, keep exports somewhere private.
 | 5 | 0.9 | `request_types`, `api_tokens` |
 | 6 | 0.10 | `cards.resolution`, `cards.resolution_md` |
 | 7 | 1.3 | `api_tokens.scope` (`full` or `read`; tokens from older backups come back as `full`) |
+| 8 | 1.4 | `checklist_items.state` (`open`, `done`, `failed` or `unverified`; checked items from older backups come back as `done`) |

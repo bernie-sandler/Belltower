@@ -257,6 +257,14 @@ const v7 = `
 ALTER TABLE api_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT 'full' CHECK (scope IN ('full', 'read'));
 `;
 
+// 1.4: checklist items can be failed (✗) or unverified (~) as well as done. `checked` and
+// `checked_at` stay and are kept in step (checked = 1 only for 'done'), so older readers keep
+// working; items checked before this come back as 'done'.
+const v8 = `
+ALTER TABLE checklist_items ADD COLUMN state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'done', 'failed', 'unverified'));
+UPDATE checklist_items SET state = 'done' WHERE checked = 1;
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -265,6 +273,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 5, name: 'submit page and API tokens', sql: v5 },
   { version: 6, name: 'resolution notes', sql: v6 },
   { version: 7, name: 'read-only API tokens', sql: v7 },
+  { version: 8, name: 'checklist item states', sql: v8 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
