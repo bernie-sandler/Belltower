@@ -134,6 +134,12 @@ async function main(): Promise<void> {
     } catch (err) {
       log.error(err as Error, 'Error while closing HTTP server');
     }
+    // Personal notifications still waiting to be combined go out now (for a few seconds at most).
+    try {
+      await Promise.race([notifier.flushPersonal(ctx), new Promise((r) => setTimeout(r, 3000))]);
+    } catch (err) {
+      log.warn(`Sending waiting notifications failed: ${(err as Error).message}`);
+    }
     try {
       // Fold the WAL back into the main file so a copy of /data is self-contained.
       ctx.db.pragma('wal_checkpoint(TRUNCATE)');

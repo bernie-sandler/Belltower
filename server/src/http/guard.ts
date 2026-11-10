@@ -18,11 +18,18 @@ declare module 'fastify' {
   interface FastifyContextConfig {
     /** Only admins may call this route; members get 403 forbidden. */
     admin?: boolean;
+    /**
+     * Polled by the app on its own (the bell): checks the session without sliding its expiry, so a
+     * tab left open doesn't keep an idle session alive past its 12-hour timeout.
+     */
+    passive?: boolean;
   }
 }
 
 /** Route options for an admin-only route: `app.put('/api/…', ADMIN, handler)`. */
 export const ADMIN: RouteShorthandOptions = { config: { admin: true } };
+/** Route options for a route the app polls by itself (see FastifyContextConfig.passive). */
+export const PASSIVE: RouteShorthandOptions = { config: { passive: true } };
 
 const PUBLIC: Actor = { kind: 'public' };
 
@@ -103,7 +110,8 @@ export function clearSessionCookie(req: FastifyRequest, reply: FastifyReply, dep
 export function resolveSession(req: FastifyRequest, reply: FastifyReply, deps: AppDeps): SessionWithUser | null {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
-  const found = lookupSession(deps.baseCtx, { rememberDays: deps.config.sessionDays }, token);
+  const touch = req.routeOptions.config?.passive !== true;
+  const found = lookupSession(deps.baseCtx, { rememberDays: deps.config.sessionDays }, token, { touch });
   if (!found) {
     clearSessionCookie(req, reply, deps);
     return null;

@@ -29,7 +29,7 @@ import { getSetting, setSetting, stmt } from '../db/connection';
 import { localDateOf } from '../lib/localdate';
 import { localTimeOf } from '../lib/tz';
 import type { AppEvent, Ctx } from './context';
-import { notificationsById, prefsOf } from './notifications';
+import { notificationsById, personalTopicOk, prefsOf } from './notifications';
 import { findUser } from './users';
 import {
   channelReady,
@@ -199,6 +199,8 @@ export interface NotifierOptions {
   warn?: (message: string) => void;
 }
 
+const BAD_TOPIC = 'Your ntfy topic has to start with belltower- and can’t be the install’s own topic; pick another under Account';
+
 /** Why a personal channel can't be used yet. */
 export const NO_INSTALL_CHANNEL = {
   discord: 'This install has no Discord channel yet; an admin sets one up under Settings → Notifications',
@@ -340,11 +342,13 @@ export class Notifier {
 
   /** Holds new personal notifications per person for coalesceMs, then sends them together. */
   private queuePersonal(ctx: Ctx, ids: number[]): void {
-    // Rows that don't exist (the change was rolled back) are simply not found.
-    const rows = stmt(ctx.db, 'SELECT id, user_id FROM notifications WHERE id IN (SELECT value FROM json_each(?))').all(JSON.stringify(ids)) as {
-      id: number;
-      user_id: number;
-    }[];
+    // Rows that don't exist (the change was rolled back) are simply not found, and people with no
+    // Discord ID and no ntfy topic have nothing to wait for.
+    const rows = stmt(
+      ctx.db,
+      `SELECT n.id, n.user_id FROM notifications n JOIN users u ON u.id = n.user_id
+        WHERE n.id IN (SELECT value FROM json_each(?)) AND (u.discord_user_id IS NOT NULL OR u.ntfy_topic IS NOT NULL)`,
+    ).all(JSON.stringify(ids)) as { id: number; user_id: number }[];
     for (const r of rows) {
       const waiting = this.pending.get(r.user_id);
       if (waiting) {
@@ -359,7 +363,12 @@ export class Notifier {
     }
   }
 
-  /** Sends every personal notification still waiting, now (tests use it instead of waiting). */
+  /** How many people have personal notifications waiting (tests). */
+  get waitingPeople(): number {
+    return this.pending.size;
+  }
+
+  /** Sends every personal notification still waiting, now (at shutdown, and in tests instead of waiting). */
   async flushPersonal(ctx: Ctx): Promise<void> {
     await Promise.all([...this.pending.keys()].map((userId) => this.flushPerson(ctx, userId)));
   }
@@ -386,7 +395,7 @@ export class Notifier {
     }
     const ntfyItems = pick('ntfy');
     const ntfy = getChannelSettings(ctx, 'ntfy');
-    if (ntfyItems.length && user.ntfy_topic && channelReady('ntfy', ntfy)) {
+    if (ntfyItems.length && user.ntfy_topic && channelReady('ntfy', ntfy) && personalTopicOk(ctx, user.ntfy_topic)) {
       sends.push(this.sendPersonal(ctx, 'ntfy', personalNtfy(ntfy, user.ntfy_topic, ntfyItems, link), user.username));
     }
     await Promise.all(sends);
@@ -415,6 +424,7 @@ export class Notifier {
       if (!user.ntfy_topic) return null;
       const channel = getChannelSettings(ctx, 'ntfy');
       if (!channelReady('ntfy', channel)) return { ok: false, message: NO_INSTALL_CHANNEL.ntfy };
+      if (!personalTopicOk(ctx, user.ntfy_topic)) return { ok: false, message: BAD_TOPIC };
       return this.send(ctx, 'ntfy', personalNtfy(channel, user.ntfy_topic, [], none), false);
     };
     const [d, n] = await Promise.all([discord(), ntfy()]);

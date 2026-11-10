@@ -495,7 +495,8 @@ export function createImported(
         },
         { source: 'api', via: opts.via, ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}), external: opts.external ?? false },
       );
-      for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) });
+      // Imported notes are history: they notify nobody (old @mentions included) and don't make the importer watch.
+      for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) }, { quiet: true });
       if (c.resolution) resolveCard(ctx, detail.id, c.resolution);
       createdIds.set(item.index, detail.id);
     }

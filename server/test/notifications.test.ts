@@ -3,15 +3,18 @@
 
 import { DEFAULT_NOTIFY_PREFS, findMentions, type Actor, type NotifyPrefs } from '@tt/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { listActivity } from '../src/services/activity';
+import { importCards } from '../src/services/cardImport';
 import { archiveCard, completeCard, createCard, getCard, moveCard, moveCards, updateCard } from '../src/services/cards';
 import { withActor, type AppEvent, type Ctx } from '../src/services/context';
+import { intakeCard } from '../src/services/intake';
 import { listNotifications, markNotificationsRead, notifyPeople, pruneNotifications, watchCard } from '../src/services/notifications';
 import { Notifier, WEBHOOK_EVENTS } from '../src/services/notify';
 import { updateChannelSettings, updateDiscordSettings, updateGeneralSettings } from '../src/services/settings';
 import { createToken } from '../src/services/tokens';
 import { createUser, updateUser } from '../src/services/users';
 import { addWorklog, updateWorklog } from '../src/services/worklog';
-import { addPerson, client, columnId, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
+import { addPerson, client, columnId, loginAs, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
 
 let t: ReturnType<typeof makeCtx>;
 let events: AppEvent[];
@@ -104,6 +107,15 @@ describe('who is told about what', () => {
     expect(bell('carol')).toHaveLength(before + 1); // only "marked this done"
   });
 
+  it('someone who turned mentions (or assignments) off still hears about it as a watcher', () => {
+    person('erin', 'Erin', { mentioned: { inApp: false, discord: false, ntfy: false }, assigned: { inApp: false, discord: false, ntfy: false } });
+    const card = createCard(t.ctx, { title: 'UPS beeping' });
+    watchCard(t.ctx, card.id, people.erin!);
+    addWorklog(as('alice'), card.id, { bodyMd: 'Battery ordered, @erin' });
+    updateCard(as('alice'), card.id, { assigneeId: people.erin! });
+    expect(bell('erin')).toEqual(['watching: Alice assigned this to Erin', 'watching: Alice added a note: “Battery ordered, @erin”']);
+  });
+
   it('a card parked in the blocked column tells its watchers why', () => {
     const blocker = createCard(t.ctx, { title: 'Order the new drive' });
     const card = createCard(t.ctx, { title: 'Replace disk 3', columnId: columnId(t.ctx, 'In Progress') });
@@ -138,6 +150,35 @@ describe('who is told about what', () => {
     expect(getCard(as('alice'), imported.id).watching).toBe(false);
     expect(getCard(as('alice'), recurring.id).watching).toBe(false);
     expect(getCard(as('bob'), own.id).watching).toBe(false);
+  });
+});
+
+describe('imports are history', () => {
+  it('imported notes notify nobody, old @mentions included, and don’t make the importer watch', () => {
+    const text = JSON.stringify({
+      format: 'belltower/cards@1',
+      cards: [{ title: 'Old ticket', worklog: [{ text: 'Back then @bob swapped the PSU, cc @carol', at: '2026-10-01 10:00' }] }],
+    });
+    const [id] = importCards(as('alice'), text, false).created;
+    expect(bell('bob')).toEqual([]);
+    expect(bell('carol')).toEqual([]);
+    expect(watchers(id!)).toEqual([]);
+    expect(events.filter((e) => e.type === 'people_notified')).toEqual([]);
+    expect(listActivity(t.ctx, id!).find((e) => e.kind === 'worklog')!.bodyMd).toContain('@bob');
+  });
+
+  it('a new ticket through the automation API: its notes are quiet, but “Seen again” tells the watchers', () => {
+    person('dave', 'Dave', { new_unassigned: { inApp: true, discord: false, ntfy: false } });
+    const { info } = createToken(as('alice'), { name: 'Kuma', canComplete: false });
+    const token = { id: info.id, name: 'Kuma', canComplete: false, scope: 'full' as const, userId: people.alice! };
+    const kuma = actorAs({ kind: 'token', tokenId: info.id, userId: people.alice! });
+    const first = intakeCard(kuma, token, { title: 'NAS offline', dedupeKey: 'nas', worklog: [{ text: 'Paging @carol', at: '2026-10-09 20:15' }] });
+    const id = first.card!.id;
+    expect(bell('carol')).toEqual([]);
+    expect(bell('dave')).toEqual(['new_unassigned: New ticket from API token “Kuma”, not assigned yet']);
+    watchCard(t.ctx, id, people.carol!);
+    expect(intakeCard(kuma, token, { title: 'NAS offline', dedupeKey: 'nas' }).status).toBe('updated');
+    expect(bell('carol')).toEqual(['watching: API token “Kuma” added a note: “Seen again (reported by API token “Kuma”).”']);
   });
 });
 
@@ -194,6 +235,9 @@ describe('@mentions', () => {
     ['double-backtick code is not a mention', 'run ``echo `x` @sam`` @al', ['al']],
     ['fenced code is not a mention', 'before @kim\n```\nchown @sam file\n```\nafter @al', ['kim', 'al']],
     ['an unclosed fence runs to the end', 'see\n~~~\n@sam\n@kim', []],
+    ['an indented code block is not a mention', 'before @kim\n\n    chown @sam file\n\tssh @al\n\nafter @al', ['kim', 'al']],
+    ['an indented line right after text continues the paragraph', 'text\n    cc @sam', ['sam']],
+    ['an indented line after a list item continues the item', '- item\n\n    more for @sam', ['sam']],
     ['unknown names are ignored', '@nobody @bob_2', ['bob_2']],
     ['a lone @ or one letter is nothing', '@ and @a', []],
   ])('%s', (_name, text, expected) => {
@@ -239,6 +283,13 @@ describe('the bell', () => {
     expect(list.latestId).toBe(list.items[0]!.id);
     expect(listNotifications(t.ctx, people.bob!, { limit: 30, after: list.items[1]!.id }).items).toHaveLength(1);
     expect(markNotificationsRead(t.ctx, people.bob!, { ids: [list.items[1]!.id] })).toBe(1);
+    // Opening a card marks what's about it read (someone else's about the same card stay unread).
+    updateCard(as('alice'), b.id, { assigneeId: people.carol! });
+    expect(markNotificationsRead(t.ctx, people.carol!, { cardId: a.id })).toBe(1);
+    expect(markNotificationsRead(t.ctx, people.carol!, { cardId: b.id })).toBe(0);
+    expect(markNotificationsRead(t.ctx, people.bob!, { cardId: b.id })).toBe(0);
+    expect(unread('bob')).toBe(0);
+    t.ctx.db.prepare('UPDATE notifications SET read_at = NULL WHERE id = ?').run(list.items[0]!.id);
     expect(markNotificationsRead(t.ctx, people.carol!, { all: true })).toBe(0); // someone else's stay unread
     expect(unread('bob')).toBe(1);
     expect(markNotificationsRead(t.ctx, people.bob!, { all: true })).toBe(0);
@@ -299,7 +350,7 @@ describe('personal channels', () => {
     updateChannelSettings(t.ctx, 'ntfy', { url: 'https://push.example/ntfy/install-topic?auth=x', secret: 'tk_install', events: { external: false, critical: false, digest: false, blocked: false } });
     t.ctx.db
       .prepare('UPDATE users SET discord_user_id = ?, ntfy_topic = ?, notify_prefs = ? WHERE id = ?')
-      .run(BOB_DISCORD, 'bob-x7Kq2', JSON.stringify({ assigned: everywhere, mentioned: everywhere, watching: everywhere }), people.bob!);
+      .run(BOB_DISCORD, 'belltower-bob-x7Kq2', JSON.stringify({ assigned: everywhere, mentioned: everywhere, watching: everywhere }), people.bob!);
   });
 
   /** Hands the events so far to the notifier, as index.ts does after each commit, then sends what's waiting. */
@@ -330,7 +381,7 @@ describe('personal channels', () => {
     expect(ntfy[0]!.url).toBe('https://push.example/ntfy/?auth=x');
     expect(ntfy[0]!.headers.Authorization).toBe('Bearer tk_install');
     expect(ntfy[0]!.json).toEqual({
-      topic: 'bob-x7Kq2',
+      topic: 'belltower-bob-x7Kq2',
       title: `${card.ticketNo} — Router [reboot]`,
       message: 'Alice mentioned you: “Can you look, @bob?”',
       priority: 3,
@@ -374,6 +425,18 @@ describe('personal channels', () => {
     expect(sent).toHaveLength(2);
   });
 
+  it('only holds notifications for people with a Discord ID or an ntfy topic', async () => {
+    const card = createCard(t.ctx, { title: 'Queue' });
+    updateCard(as('alice'), card.id, { assigneeId: people.carol! }); // Carol has neither
+    for (const e of events.splice(0)) await notifier.handle(t.ctx, e);
+    expect(notifier.waitingPeople).toBe(0);
+    updateCard(as('alice'), card.id, { assigneeId: people.bob! });
+    for (const e of events.splice(0)) await notifier.handle(t.ctx, e);
+    expect(notifier.waitingPeople).toBe(1);
+    await notifier.flushPersonal(t.ctx);
+    expect(notifier.waitingPeople).toBe(0);
+  });
+
   it('only on the channels picked for that event, and only once the person has an ID or topic', async () => {
     t.ctx.db
       .prepare('UPDATE users SET notify_prefs = ?, ntfy_topic = NULL WHERE id = ?')
@@ -404,13 +467,25 @@ describe('personal channels', () => {
     expect(sent).toEqual([]);
   });
 
+  it('never publishes to a topic outside belltower-…, or to the install’s own (say, from a restored backup)', async () => {
+    t.ctx.db.prepare('UPDATE users SET ntfy_topic = ? WHERE id = ?').run('someone-elses-topic', people.bob!);
+    const card = createCard(t.ctx, { title: 'Sneaky' });
+    updateCard(as('alice'), card.id, { assigneeId: people.bob! });
+    await deliver();
+    expect(sent.map((s) => s.url)).toEqual([WEBHOOK]);
+    expect((await notifier.sendPersonalTest(t.ctx, people.bob!)).ntfy).toEqual({ ok: false, message: expect.stringMatching(/start with belltower-/) });
+    updateChannelSettings(t.ctx, 'ntfy', { url: 'https://push.example/ntfy/belltower-shared', secret: null, events: { external: false, critical: false, digest: false, blocked: false } });
+    t.ctx.db.prepare('UPDATE users SET ntfy_topic = ? WHERE id = ?').run('belltower-shared', people.bob!);
+    expect((await notifier.sendPersonalTest(t.ctx, people.bob!)).ntfy!.ok).toBe(false);
+  });
+
   it('Send me a test: each channel filled in, explaining when the install has no such channel', async () => {
     expect(await notifier.sendPersonalTest(t.ctx, people.bob!)).toEqual({
       discord: { ok: true, message: 'Delivered' },
       ntfy: { ok: true, message: 'Delivered' },
     });
     expect(sent[0]!.json.allowed_mentions).toEqual({ parse: [], users: [BOB_DISCORD] });
-    expect(sent.find((s) => s.json.topic === 'bob-x7Kq2')!.json.title).toBe('Belltower test message');
+    expect(sent.find((s) => s.json.topic === 'belltower-bob-x7Kq2')!.json.title).toBe('Belltower test message');
     updateDiscordSettings(t.ctx, { webhookUrl: '', events: { external: false, critical: false, digest: false, blocked: false } });
     updateChannelSettings(t.ctx, 'ntfy', { url: '', secret: '', events: { external: false, critical: false, digest: false, blocked: false } });
     const r = await notifier.sendPersonalTest(t.ctx, people.bob!);
@@ -466,6 +541,22 @@ describe('over HTTP', () => {
     expect((await asSam('GET', `/api/notifications?after=${list.latestId}`)).json().items).toEqual([]);
   });
 
+  it('the bell’s poll doesn’t keep an idle session alive past its 12-hour timeout', async () => {
+    app = await makeApp();
+    await setupAndLogin(app);
+    const polled = client(app.app, await loginAs(app, 'admin')); // not remembered: 12 hours idle
+    const used = client(app.app, await loginAs(app, 'admin'));
+    const halfHour = 30 * 60 * 1000;
+    for (let i = 1; i <= 23; i++) {
+      app.clock.advance(halfHour);
+      expect((await polled('GET', '/api/notifications')).statusCode, `poll ${i}`).toBe(200);
+      expect((await used('GET', '/api/board')).statusCode, `board ${i}`).toBe(200);
+    }
+    app.clock.advance(2 * halfHour); // 12.5 hours after signing in, with only polls in between
+    expect((await polled('GET', '/api/notifications')).statusCode).toBe(401);
+    expect((await used('GET', '/api/notifications')).statusCode).toBe(200); // real use slides it
+  });
+
   it('watch and unwatch a card', async () => {
     app = await makeApp();
     const admin = await setupAndLogin(app);
@@ -503,13 +594,14 @@ describe('over HTTP', () => {
     for (const bad of [
       { discordUserId: '1234', ntfyTopic: null, prefs },
       { discordUserId: null, ntfyTopic: 'has space', prefs },
-      { discordUserId: null, ntfyTopic: 'x'.repeat(65), prefs },
+      { discordUserId: null, ntfyTopic: 'my-own-topic', prefs }, // not belltower-…
+      { discordUserId: null, ntfyTopic: `belltower-${'x'.repeat(55)}`, prefs },
       { discordUserId: null, ntfyTopic: null, prefs: { assigned: { inApp: 'yes' } } },
     ]) {
       expect((await asSam('PUT', '/api/me/notifications', bad)).statusCode, JSON.stringify(bad)).toBe(400);
     }
-    const saved = (await asSam('PUT', '/api/me/notifications', { discordUserId: ' 123456789012345678 ', ntfyTopic: 'sam_topic-1', prefs })).json();
-    expect(saved).toMatchObject({ discordUserId: '123456789012345678', ntfyTopic: 'sam_topic-1', prefs });
+    const saved = (await asSam('PUT', '/api/me/notifications', { discordUserId: ' 123456789012345678 ', ntfyTopic: 'belltower-sam_1', prefs })).json();
+    expect(saved).toMatchObject({ discordUserId: '123456789012345678', ntfyTopic: 'belltower-sam_1', prefs });
 
     // The install has neither channel: the test says so instead of sending.
     const result = (await asSam('POST', '/api/me/notifications/test')).json();
@@ -521,5 +613,12 @@ describe('over HTTP', () => {
 
     // Someone else's settings stay theirs.
     expect((await client(app.app, admin)('GET', '/api/me/notifications')).json().discordUserId).toBeNull();
+
+    // The install's own topic is refused, even though it has the prefix.
+    const events = { external: true, critical: true, digest: false, blocked: false };
+    expect((await client(app.app, admin)('PUT', '/api/settings/notify/ntfy', { url: 'https://ntfy.sh/belltower-install', secret: null, events })).statusCode).toBe(200);
+    const own = await asSam('PUT', '/api/me/notifications', { discordUserId: null, ntfyTopic: 'belltower-install', prefs });
+    expect(own.statusCode).toBe(400);
+    expect(own.json().message).toMatch(/install’s own ntfy topic/);
   });
 });

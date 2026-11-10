@@ -46,7 +46,17 @@ export function mayChangeWorklog(ctx: Ctx, authorId: number | null): boolean {
   return me !== null && authorId === me;
 }
 
-export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; occurredAt?: string }): ActivityEntry {
+/**
+ * `quiet`: notes that come with imported cards (card import, a new ticket through the automation
+ * API) are history, not news: nobody is notified, @mentions in them included, and the importer
+ * doesn't start watching the card.
+ */
+export function addWorklog(
+  ctx: Ctx,
+  cardId: number,
+  input: { bodyMd: string; occurredAt?: string },
+  opts: { quiet?: boolean } = {},
+): ActivityEntry {
   return tx(ctx, () => {
     getEditableCard(ctx, cardId);
     const now = nowIso(ctx);
@@ -60,7 +70,7 @@ export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; oc
     );
     touchCard(ctx, cardId);
     reindexCard(ctx, cardId);
-    notifyNoteAdded(ctx, cardId, id, input.bodyMd);
+    if (!opts.quiet) notifyNoteAdded(ctx, cardId, id, input.bodyMd);
     return getActivityEntry(ctx, id);
   });
 }

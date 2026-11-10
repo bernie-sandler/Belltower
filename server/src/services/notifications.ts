@@ -12,12 +12,14 @@
 //    assignee change;
 //  - new_unassigned: everyone who opted in, when an outside ticket arrives with no assignee.
 // Never the person acting (a token acts for its owner, who *is* told), never deactivated people, and
-// once per person and change (a unique index; one type per person: mentioned or assigned beat watching).
+// once per person and change (a unique index). Someone told they were mentioned or assigned isn't
+// also told as a watcher; someone who turned those off still hears it as a watcher.
 //
 // You watch a card when you create it in the app, are assigned it, are mentioned on it or write a
 // note on it. Notifications aren't in backups; old ones are pruned (pruneNotifications).
 
 import {
+  NtfyTopic,
   findMentions,
   noteExcerpt,
   notificationText,
@@ -33,6 +35,7 @@ import {
   type PersonalNotifySettings,
 } from '@tt/shared';
 import { stmt } from '../db/connection';
+import { badRequest } from '../errors';
 import { actorUserId, nowIso, type Ctx } from './context';
 import { channelReady, getChannelSettings, getDiscordSettings } from './settings';
 import { getUser } from './users';
@@ -84,9 +87,9 @@ interface NotifyInput {
  * delivery to personal channels. Leaves out the person acting, deactivated people and people who
  * turned this event off everywhere; someone who turned off only the bell gets a row marked hidden
  * (and read), so personal channels still hear about it and the unique index still stops repeats.
- * Returns the new rows' ids.
+ * Returns the new rows: their ids and whom each is for.
  */
-export function notifyPeople(ctx: Ctx, input: NotifyInput): number[] {
+export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId: number }[] {
   const me = selfId(ctx);
   const userIds = [...new Set(input.userIds)].filter((id) => id !== me);
   if (!userIds.length) return [];
@@ -100,17 +103,20 @@ export function notifyPeople(ctx: Ctx, input: NotifyInput): number[] {
     `INSERT OR IGNORE INTO notifications (user_id, card_id, activity_id, type, actor_user_id, data, created_at, read_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  const ids: number[] = [];
+  const written: { id: number; userId: number }[] = [];
   for (const p of people) {
     const picks = prefsOf(p.notify_prefs)[input.type];
     if (!picks.inApp && !picks.discord && !picks.ntfy) continue;
     const row = picks.inApp ? data : { ...data, hidden: true };
     const info = insert.run(p.id, input.cardId, input.activityId, input.type, actorUserId(ctx), JSON.stringify(row), now, picks.inApp ? null : now);
-    if (info.changes) ids.push(Number(info.lastInsertRowid));
+    if (info.changes) written.push({ id: Number(info.lastInsertRowid), userId: p.id });
   }
-  if (ids.length) ctx.emit?.({ type: 'people_notified', ids, actor: ctx.actor });
-  return ids;
+  if (written.length) ctx.emit?.({ type: 'people_notified', ids: written.map((w) => w.id), actor: ctx.actor });
+  return written;
 }
+
+/** The people a notifyPeople call wrote a row for. */
+const told = (rows: { userId: number }[]) => new Set(rows.map((r) => r.userId));
 
 // ---- watching ----
 
@@ -164,16 +170,17 @@ export function notifyAssigned(
   change: { to: { id: number; name: string } | null; fromName: string | null },
 ): void {
   const { to } = change;
+  let assigned = new Set<number>();
   if (to) {
     watchCard(ctx, cardId, to.id);
-    notifyPeople(ctx, { cardId, activityId, type: 'assigned', userIds: [to.id], data: {} });
+    assigned = told(notifyPeople(ctx, { cardId, activityId, type: 'assigned', userIds: [to.id], data: {} }));
   }
   const took = to !== null && to.id === actorUserId(ctx);
   notifyPeople(ctx, {
     cardId,
     activityId,
     type: 'watching',
-    userIds: watchersOf(ctx, cardId).filter((id) => id !== to?.id),
+    userIds: watchersOf(ctx, cardId).filter((id) => !assigned.has(id)),
     data: { what: 'assigned', toName: to?.name ?? null, fromName: change.fromName, ...(took ? { took: true } : {}) },
   });
 }
@@ -195,13 +202,12 @@ export function notifyNoteAdded(ctx: Ctx, cardId: number, entryId: number, md: s
   const mentioned = mentionedPeople(ctx, md).map((u) => u.id);
   for (const id of mentioned) watchCard(ctx, cardId, id);
   const excerpt = noteExcerpt(md);
-  notifyPeople(ctx, { cardId, activityId: entryId, type: 'mentioned', userIds: mentioned, data: { excerpt } });
-  const told = new Set(mentioned);
+  const mentionedTold = told(notifyPeople(ctx, { cardId, activityId: entryId, type: 'mentioned', userIds: mentioned, data: { excerpt } }));
   notifyPeople(ctx, {
     cardId,
     activityId: entryId,
     type: 'watching',
-    userIds: watchersOf(ctx, cardId).filter((id) => !told.has(id)),
+    userIds: watchersOf(ctx, cardId).filter((id) => !mentionedTold.has(id)),
     data: { what: 'note', excerpt },
   });
 }
@@ -279,11 +285,13 @@ export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuer
   return { items: rows.map(toItem), unread: counts.unread, latestId: counts.latest };
 }
 
-/** Marks some or all of your notifications read. Returns how many are still unread. */
+/** Marks some, a card's (you opened it) or all of your notifications read. Returns how many are still unread. */
 export function markNotificationsRead(ctx: Ctx, userId: number, body: MarkNotificationsReadBody): number {
   const now = nowIso(ctx);
   if (body.all) {
     stmt(ctx.db, 'UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL').run(now, userId);
+  } else if (body.cardId !== undefined) {
+    stmt(ctx.db, 'UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND card_id = ?').run(now, userId, body.cardId);
   } else {
     stmt(ctx.db, 'UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND id IN (SELECT value FROM json_each(?))').run(
       now,
@@ -327,8 +335,25 @@ export function installChannels(ctx: Ctx): { discord: boolean; ntfy: boolean } {
   return { discord: getDiscordSettings(ctx).webhookUrl !== null, ntfy: channelReady('ntfy', getChannelSettings(ctx, 'ntfy')) };
 }
 
+/** The topic in the install's ntfy address (https://ntfy.sh/belltower-x → belltower-x), or null. */
+function installTopic(ctx: Ctx): string | null {
+  const url = getChannelSettings(ctx, 'ntfy').url;
+  return url ? (new URL(url).pathname.split('/').filter(Boolean).at(-1) ?? null) : null;
+}
+
+/**
+ * Whether a person's saved topic may be used: it follows the `belltower-` rule and isn't the
+ * install's own topic. Checked when saving and again when sending (a restored backup isn't checked).
+ */
+export function personalTopicOk(ctx: Ctx, topic: string): boolean {
+  return NtfyTopic.safeParse(topic).success && topic === topic.trim() && topic !== installTopic(ctx);
+}
+
 export function updatePersonalNotify(ctx: Ctx, userId: number, body: PersonalNotifyBody): PersonalNotifySettings {
   getUser(ctx, userId);
+  if (body.ntfyTopic !== null && body.ntfyTopic === installTopic(ctx)) {
+    throw badRequest('validation', 'That’s the install’s own ntfy topic; pick a topic of your own (Random topic makes one)');
+  }
   stmt(ctx.db, 'UPDATE users SET discord_user_id = ?, ntfy_topic = ?, notify_prefs = ? WHERE id = ?').run(
     body.discordUserId,
     body.ntfyTopic,

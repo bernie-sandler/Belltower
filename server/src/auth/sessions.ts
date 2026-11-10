@@ -75,12 +75,14 @@ type LookupRow = SessionRow & { u_username: string | null; u_role: UserRole | nu
 /**
  * Returns the live session for a cookie token, sliding its expiry when it hasn't been touched for a
  * while. `refreshed` tells the caller to re-send a persistent cookie with the new expiry. A session
- * of a deactivated person counts as no session.
+ * of a deactivated person counts as no session. `touch: false` (requests the app makes on its own,
+ * like the bell's poll) checks the session without sliding it, so an idle tab still times out.
  */
 export function lookupSession(
   ctx: Ctx,
   policy: SessionPolicy,
   token: string,
+  opts: { touch?: boolean } = {},
 ): { session: SessionWithUser; refreshed: boolean; expiresAt: Date } | null {
   const row = stmt(
     ctx.db,
@@ -98,7 +100,7 @@ export function lookupSession(
   const { u_username, u_role, u_is_owner, u_disabled_at: _disabled, ...plain } = row;
   const user: SessionUser = { id: row.user_id, username: u_username, role: u_role!, isOwner: u_is_owner === 1 };
   const session: SessionWithUser = { ...plain, user_id: row.user_id, user };
-  if (now.getTime() - new Date(row.last_seen_at).getTime() >= TOUCH_INTERVAL_MS) {
+  if (opts.touch !== false && now.getTime() - new Date(row.last_seen_at).getTime() >= TOUCH_INTERVAL_MS) {
     const expiresAt = new Date(now.getTime() + lifetimeMs(row.remember === 1, policy));
     stmt(ctx.db, 'UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?').run(
       now.toISOString(),

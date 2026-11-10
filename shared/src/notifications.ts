@@ -50,11 +50,16 @@ export function notifyPrefsFrom(raw: unknown): NotifyPrefs {
 
 /** A Discord user ID (a "snowflake"): Developer Mode → right-click yourself → Copy User ID. */
 export const DiscordUserId = z.string().trim().regex(/^\d{17,20}$/, 'A Discord user ID is 17 to 20 digits (Copy User ID in Discord)');
-/** ntfy's own rule for topic names. */
+/**
+ * A personal ntfy topic: `belltower-` and then up to 54 letters, digits, dashes and underscores
+ * (ntfy's own rule, 64 in all). The prefix lets an ntfy admin give the install's token write
+ * access to `belltower-*` only, so nobody can make Belltower post to any other topic.
+ */
+export const PERSONAL_TOPIC_PREFIX = 'belltower-';
 export const NtfyTopic = z
   .string()
   .trim()
-  .regex(/^[A-Za-z0-9_-]{1,64}$/, 'Use 1 to 64 letters, digits, dashes and underscores');
+  .regex(/^belltower-[A-Za-z0-9_-]{1,54}$/, 'Start it with belltower-, then up to 54 letters, digits, dashes and underscores');
 
 /** PUT /api/me/notifications. null clears the Discord ID or the topic. */
 export const PersonalNotifyBody = z.object({
@@ -71,13 +76,14 @@ export const NotificationsQuery = z.object({
 });
 export type NotificationsQuery = z.infer<typeof NotificationsQuery>;
 
-/** POST /api/notifications/read: these, or all of them. */
+/** POST /api/notifications/read: these, the ones about a card (you opened it), or all of them. */
 export const MarkNotificationsReadBody = z
   .object({
     ids: z.array(z.number().int().positive()).max(500).optional(),
+    cardId: z.number().int().positive().optional(),
     all: z.boolean().optional(),
   })
-  .refine((b) => b.all === true || (b.ids?.length ?? 0) > 0, 'Send ids, or all: true');
+  .refine((b) => b.all === true || b.cardId !== undefined || (b.ids?.length ?? 0) > 0, 'Send ids, a cardId, or all: true');
 export type MarkNotificationsReadBody = z.infer<typeof MarkNotificationsReadBody>;
 
 // ---- @mentions ----
@@ -89,15 +95,45 @@ export type MarkNotificationsReadBody = z.infer<typeof MarkNotificationsReadBody
  */
 export const MENTION_RE = /(?<![\p{L}\p{N}._+\-/@\\])@([A-Za-z0-9._-]{2,32})(?![A-Za-z0-9._@-])/gu;
 
-/** Fenced code blocks and inline code spans, where an @ is just text. */
+/** A list item's first line ("- x", "* x", "1. x", "2) x"). */
+const LIST_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+
+/**
+ * Indented code blocks: lines indented four spaces (or a tab) that start after a blank line, as
+ * markdown-it reads them. Inside a list such lines continue the item instead (they're text), so
+ * after a list item they're left alone.
+ */
+function withoutIndentedCode(md: string): string {
+  const out: string[] = [];
+  let inCode = false;
+  let afterBlank = true;
+  let inList = false;
+  for (const line of md.split('\n')) {
+    const blank = line.trim() === '';
+    const indented = /^(?: {4}|\t)/.test(line);
+    if (inCode && (blank || indented)) {
+      out.push('');
+      continue;
+    }
+    inCode = false;
+    if (!blank && indented && afterBlank && !inList) {
+      inCode = true;
+      out.push('');
+      continue;
+    }
+    if (!blank && !indented) inList = LIST_ITEM.test(line);
+    afterBlank = blank;
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+/** Code (fenced blocks, indented blocks, inline spans), where an @ is just text. */
 function withoutCode(md: string): string {
-  return (
-    md
-      // Fenced blocks (``` or ~~~, closed or running to the end of the note).
-      .replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '')
-      // Inline code: a run of backticks up to the same run, within one paragraph.
-      .replace(/(`+)(?:(?!\n[ \t]*\n)[\s\S])*?\1/g, '')
-  );
+  // Fenced blocks (``` or ~~~, closed or running to the end of the note).
+  const unfenced = md.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^ {0,3}\1[`~]*[ \t]*$|(?![\s\S]))/gm, '');
+  // Inline code: a run of backticks up to the same run, within one paragraph.
+  return withoutIndentedCode(unfenced).replace(/(`+)(?:(?!\n[ \t]*\n)[\s\S])*?\1/g, '');
 }
 
 /**

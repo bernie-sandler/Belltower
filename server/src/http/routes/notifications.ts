@@ -23,6 +23,7 @@ import {
   updatePersonalNotify,
   watchCard,
 } from '../../services/notifications';
+import { PASSIVE } from '../guard';
 import { idParam, parse } from '../util';
 
 /** "Send me a test" posts in the install's shared Discord channel, so it's limited per person. */
@@ -33,7 +34,8 @@ export function registerNotificationRoutes(app: FastifyInstance, deps: AppDeps):
   const tests = new WindowLimiter(deps.baseCtx.clock, PERSONAL_TEST_LIMIT.max, PERSONAL_TEST_LIMIT.windowMs);
 
   // ---- the bell ----
-  app.get('/api/notifications', async (req): Promise<NotificationsResponse> =>
+  // Polled every 30 seconds, also in background tabs: it mustn't count as you using the app.
+  app.get('/api/notifications', PASSIVE, async (req): Promise<NotificationsResponse> =>
     listNotifications(req.ctx, me(req), parse(NotificationsQuery, req.query)),
   );
   app.post('/api/notifications/read', async (req): Promise<{ unread: number }> => ({
