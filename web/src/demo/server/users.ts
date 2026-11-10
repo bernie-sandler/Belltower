@@ -93,7 +93,10 @@ export function updateUser(ctx: Ctx, id: number, patch: Omit<UpdateUserBody, 'pa
   if (row.isOwner && role !== 'admin') throw conflict('owner_protected', 'The owner is always an admin');
   if (row.isOwner && disabled) throw conflict('owner_protected', 'The owner can’t be deactivated');
   if (self && disabled && row.disabledAt === null) throw conflict('cannot_disable_self', 'You can’t deactivate your own account');
-  if (resetPassword && row.isOwner && !self) throw conflict('owner_protected', 'Only the owner can change the owner’s password (under Account)');
+  if (self && resetPassword) {
+    throw conflict('use_account_password', 'Change your own password under Account → Password (it asks for the current one)');
+  }
+  if (resetPassword && row.isOwner) throw conflict('owner_protected', 'Only the owner can change the owner’s password (under Account)');
   const wasActiveAdmin = row.role === 'admin' && row.disabledAt === null;
   if (wasActiveAdmin && (role !== 'admin' || disabled) && activeAdmins(ctx) <= 1) {
     throw conflict('last_admin', 'At least one active admin has to remain');

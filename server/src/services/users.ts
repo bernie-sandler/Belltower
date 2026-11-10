@@ -134,17 +134,22 @@ export function createUser(
 
 /**
  * An admin's changes to a person. The owner keeps the admin role and stays active, nobody
- * deactivates themselves, and at least one active admin always remains. Deactivating someone or
- * resetting their password signs them out everywhere.
+ * deactivates themselves or resets their own password here (that needs the current one, under
+ * Account), and at least one active admin always remains. Deactivating someone or resetting their
+ * password signs them out everywhere. `expectedUsername` guards against the id meaning someone else
+ * by now (a restore can renumber people while the caller was hashing a password).
  */
 export function updateUser(
   ctx: Ctx,
   id: number,
   patch: Omit<UpdateUserBody, 'password'>,
-  opts: { passwordHash?: string; ownerPasswordFromEnv: boolean },
+  opts: { passwordHash?: string; ownerPasswordFromEnv: boolean; expectedUsername?: string },
 ): UserInfo {
   return tx(ctx, () => {
     const row = getUser(ctx, id);
+    if (opts.expectedUsername !== undefined && row.username !== opts.expectedUsername) {
+      throw conflict('user_changed', 'This person changed meanwhile (was a backup restored?); reload and try again');
+    }
     const isOwner = row.is_owner === 1;
     const self = actorUserId(ctx) === id;
     const role = patch.role ?? row.role;
@@ -153,11 +158,14 @@ export function updateUser(
     if (isOwner && role !== 'admin') throw conflict('owner_protected', 'The owner is always an admin');
     if (isOwner && disabled) throw conflict('owner_protected', 'The owner can’t be deactivated');
     if (self && disabled && row.disabled_at === null) throw conflict('cannot_disable_self', 'You can’t deactivate your own account');
+    if (self && opts.passwordHash !== undefined) {
+      throw conflict('use_account_password', 'Change your own password under Account → Password (it asks for the current one)');
+    }
     if (opts.passwordHash !== undefined && isOwner) {
       if (opts.ownerPasswordFromEnv) {
         throw conflict('managed_by_env', 'The owner’s password is set by APP_PASSWORD; change it there and restart');
       }
-      if (!self) throw conflict('owner_protected', 'Only the owner can change the owner’s password (under Account)');
+      throw conflict('owner_protected', 'Only the owner can change the owner’s password (under Account)');
     }
     const wasActiveAdmin = row.role === 'admin' && row.disabled_at === null;
     if (wasActiveAdmin && (role !== 'admin' || disabled) && activeAdminCount(ctx) <= 1) {

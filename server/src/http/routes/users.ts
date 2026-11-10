@@ -5,7 +5,7 @@ import { CreateUserBody, UpdateMeBody, UpdateUserBody, type MeResponse, type Use
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppDeps } from '../../app';
 import { hashPassword } from '../../auth/password';
-import { createUser, listUsers, meResponse, updateMe, updateUser } from '../../services/users';
+import { createUser, getUser, listUsers, meResponse, updateMe, updateUser } from '../../services/users';
 import { ADMIN } from '../guard';
 import { idParam, parse } from '../util';
 
@@ -29,7 +29,9 @@ export function registerUserRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.patch('/api/users/:id', ADMIN, async (req): Promise<UserInfo> => {
     const id = idParam(req);
     const { password, ...patch } = parse(UpdateUserBody, req.body);
+    // Who the id means now: hashing takes a while, and a restore meanwhile could renumber people.
+    const expectedUsername = getUser(req.ctx, id).username;
     const passwordHash = password === undefined ? undefined : await hashPassword(password);
-    return updateUser(req.ctx, id, patch, { passwordHash, ownerPasswordFromEnv: envOwner() });
+    return updateUser(req.ctx, id, patch, { passwordHash, ownerPasswordFromEnv: envOwner(), expectedUsername });
   });
 }

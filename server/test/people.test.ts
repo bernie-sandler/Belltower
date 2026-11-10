@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { bootstrapAuth } from '../src/auth/bootstrap';
 import { createLogger } from '../src/logger';
 import { registeredRoutes } from '../src/http/guard';
+import { withActor } from '../src/services/context';
+import { listRequestTypes } from '../src/services/requestTypes';
+import { getSubmitSettings, updateSubmitSettings } from '../src/services/settings';
+import { updateUser } from '../src/services/users';
 import { PASSWORD, addPerson, client, loginAs, makeApp, sessionCookie, setupAndLogin, type TestApp } from './helpers';
 
 let t: TestApp | undefined;
@@ -153,8 +157,39 @@ describe('sign-outs only affect that person', () => {
     expect((await client(t.app, sam.cookie)('GET', '/api/me')).json().passwordManagedByEnv).toBe(false);
     const own = await client(t.app, sam.cookie)('POST', '/api/auth/password', { currentPassword: PASSWORD, newPassword: 'another long password' });
     expect(own.statusCode).toBe(204);
-    const ownerReset = await client(t.app, admin)('PATCH', `/api/users/${ownerId(t)}`, { password: 'another long password' });
+    const alex = await addPerson(t, admin, 'alex', 'admin');
+    const ownerReset = await client(t.app, alex.cookie)('PATCH', `/api/users/${ownerId(t)}`, { password: 'another long password' });
     expect(ownerReset.json().error).toBe('managed_by_env');
+  });
+});
+
+describe('your own password only changes with the current one', () => {
+  it('the people API refuses resetting your own password, for the owner and for any admin, and signs nobody out', async () => {
+    t = await makeApp();
+    const owner = await setupAndLogin(t);
+    const alex = await addPerson(t, owner, 'alex', 'admin');
+    for (const [cookie, id] of [
+      [owner, ownerId(t)],
+      [alex.cookie, alex.id],
+    ] as const) {
+      const res = await client(t.app, cookie)('PATCH', `/api/users/${id}`, { password: 'taken over by a stolen cookie' });
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ error: 'use_account_password', message: expect.stringContaining('Account') });
+      expect((await client(t.app, cookie)('GET', '/api/board')).statusCode).toBe(200);
+    }
+    expect((await login(t.app, { username: 'admin', password: 'taken over by a stolen cookie' })).statusCode).toBe(401);
+    expect((await login(t.app, { username: 'alex', password: PASSWORD })).statusCode).toBe(204);
+  });
+
+  it('refuses a change when the id means someone else by now (a restore renumbered people)', async () => {
+    t = await makeApp();
+    const owner = await setupAndLogin(t);
+    const sam = await addPerson(t, owner, 'sam');
+    const asOwner = withActor(t.ctx, { kind: 'user', userId: ownerId(t) });
+    expect(() => updateUser(asOwner, sam.id, { displayName: 'Not Sam' }, { ownerPasswordFromEnv: false, expectedUsername: 'kim' })).toThrow(
+      expect.objectContaining({ code: 'user_changed' }),
+    );
+    expect(updateUser(asOwner, sam.id, { displayName: 'Sam R' }, { ownerPasswordFromEnv: false, expectedUsername: 'sam' }).displayName).toBe('Sam R');
   });
 });
 
@@ -393,9 +428,36 @@ describe('who did what', () => {
     const created = (await client(t.app, admin)('GET', `/api/cards/${card.id}/activity`)).json().find((e: { type: string }) => e.type === 'created');
     expect(created).toMatchObject({ userId: sam.id, tokenId: null });
 
-    const tpl = (await client(t.app, admin)('GET', '/api/templates')).json()[0];
-    const made = (await client(t.app, sam.cookie)('POST', `/api/templates/${tpl.id}/run`)).json();
+    const templates = (await client(t.app, admin)('GET', '/api/templates')).json();
+    const made = (await client(t.app, sam.cookie)('POST', `/api/templates/${templates[0].id}/run`)).json();
     expect((await client(t.app, admin)('GET', `/api/cards/${made.id}/activity`)).json()[0]).toMatchObject({ userId: sam.id }); // "Create now" is a person's
+
+    const createdBy = async (title: string) => {
+      const id = t!.ctx.db.prepare('SELECT id FROM cards WHERE title = ? ORDER BY id DESC').pluck().get(title) as number;
+      return (await client(t!.app, admin)('GET', `/api/cards/${id}/activity`)).json().find((e: { type: string }) => e.type === 'created');
+    };
+
+    // A template that comes due when someone saves it runs as the template, like the timer's runs.
+    const today = t.clock.now().toISOString().slice(0, 10);
+    expect((await client(t.app, sam.cookie)('PATCH', `/api/templates/${templates[1].id}`, { startDate: today, enabled: true })).statusCode).toBe(200);
+    expect(await createdBy(templates[1].title)).toMatchObject({ userId: null, tokenId: null });
+
+    // The submit page is nobody's.
+    updateSubmitSettings(t.ctx, { enabled: true, columnId: null, pageTitle: 'Report a problem', intro: '' });
+    const key = getSubmitSettings(t.ctx).key!;
+    const plex = listRequestTypes(t.ctx).find((x) => x.name === 'Plex')!;
+    const boundary = `----tt${Math.random().toString(16).slice(2)}`;
+    const data = { typeId: plex.id, summary: 'stutters', description: 'Freezes', answers: { title: 'Interstellar', media: 'Movie', device: 'Roku' } };
+    const submitted = await t.app.inject({
+      method: 'POST',
+      url: `/api/public/submit/${key}`,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, 'x-requested-with': 'tower-tracker' },
+      payload: `--${boundary}\r\nContent-Disposition: form-data; name="data"\r\n\r\n${JSON.stringify(data)}\r\n--${boundary}--\r\n`,
+    });
+    expect(submitted.statusCode).toBe(201);
+    const ticket = t.ctx.db.prepare(`SELECT id FROM cards WHERE source_ref = 'submit' ORDER BY id DESC`).pluck().get() as number;
+    const submittedHistory = (await client(t.app, admin)('GET', `/api/cards/${ticket}/activity`)).json() as { type: string; userId: number | null }[];
+    expect(submittedHistory.find((e) => e.type === 'created')).toMatchObject({ userId: null, tokenId: null });
   });
 });
 
