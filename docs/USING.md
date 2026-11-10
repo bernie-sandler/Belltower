@@ -72,8 +72,10 @@ Entries from before 1.5 show no name, because nobody was recorded then.
 
 The **work log** is for your own notes: "Reseated the SATA cable", "Rolled back to 1.32.5". Each entry shows who
 wrote it. You can backdate an entry to when it actually happened, and edit or retract it later. The original stays
-in the entry's history, which also says who made each edit. Only the person who wrote an entry, or an admin, can
-edit or retract it; entries from before 1.5 have no author, so only admins can change those.
+in the entry's history, which also says who made each edit, and the card's history says who retracted or restored
+it. Only the person who wrote an entry, or an admin, can edit or retract it; entries from before 1.5 have no author,
+so only admins can change those. Hover over a name to see the username, since two people can share a display
+name.
 
 ## Finding things
 
