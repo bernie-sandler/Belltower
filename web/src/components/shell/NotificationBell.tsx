@@ -1,7 +1,7 @@
 // The bell in the top bar: how many notifications you haven't read, and the list. Opening one
 // opens its card and marks it read; "Mark all read" clears the count. It polls every 30 seconds,
-// background tabs included, and plays the sound chosen for this device when the count goes up
-// (never for what was already there when the page loaded).
+// background tabs included, and when the count goes up (never for what was already there when the
+// page loaded) it plays the sound chosen for this device and tells screen readers what's new.
 
 import type { NotificationItem, NotificationsResponse } from '@tt/shared';
 import { Bell, CheckCheck } from 'lucide-react';
@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMarkNotificationsRead, useNotifications } from '../../api/notifications';
 import { cls } from '../../lib/cls';
 import { useOpenCard } from '../../lib/navigation';
-import { claimNotification, getSound, playSound } from '../../lib/sound';
+import { canPlay, claimNotification, playSound } from '../../lib/sound';
 import { formatDateTime, useNow } from '../../lib/time';
 import { Popover } from '../common/Popover';
 
@@ -17,29 +17,41 @@ import { Popover } from '../common/Popover';
 export const CLAIM_JITTER_MS = 300;
 
 /**
- * Plays the sound when the unread count rises above the last one seen (and there's a newer
- * notification), in one tab only. The first answer only sets the baseline.
+ * When the unread count rises above the last one seen (and there's a newer notification): plays
+ * the sound in one tab only, and calls `onNew` with the new unread items. The first answer only
+ * sets the baseline.
  */
-export function useRingOnNew(data: NotificationsResponse | undefined): void {
+export function useRingOnNew(data: NotificationsResponse | undefined, onNew?: (fresh: NotificationItem[]) => void): void {
   const baseline = useRef<{ unread: number; latestId: number } | null>(null);
+  const onNewRef = useRef(onNew);
+  onNewRef.current = onNew;
   useEffect(() => {
     if (!data) return;
     const before = baseline.current;
     baseline.current = { unread: data.unread, latestId: data.latestId };
     if (!before || data.unread <= before.unread || data.latestId <= before.latestId) return;
+    onNewRef.current?.(data.items.filter((n) => n.id > before.latestId && !n.readAt));
     const id = data.latestId;
     // Not cancelled when the data changes meanwhile (marking something read shouldn't swallow it).
     setTimeout(() => {
-      if (getSound() !== 'off' && claimNotification(id)) playSound();
+      // A tab that can't make a sound (audio not unlocked yet) leaves the claim to one that can.
+      if (canPlay() && claimNotification(id)) playSound();
     }, Math.random() * CLAIM_JITTER_MS);
   }, [data]);
+}
+
+/** What a screen reader hears when something new arrives. */
+function announce(fresh: NotificationItem[], unread: number): string {
+  if (fresh.length === 1) return `New notification: ${fresh[0]!.text}, on ${fresh[0]!.cardTitle}`;
+  return `${fresh.length || 'Some'} new notifications; ${unread} unread`;
 }
 
 const countText = (n: number) => (n > 99 ? '99+' : String(n));
 
 export function NotificationBell() {
   const { data } = useNotifications();
-  useRingOnNew(data);
+  const [announcement, setAnnouncement] = useState('');
+  useRingOnNew(data, (fresh) => setAnnouncement(announce(fresh, data?.unread ?? fresh.length)));
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const unread = data?.unread ?? 0;
 
@@ -60,6 +72,9 @@ export function NotificationBell() {
           </span>
         )}
       </button>
+      <span className="visually-hidden" aria-live="polite" data-testid="bell-announcement">
+        {announcement}
+      </span>
       {anchor && <NotificationPanel anchor={anchor} data={data} onClose={() => setAnchor(null)} />}
     </>
   );

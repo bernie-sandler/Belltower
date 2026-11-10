@@ -4,8 +4,10 @@
 // The sounds are synthesized with Web Audio: no audio file to load and no change to the CSP, and
 // it works over plain HTTP. Browsers only let a page make sound after you've interacted with it,
 // so the audio context is started (and resumed, after a phone suspends it) on a pointerdown or
-// keydown. With several tabs open, only one plays: the first to claim the newest notification's id
-// in `tt:notify-last-id`; the others hear about it through the `storage` event.
+// keydown. With several tabs open, only one plays: the first tab that can play claims the newest
+// notification's id in `tt:notify-last-id` ({id, at}); the others hear about it through the
+// `storage` event. A claim older than CLAIM_STALE_MS no longer counts, so ids starting over after a
+// restore don't keep every tab quiet.
 
 import { useSyncExternalStore } from 'react';
 
@@ -14,7 +16,16 @@ export const SOUND_CHOICES: readonly SoundChoice[] = ['off', 'chime', 'ping'];
 
 const KEY = 'tt:sound';
 export const LAST_ID_KEY = 'tt:notify-last-id';
+/** How long a tab's claim on a notification keeps the other tabs quiet. */
+export const CLAIM_STALE_MS = 10 * 60 * 1000;
 const listeners = new Set<() => void>();
+
+interface Claim {
+  id: number;
+  /** When it was claimed (ms). */
+  at: number;
+}
+const NO_CLAIM: Claim = { id: 0, at: 0 };
 
 function read(): SoundChoice {
   try {
@@ -25,17 +36,33 @@ function read(): SoundChoice {
   }
 }
 
-function readLastId(): number {
+/** A stored claim; a bare number (an older version) counts as long ago. */
+function parseClaim(raw: string | null): Claim {
+  if (!raw) return NO_CLAIM;
   try {
-    return Number(localStorage.getItem(LAST_ID_KEY)) || 0;
+    const v = JSON.parse(raw) as unknown;
+    if (typeof v === 'number') return { id: v, at: 0 };
+    if (v && typeof v === 'object') {
+      const { id, at } = v as Record<string, unknown>;
+      if (typeof id === 'number' && typeof at === 'number') return { id, at };
+    }
   } catch {
-    return 0;
+    /* not ours */
+  }
+  return NO_CLAIM;
+}
+
+function readClaim(): Claim {
+  try {
+    return parseClaim(localStorage.getItem(LAST_ID_KEY));
+  } catch {
+    return NO_CLAIM;
   }
 }
 
 let current: SoundChoice = read();
-/** The newest notification id any tab has played (or claimed) for. */
-let claimed = readLastId();
+/** The latest claim this tab knows of (its own, or another tab's through the storage event). */
+let claimed: Claim = readClaim();
 let installed = false;
 
 export function getSound(): SoundChoice {
@@ -101,7 +128,8 @@ export function installSound(): void {
       current = read();
       for (const l of listeners) l();
     } else if (e.key === LAST_ID_KEY) {
-      claimed = Math.max(claimed, Number(e.newValue) || 0);
+      const other = parseClaim(e.newValue);
+      if (other.at >= claimed.at) claimed = other;
     }
   });
 }
@@ -119,6 +147,11 @@ function tone(ctx: AudioContext, freq: number, start: number, duration: number, 
   gain.connect(ctx.destination);
   osc.start(start);
   osc.stop(start + duration + 0.05);
+}
+
+/** Whether this tab can make a sound right now: a sound chosen, and audio unlocked and running. */
+export function canPlay(choice: SoundChoice = current): boolean {
+  return choice !== 'off' && audio !== null && audio.state === 'running';
 }
 
 /**
@@ -145,13 +178,15 @@ export function playSound(choice: SoundChoice = current, fromGesture = false): b
 
 /**
  * Whether this tab plays for notification `id`: the first tab to get here claims it, so with
- * several tabs open you hear it once.
+ * several tabs open you hear it once. Call it only when this tab can play (canPlay), so a tab that
+ * can't doesn't keep the others quiet. A claim older than CLAIM_STALE_MS doesn't count.
  */
-export function claimNotification(id: number): boolean {
-  if (Math.max(claimed, readLastId()) >= id) return false;
-  claimed = id;
+export function claimNotification(id: number, now = Date.now()): boolean {
+  const blocks = (c: Claim) => c.id >= id && now - c.at < CLAIM_STALE_MS;
+  if (blocks(claimed) || blocks(readClaim())) return false;
+  claimed = { id, at: now };
   try {
-    localStorage.setItem(LAST_ID_KEY, String(id));
+    localStorage.setItem(LAST_ID_KEY, JSON.stringify(claimed));
   } catch {
     /* can't share it: this tab plays anyway */
   }
@@ -161,6 +196,6 @@ export function claimNotification(id: number): boolean {
 /** Tests only: forget the in-memory state. */
 export function resetSoundForTests(): void {
   current = read();
-  claimed = readLastId();
+  claimed = readClaim();
   audio = null;
 }

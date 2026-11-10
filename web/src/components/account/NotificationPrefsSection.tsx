@@ -86,8 +86,14 @@ function PrefsForm({ settings }: { settings: PersonalNotifySettings }) {
     discordId.trim() !== (settings.discordUserId ?? '') ||
     topic.trim() !== (settings.ntfyTopic ?? '');
   const discordError = discordId.trim() && !DiscordUserId.safeParse(discordId).success ? 'A Discord user ID is 17 to 20 digits.' : null;
-  const topicError = topic.trim() && !NtfyTopic.safeParse(topic).success ? 'Use 1 to 64 letters, digits, dashes and underscores.' : null;
+  const topicError = topic.trim() && !NtfyTopic.safeParse(topic).success ? 'Start it with belltower-, then up to 54 letters, digits, dashes and underscores.' : null;
   const canTest = !dirty && (settings.discordUserId !== null || settings.ntfyTopic !== null);
+  /** Ticked somewhere, but nowhere to send it: say so, or nothing would arrive and nobody would know why. */
+  const ticked = (c: PersonalChannel) => NOTIFICATION_TYPES.some((t) => prefs[t][c]);
+  const nowhere = [
+    ticked('discord') && !discordId.trim() && 'Discord is ticked, but there’s no Discord user ID below, so nothing goes there yet.',
+    ticked('ntfy') && !topic.trim() && 'ntfy is ticked, but there’s no topic below, so nothing goes there yet.',
+  ].filter((w): w is string => Boolean(w));
 
   /** Why a channel's boxes are off (null when they can be used). */
   const unavailable: Record<PersonalChannel, string | null> = {
@@ -154,6 +160,11 @@ function PrefsForm({ settings }: { settings: PersonalNotifySettings }) {
           </tbody>
         </table>
       </div>
+      {nowhere.map((w) => (
+        <p key={w} className="import-warning small" role="status">
+          {w}
+        </p>
+      ))}
       {(unavailable.discord || unavailable.ntfy) && (
         <p className="field-help">
           {[unavailable.discord, unavailable.ntfy].filter(Boolean).join(' ')} Personal messages go out through the install’s own
@@ -200,6 +211,7 @@ function PrefsForm({ settings }: { settings: PersonalNotifySettings }) {
             autoComplete="off"
             spellCheck={false}
             maxLength={64}
+            placeholder="belltower-…"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             aria-invalid={topicError ? true : undefined}
@@ -212,9 +224,9 @@ function PrefsForm({ settings }: { settings: PersonalNotifySettings }) {
         <span className="field-help" id={`${ids}-topic-help`}>
           {topicError ?? (
             <>
-              Subscribe to this topic in the ntfy app, on the same server as the install’s ntfy channel. Anyone who knows a
-              topic’s name can read it, so treat it like a password: a random one is best. If the server needs access tokens,
-              the install’s token has to be allowed to write to your topic too; ask an admin.
+              It starts with belltower-. Subscribe to it in the ntfy app, on the same server as the install’s ntfy channel.
+              Anyone who knows a topic’s name can read it, so treat it like a password: a random one is best. If the server
+              needs access tokens, an admin gives the install’s token write access to belltower-* topics.
             </>
           )}
         </span>

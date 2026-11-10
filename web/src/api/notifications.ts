@@ -3,7 +3,8 @@
 // browser-only demo answers it too.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CardDetail, NotificationsResponse, PersonalNotifyBody, PersonalNotifySettings, PersonalTestResult } from '@tt/shared';
+import { useEffect, useRef } from 'react';
+import type { CardDetail, NotificationItem, NotificationsResponse, PersonalNotifyBody, PersonalNotifySettings, PersonalTestResult } from '@tt/shared';
 import { api } from './client';
 import { qk } from './keys';
 
@@ -23,24 +24,26 @@ export function useNotifications() {
   });
 }
 
-/** Marks some (ids) or all of your notifications read, in the cache straight away. */
+type ReadBody = { ids: number[] } | { cardId: number } | { all: true };
+
+/** Marks some (ids), a card's, or all of your notifications read, in the cache straight away. */
 export function useMarkNotificationsRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { ids: number[] } | { all: true }) => api.post<{ unread: number }>('/api/notifications/read', body),
+    mutationFn: (body: ReadBody) => api.post<{ unread: number }>('/api/notifications/read', body),
     meta: { errorToast: false },
     onMutate: (body) => {
       const now = new Date().toISOString();
       qc.setQueryData<NotificationsResponse>(qk.notifications, (old) => {
         if (!old) return old;
-        const ids = 'all' in body ? null : new Set(body.ids);
+        const hits = (n: NotificationItem) => ('all' in body ? true : 'cardId' in body ? n.cardId === body.cardId : body.ids.includes(n.id));
         let changed = 0;
         const items = old.items.map((n) => {
-          if (n.readAt || (ids && !ids.has(n.id))) return n;
+          if (n.readAt || !hits(n)) return n;
           changed++;
           return { ...n, readAt: now };
         });
-        return { ...old, items, unread: ids ? Math.max(0, old.unread - changed) : 0 };
+        return { ...old, items, unread: 'all' in body ? 0 : Math.max(0, old.unread - changed) };
       });
     },
     onSuccess: ({ unread }) => {
@@ -48,6 +51,24 @@ export function useMarkNotificationsRead() {
     },
     onSettled: () => void qc.invalidateQueries({ queryKey: qk.notifications }),
   });
+}
+
+/**
+ * Opening a card marks your notifications about it read. Asks the server only when there may be
+ * some: an unread one about this card in the bell's list, or more unread than the list shows.
+ * Once per card opened (not again while it stays open).
+ */
+export function useMarkCardSeen(cardId: number) {
+  const { data } = useNotifications();
+  const markRead = useMarkNotificationsRead();
+  const done = useRef<number | null>(null);
+  const { mutate } = markRead;
+  useEffect(() => {
+    if (!data || cardId <= 0 || done.current === cardId) return;
+    done.current = cardId;
+    const listedUnread = data.items.filter((n) => !n.readAt);
+    if (listedUnread.some((n) => n.cardId === cardId) || data.unread > listedUnread.length) mutate({ cardId });
+  }, [data, cardId, mutate]);
 }
 
 /** Watch (true) or stop watching (false) a card. */

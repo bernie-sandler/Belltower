@@ -70,8 +70,19 @@ describe('NotificationPrefsSection', () => {
     expect(NtfyTopic.safeParse(topic.value).success).toBe(true);
     expect(randomTopic()).not.toBe(randomTopic());
     fireEvent.change(topic, { target: { value: 'has space' } });
-    expect(screen.getByText(/Use 1 to 64 letters/)).toBeTruthy();
+    expect(screen.getByText(/Start it with belltower-/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('warns when a channel is ticked with nowhere to send it', async () => {
+    setup({ install: { discord: true, ntfy: true } });
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Discord: Assigned to you' }));
+    expect(screen.getByText(/Discord is ticked, but there’s no Discord user ID/)).toBeTruthy();
+    expect(screen.queryByText(/ntfy is ticked/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Your Discord user ID'), { target: { value: '123456789012345678' } });
+    expect(screen.queryByText(/Discord is ticked/)).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'ntfy: Cards you watch' }));
+    expect(screen.getByText(/ntfy is ticked, but there’s no topic/)).toBeTruthy();
   });
 
   it('only offers a test once something is saved', async () => {

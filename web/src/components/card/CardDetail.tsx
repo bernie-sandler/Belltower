@@ -24,7 +24,7 @@ import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useCard, useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
-import { useWatchCard } from '../../api/notifications';
+import { useMarkCardSeen, useWatchCard } from '../../api/notifications';
 import { isApiError } from '../../api/client';
 import { errorMessage } from '../../api/errors';
 import { sortedLabels } from '../../api/labels';
@@ -60,6 +60,7 @@ interface Props {
 
 export function CardDetailModal({ cardId, onClose }: Props) {
   const { data: card, error, isPending } = useCard(cardId);
+  useMarkCardSeen(cardId);
   const { data: board } = useBoard();
   const titleId = useId();
   const dirty = useRef({ title: false, description: false });
