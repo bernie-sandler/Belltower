@@ -2,6 +2,8 @@
 
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MeResponse, UpdateMeBody, UserInfo } from '@tt/shared';
+import { useMemo } from 'react';
+import type { MentionPeople } from '../lib/markdown';
 import { api } from './client';
 import { qk } from './keys';
 
@@ -28,6 +30,17 @@ export const usersQuery = queryOptions({
 /** Everyone on this install, active first (for pickers, mentions and names in history). */
 export function useUsers() {
   return useQuery(usersQuery);
+}
+
+/** Active people by lower-case username, for highlighting @mentions in notes (you're marked). */
+export function useMentionPeople(): MentionPeople | undefined {
+  const { data: users } = useUsers();
+  const myId = useMe().data?.id;
+  return useMemo(
+    () =>
+      users ? new Map(users.filter((u) => !u.disabled).map((u) => [u.username.toLowerCase(), { displayName: u.displayName, me: u.id === myId }])) : undefined,
+    [users, myId],
+  );
 }
 
 export function useUpdateMe() {

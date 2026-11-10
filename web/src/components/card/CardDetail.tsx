@@ -8,6 +8,7 @@ import {
   ArchiveRestore,
   ArrowRightLeft,
   CircleCheck,
+  Eye,
   Link2,
   ListChecks,
   NotebookPen,
@@ -23,6 +24,7 @@ import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useCard, useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
+import { useWatchCard } from '../../api/notifications';
 import { isApiError } from '../../api/client';
 import { errorMessage } from '../../api/errors';
 import { sortedLabels } from '../../api/labels';
@@ -150,6 +152,22 @@ export function CardDetailModal({ cardId, onClose }: Props) {
   );
 }
 
+/** Watch / Unwatch: new notes, moves and assignee changes on a watched card notify you. */
+function WatchButton({ card }: { card: CardDetailType }) {
+  const watch = useWatchCard(card.id);
+  const watching = watch.isPending && watch.variables !== undefined ? watch.variables : card.watching;
+  return (
+    <button
+      type="button"
+      className={cls('btn btn-sm card-watch-btn', watching && 'is-watching')}
+      title={watching ? 'You’re told about new notes, moves and assignee changes here' : 'Be told about new notes, moves and assignee changes here'}
+      onClick={() => watch.mutate(!watching)}
+    >
+      <Eye size={16} aria-hidden /> <span className="card-watch-label">{watching ? 'Unwatch' : 'Watch'}</span>
+    </button>
+  );
+}
+
 function CloseButton({ onClick }: { onClick: () => void }) {
   return (
     <button type="button" className="icon-btn card-close" aria-label="Close card" onClick={onClick}>
@@ -244,6 +262,7 @@ function CardDetailBody({
             )}
           </p>
         </div>
+        {!deleted && <WatchButton card={card} />}
         {!deleted && (
           <button type="button" className="btn btn-sm card-log-btn" onClick={() => setLogRequest((n) => n + 1)}>
             <NotebookPen size={16} aria-hidden /> <span className="card-log-label">Log work</span>
