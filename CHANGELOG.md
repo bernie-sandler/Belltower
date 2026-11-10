@@ -4,6 +4,47 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.5.0: Teams foundation
+
+- **People.** Belltower now has accounts, each one an admin or a member.
+  - **Admins** run the install: people, settings, notification channels, the submit page, backups and restore.
+  - **Members** do all the board work, and manage their own profile, password and API tokens.
+  - **Settings → People** adds someone with a temporary password, changes roles and display names, and deactivates or
+    re-enables people. The owner is always an admin.
+  - **Account**, in the ☰ menu, holds your profile, password, API tokens, single sign-on and notification choices.
+- **Who did what.** Every history entry and work-log note shows who made it, including "via API token" and the submit
+  page.
+  - Only the note's author or an admin can edit or retract a note.
+  - Retracting and restoring a note are recorded too.
+- **Assignees.** A card can have one assignee. Pick them on the card, see their initials on the tile, and filter the
+  board by assignee.
+  - **Mine** lists your open cards.
+  - **Unassigned** lists every open card nobody has taken, most urgent first, with **Take it**. If two people grab the
+    same card at once, the second is told who got it.
+  - On phones the top bar shows icons only, and Calendar and Recurring moved into the ☰ menu.
+- **Watching, @mentions and the bell.**
+  - **Watch** a card to hear about new notes, moves and changes of assignee. You watch a card automatically when you
+    create it, are assigned it, are mentioned on it or write a note on it.
+  - Type `@` in a note to mention someone.
+  - The bell in the top bar lists your notifications. It can play a sound on each device (**Settings → Appearance**).
+- **Personal notifications.** **Account → Notifications** chooses, for each kind of event, the bell, a Discord ping in
+  the install's channel, or your own ntfy topic. See
+  [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md#personal-notifications).
+- **Single sign-on (optional).** Sign in through Authentik, Authelia or another OpenID Connect provider. Signing in with
+  a password always stays available. See [docs/SSO.md](docs/SSO.md).
+- **API tokens belong to a person.** Members see their own under **Account**, and admins see everyone's under
+  **Settings → Automation**. A token stops working while its owner is deactivated. The automation API itself hasn't
+  changed.
+- **Upgrading.** There's nothing to do, and nobody is signed out.
+  - Your password becomes the owner account `admin`. The name `tower-tracker` that password managers saved still
+    works.
+  - Signed-in devices and API tokens move to the owner.
+  - `APP_PASSWORD` now sets the owner's password only, and "set it and restart" still gets you back in.
+  - Backups now include people, but never their passwords. Restoring keeps the accounts of the install you restore
+    into, and backups from every earlier version still restore.
+  - The database moves to layout 9. Going back to 1.4 means putting back the copy saved before the upgrade, and any
+    accounts created since are lost (see [docs/UPGRADING.md](docs/UPGRADING.md#upgrading-to-15-people)).
+
 ## 1.4.0: Not every check passes
 
 - **Checklist marks.** Clicking a checklist item now cycles through three marks, then back to empty: ✓ done, ✗ failed
