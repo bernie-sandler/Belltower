@@ -125,6 +125,8 @@ describe('backup round trip', () => {
     // Tables added later didn't exist yet.
     delete json.tables.request_types;
     delete json.tables.api_tokens;
+    delete json.tables.users;
+    delete json.tables.card_watchers;
     for (const c of json.tables.cards) {
       delete c.severity;
       delete c.ticket_no;
@@ -132,6 +134,11 @@ describe('backup round trip', () => {
       delete c.parent_id;
       delete c.resolution;
       delete c.resolution_md;
+      delete c.assignee_id;
+    }
+    for (const a of json.tables.activity) {
+      delete a.user_id;
+      delete a.token_id;
     }
 
     const dst = await makeApp();

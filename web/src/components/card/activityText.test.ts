@@ -14,6 +14,8 @@ const entry = (type: ActivityEntry['type'], data: Record<string, unknown>): Acti
   editedAt: null,
   retractedAt: null,
   revisionCount: 0,
+  userId: null,
+  tokenId: null,
 });
 
 describe('activityText', () => {

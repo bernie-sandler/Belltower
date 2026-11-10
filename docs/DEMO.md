@@ -50,12 +50,17 @@ Everything else is in `web/src/demo/`:
 
 ### Owner and Submitter
 
-Belltower has one password and no user accounts. The other people who reach it use the
-[submit page](SUBMIT-PAGE.md), which needs no sign-in. So the banner's switch is:
+Since 1.5 Belltower has accounts (admins and members), and people without one use the
+[submit page](SUBMIT-PAGE.md), which needs no sign-in. The demo has no passwords: it's seeded with the owner (`admin`,
+the visitor) and two more people, Alex (an admin) and Jordan (a member), so the directory and history have names in
+them. The banner's switch is:
 
-- **Owner**: signed in, the whole app. The demo starts here.
+- **Owner**: signed in as `admin`, the whole app. The demo starts here.
 - **Submitter**: signed out, on the public submit page. Going to the board from there shows the sign-in page, where
-  any password works.
+  any password (with any username, or none) signs you in as the owner again.
+
+The demo always signs in the owner, so it never shows the app as a member sees it. Adding people and changing their
+role or name works in the browser; a password given to someone new is checked and then forgotten.
 
 ### What the demo can't do
 
@@ -68,7 +73,7 @@ message that starts "Not available in the demo":
   alert levels, summary time and each channel's checkboxes can still be changed.
 - Claude drafting (it shows as off, as on an install without `ANTHROPIC_API_KEY`)
 - API tokens and the automation API (`/api/v1`)
-- changing the password
+- changing the password (there are none)
 
 Card import (JSON) works, all in the browser. Recurring templates run when the board loads instead of on a timer.
 The submit page has no rate limit.
@@ -88,7 +93,11 @@ answer with `notInDemo('…')`. You'll be reminded:
 the same way. The tests can't see behavior the types don't capture, so a quick click through the demo helps.
 
 **When the demo's stored data changes shape, bump `DEMO_SCHEMA_VERSION`** in `web/src/demo/server/db.ts`. Visitors
-with older data then get a fresh board instead of an error.
+with older data then get a fresh board instead of an error. (Version 3, for 1.5, already holds people, assignees,
+watchers and notifications.)
+
+**Admin-only routes are marked in the demo too.** A server route registered with the `ADMIN` option needs `admin(…)`
+around its demo handler; `routes.test.ts` checks the two lists match.
 
 **Request body schemas live in `@tt/shared`**, so the demo checks input with the same schema as the server. A route
 that validates with a schema of its own (as `/api/import/cards` did with `CardImportBody`) should move it there.

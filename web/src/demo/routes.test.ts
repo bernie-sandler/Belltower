@@ -41,6 +41,16 @@ describe('demo routes', () => {
     expect(demo.filter((r) => !server.includes(r)), 'demo routes the server no longer has').toEqual([]);
   });
 
+  it('marks the same routes admin-only as the server (its ADMIN option)', () => {
+    const server = new Set<string>();
+    for (const src of Object.values(sources)) {
+      for (const m of src.matchAll(/app\.(get|post|put|patch|delete)\(\s*'(\/api[^']*)',\s*ADMIN\b/g)) server.add(`${m[1]!.toUpperCase()} ${m[2]}`);
+    }
+    expect(server.size).toBeGreaterThan(20);
+    const demo = (Object.keys(routes) as (keyof typeof routes)[]).filter((k) => (routes[k] as { admin?: boolean }).admin === true).sort();
+    expect(demo).toEqual([...server].sort());
+  });
+
   it('prefers static routes over parametric ones, like Fastify', () => {
     expect(matchRoute('PUT', '/api/request-types/order')?.key).toBe('PUT /api/request-types/order');
     expect(matchRoute('PUT', '/api/request-types/3')).toEqual({ key: 'PUT /api/request-types/:id', params: { id: '3' } });

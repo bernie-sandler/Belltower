@@ -29,6 +29,9 @@ const ARRAYS: (keyof DemoState)[] = [
   'templates',
   'templateRuns',
   'requestTypes',
+  'users',
+  'watchers',
+  'notifications',
 ];
 
 /** A Storage that only lives in memory, for browsers that block localStorage (the demo then forgets on reload). */
@@ -70,7 +73,9 @@ function looksValid(v: unknown): v is DemoState {
     ARRAYS.every((k) => Array.isArray(s[k])) &&
     Array.isArray(s.columns) &&
     s.columns.some((c) => c.role === 'triage') &&
-    s.columns.some((c) => c.role === 'done')
+    s.columns.some((c) => c.role === 'done') &&
+    Array.isArray(s.users) &&
+    s.users.some((u) => u.isOwner)
   );
 }
 
@@ -167,7 +172,7 @@ export class DemoStore implements DemoBackend {
 
   setSignedIn(signedIn: boolean): void {
     this.transaction((ctx) => {
-      ctx.s.session.signedIn = signedIn;
+      ctx.s.session = { signedIn, userId: signedIn ? (ctx.s.users.find((u) => u.isOwner)?.id ?? null) : null };
     }, true);
   }
 

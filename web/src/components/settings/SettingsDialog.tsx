@@ -5,6 +5,7 @@ import { useId, useRef, useState, type FormEvent } from 'react';
 import { useAuthStatus, useChangePassword } from '../../api/auth';
 import { isApiError } from '../../api/client';
 import { useConfig } from '../../api/config';
+import { useMe } from '../../api/me';
 import { errorMessage, retryAfterSec } from '../../api/errors';
 import { qk } from '../../api/keys';
 import { toast } from '../../lib/toast';
@@ -15,7 +16,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const { data: config } = useConfig();
   const { data: auth } = useAuthStatus();
-  const managed = config?.passwordManagedByEnv ?? auth?.passwordManagedByEnv ?? false;
+  const { data: me } = useMe();
+  // APP_PASSWORD only manages the owner's password.
+  const managed = me?.passwordManagedByEnv ?? config?.passwordManagedByEnv ?? auth?.passwordManagedByEnv ?? false;
   const change = useChangePassword();
   const lockout = useLockout();
   const ids = useId();
@@ -96,16 +99,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <div id={noticeId} className="notice notice-row">
               <Lock size={16} aria-hidden />
               <p>
-                The password is set with <code>APP_PASSWORD</code> or <code>APP_PASSWORD_FILE</code> in the
-                container&apos;s environment, so it can&apos;t be changed here. Change the variable and recreate the
-                container; that also signs out every device.
+                The owner&apos;s password is set with <code>APP_PASSWORD</code> or <code>APP_PASSWORD_FILE</code> in
+                the container&apos;s environment, so it can&apos;t be changed here. Change the variable and recreate
+                the container; that also signs you out on every device.
               </p>
             </div>
           )}
           <form onSubmit={submit} noValidate aria-describedby={managed ? noticeId : undefined}>
             <fieldset className="form-stack" disabled={managed}>
               <legend className="visually-hidden">Change password</legend>
-              <input type="text" name="username" autoComplete="username" value="tower-tracker" readOnly hidden />
+              {/* Tells password managers whose password this is. */}
+              <input type="text" name="username" autoComplete="username" value={me?.username ?? ''} readOnly hidden />
               <label className="field">
                 <span className="field-label">Current password</span>
                 <input

@@ -1,7 +1,8 @@
 // Backup export and restore.
 //
-// Export: every table as rows ordered by id (sessions and the password are never exported; the
-// search index is rebuilt on restore). The ZIP adds attachments/<card id>/<uuid> files.
+// Export: every table as rows ordered by id (sessions, passwords and personal notifications are
+// never exported; the search index is rebuilt on restore). The ZIP adds attachments/<card id>/<uuid>
+// files.
 //
 // Restore never deletes rows from the live database (the activity log forbids it). Instead it:
 //  1. builds a brand-new database file from the export: migrate to the export's schema version,
@@ -10,7 +11,9 @@
 //  2. stages the attachment files next to it;
 //  3. shows a preview, and only on an explicit confirmation swaps the new file in. The old
 //     database and attachments are kept in /data/backups as pre-restore-<time>.
-// Your current password and signed-in devices carry over, so a restore never locks you out.
+// The live install decides who can sign in: everyone's current password, role, deactivation and
+// signed-in devices carry over (matched by username), so a restore never locks anyone out, and a
+// backup can never bring a password with it.
 
 import type Database from 'better-sqlite3';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -25,34 +28,52 @@ import { LATEST_SCHEMA_VERSION } from '../db/schema';
 import { AppError, badRequest } from '../errors';
 import type { Ctx } from './context';
 import { assignTicketNumbers } from './cards';
+import type { UserRow } from './users';
 import { seedRequestTypes } from './requestTypes';
 import { rebuildSearch } from './search';
 
 /** Keeps the app's old name: it's frozen (docs/BACKUP-FORMAT.md), and every existing backup carries it. */
 export const BACKUP_FORMAT = 'tower-tracker-backup';
 
-/** Insert order (parents first). Every table here is exported; nothing else is. */
+/**
+ * Insert order (parents first). Every table here is exported; nothing else is. Not exported:
+ * sessions (signed-in devices belong to the install), notifications (a personal inbox that is
+ * pruned anyway) and the search index (rebuilt).
+ */
 export const BACKUP_TABLES = [
   'settings',
+  'users',
   'columns',
   'labels',
   'recurring_templates',
   'recurring_template_labels',
   'cards',
   'card_labels',
+  'card_watchers',
   'checklists',
   'checklist_items',
   'attachments',
   'card_links',
+  'api_tokens',
   'activity',
   'activity_revisions',
   'template_runs',
   'request_types',
-  'api_tokens',
 ] as const;
 
-/** Settings that belong to this installation, not to the data. */
+/**
+ * Settings that belong to this installation, not to the data: never exported, never imported, and
+ * carried over from the live install on restore. (password_hash is 1.4's password, gone since schema 9.)
+ */
 const PRIVATE_SETTINGS = new Set(['password_hash', 'password_source']);
+
+/** Sort order per table for a stable export. */
+const EXPORT_ORDER: Partial<Record<(typeof BACKUP_TABLES)[number], string>> = {
+  settings: 'key',
+  card_labels: 'card_id, label_id',
+  card_watchers: 'card_id, user_id',
+  recurring_template_labels: 'template_id, label_id',
+};
 
 export interface BackupData {
   format: typeof BACKUP_FORMAT;
@@ -75,10 +96,10 @@ const BackupSchema = z.object({
 export function exportData(ctx: Ctx, appVersion: string): BackupData {
   const tables: BackupData['tables'] = {};
   for (const t of BACKUP_TABLES) {
-    const order =
-      t === 'settings' ? 'key' : t === 'card_labels' ? 'card_id, label_id' : t === 'recurring_template_labels' ? 'template_id, label_id' : 'id';
-    let rows = ctx.db.prepare(`SELECT * FROM ${t} ORDER BY ${order}`).all() as Record<string, unknown>[];
+    let rows = ctx.db.prepare(`SELECT * FROM ${t} ORDER BY ${EXPORT_ORDER[t] ?? 'id'}`).all() as Record<string, unknown>[];
     if (t === 'settings') rows = rows.filter((r) => !PRIVATE_SETTINGS.has(String(r.key)));
+    // People come along without their passwords: the install restoring the backup decides those.
+    if (t === 'users') rows = rows.map(({ password_hash: _hash, ...rest }) => rest);
     tables[t] = rows;
   }
   return {
@@ -180,8 +201,13 @@ export function buildRestoreDb(data: BackupData, dbPath: string, tz: string, clo
             if (table === 'attachments' && (!UUID.test(String(row.stored_name)) || !Number.isInteger(row.card_id))) {
               throw badRequest('validation', 'Invalid attachment entry in backup');
             }
+            // A backup never brings a way to sign in: no password, owner flag or single sign-on link
+            // (a hand-edited one could try; all default to none when left out). confirmRestore
+            // copies them from the live install.
+            const fixed: Record<string, unknown> =
+              table === 'users' ? { ...row, password_hash: null, is_owner: 0, oidc_issuer: null, oidc_subject: null } : row;
             const values = cols.map((c) => {
-              const v = row[c];
+              const v = fixed[c];
               return typeof v === 'boolean' ? (v ? 1 : 0) : (v as unknown);
             });
             try {
@@ -329,9 +355,79 @@ export async function stageRestore(
   }
 }
 
+type LiveUser = Omit<UserRow, 'is_owner'> & { is_owner: number };
+
+/**
+ * Who can sign in after a restore comes from the live install, not the backup (which never has
+ * passwords). In the restored database `next`:
+ *  - each live person is matched to a restored one by username; the match gets the live password,
+ *    role, deactivation and single-sign-on link (the backup keeps the profile). Live people the
+ *    backup doesn't have are added;
+ *  - the live owner's match becomes the owner;
+ *  - live sessions move over to the matching people (any that can't be matched end);
+ *  - API tokens nobody owns (backups from before 1.5) go to the owner;
+ *  - the install's private settings (where the owner's password comes from) are kept.
+ */
+function carryOverAccess(live: DB, next: DB): void {
+  const users = live.prepare('SELECT * FROM users ORDER BY id').all() as LiveUser[];
+  const sessions = live.prepare('SELECT * FROM sessions').all() as Record<string, unknown>[];
+  const privateSettings = (live.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]).filter((r) =>
+    PRIVATE_SETTINGS.has(r.key),
+  );
+  next.transaction(() => {
+    const restoredId = new Map<number, number>();
+    for (const u of users) {
+      const match = next.prepare('SELECT id FROM users WHERE username = ?').pluck().get(u.username) as number | undefined;
+      if (u.oidc_subject !== null) {
+        // Restored people come without links (buildRestoreDb drops them); clearing any holder anyway
+        // keeps the unique index safe whatever the restored file contains.
+        next
+          .prepare('UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id IS NOT ?')
+          .run(u.oidc_issuer, u.oidc_subject, match ?? null);
+      }
+      if (match !== undefined) {
+        next
+          .prepare('UPDATE users SET password_hash = ?, role = ?, disabled_at = ?, oidc_issuer = ?, oidc_subject = ? WHERE id = ?')
+          .run(u.password_hash, u.role, u.disabled_at, u.oidc_issuer, u.oidc_subject, match);
+        restoredId.set(u.id, match);
+      } else {
+        const { id: _id, is_owner: _owner, ...cols } = u;
+        const keys = Object.keys(cols);
+        const added = next
+          .prepare(`INSERT INTO users (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`)
+          .run(...(Object.values(cols) as Parameters<Database.Statement['run']>));
+        restoredId.set(u.id, Number(added.lastInsertRowid));
+      }
+    }
+    next.prepare('UPDATE users SET is_owner = 0 WHERE is_owner = 1').run();
+    const liveOwner = users.find((u) => u.is_owner === 1);
+    const owner = liveOwner ? restoredId.get(liveOwner.id) : undefined;
+    if (owner !== undefined) next.prepare('UPDATE users SET is_owner = 1 WHERE id = ?').run(owner);
+
+    // Foreign keys are on here, so every session must point at someone (INSERT OR IGNORE wouldn't skip that).
+    for (const row of sessions) {
+      const userId = row.user_id === null ? undefined : restoredId.get(Number(row.user_id));
+      if (userId === undefined) continue;
+      const moved = { ...row, user_id: userId };
+      const cols = Object.keys(moved);
+      next.prepare(`INSERT OR IGNORE INTO sessions (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(
+        ...(Object.values(moved) as Parameters<Database.Statement['run']>),
+      );
+    }
+    if (owner !== undefined) next.prepare('UPDATE api_tokens SET user_id = ? WHERE user_id IS NULL').run(owner);
+
+    next.prepare(`DELETE FROM settings WHERE key IN (${[...PRIVATE_SETTINGS].map(() => '?').join(', ')})`).run(...PRIVATE_SETTINGS);
+    for (const k of privateSettings) next.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(k.key, k.value);
+
+    const fk = next.pragma('foreign_key_check') as unknown[];
+    if (fk.length) throw new AppError(500, 'restore_failed', `The restored database has ${fk.length} broken reference(s); nothing was changed`);
+  })();
+}
+
 /**
  * Swaps the staged database (and files) in. Synchronous from start to finish, so no request can
- * run against a half-swapped state. Returns the path of the kept pre-restore copy.
+ * run against a half-swapped state. Takes the app's base context: it closes that context's database
+ * and gives it the new one. Returns the path of the kept pre-restore copy.
  */
 export function confirmRestore(
   ctx: Ctx,
@@ -341,25 +437,10 @@ export function confirmRestore(
   const s = staged.get(token);
   if (!s) throw new AppError(404, 'not_found', 'That restore has expired; upload the backup again');
 
-  // Carry the current password and signed-in devices into the restored database.
+  // Carry everyone's sign-in (passwords, roles, signed-in devices) into the restored database.
   const next = openDatabase(s.dbPath);
   try {
-    const keep = ctx.db.prepare(`SELECT key, value FROM settings WHERE key IN ('password_hash', 'password_source')`).all() as {
-      key: string;
-      value: string;
-    }[];
-    const sessions = ctx.db.prepare('SELECT * FROM sessions').all() as Record<string, unknown>[];
-    next.transaction(() => {
-      for (const k of keep) {
-        next.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k.key, k.value);
-      }
-      for (const row of sessions) {
-        const cols = Object.keys(row);
-        next.prepare(`INSERT OR IGNORE INTO sessions (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(
-          ...(Object.values(row) as Parameters<Database.Statement['run']>),
-        );
-      }
-    })();
+    carryOverAccess(ctx.db, next);
     next.pragma('wal_checkpoint(TRUNCATE)');
   } finally {
     next.close();

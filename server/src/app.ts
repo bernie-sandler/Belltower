@@ -16,13 +16,18 @@ import { registerPhase4Routes } from './http/routes/phase4';
 import { registerSettingsRoutes } from './http/routes/settings';
 import { registerSubmitRoutes } from './http/routes/submit';
 import { registerTicketRoutes } from './http/routes/tickets';
+import { registerUserRoutes } from './http/routes/users';
 import { registerV1Routes } from './http/routes/v1';
 import type { TicketDrafter } from './services/aiDraft';
 import type { Notifier } from './services/notify';
 import type { Ctx } from './services/context';
 
 export interface AppDeps {
-  ctx: Ctx;
+  /**
+   * The app's own context (acting as the system). Routes use `req.ctx`, which acts as whoever sent
+   * the request; only restore, startup and the timers use this one directly.
+   */
+  baseCtx: Ctx;
   config: Config;
   /** Mutable: setup completes / password source changes at runtime. */
   auth: AuthState;
@@ -123,6 +128,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   registerPhase4Routes(app, deps);
   registerTicketRoutes(app, deps);
   registerSettingsRoutes(app, deps);
+  registerUserRoutes(app, deps);
   registerSubmitRoutes(app, deps);
   registerV1Routes(app, deps);
 

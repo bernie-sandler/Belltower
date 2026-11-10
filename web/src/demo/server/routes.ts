@@ -20,6 +20,7 @@ import {
   CreateCardBody,
   CreateLinkBody,
   CreateTicketBody,
+  CreateUserBody,
   CSRF_HEADER,
   CSRF_VALUE,
   DeleteColumnQuery,
@@ -43,7 +44,9 @@ import {
   UpdateCardBody,
   UpdateChecklistItemBody,
   UpdateLabelBody,
+  UpdateMeBody,
   UpdateTemplateBody,
+  UpdateUserBody,
   UpdateWorklogBody,
   WorklogBody,
   type ActivityEntry,
@@ -60,6 +63,7 @@ import {
   type Column,
   type ImportPreview,
   type Label,
+  type MeResponse,
   type MoveCardResponse,
   type MoveCardsResponse,
   type PublicSubmitConfig,
@@ -73,6 +77,7 @@ import {
   type PublicTicketStatus,
   type TextPreview,
   type TicketDraft,
+  type UserInfo,
 } from '@tt/shared';
 import { version as APP_VERSION } from '../../../../package.json';
 import { listActivity } from './activity';
@@ -107,7 +112,7 @@ import {
 } from './checklists';
 import { calendarItems } from './calendar';
 import { createColumn, deleteColumn, renameColumn, reorderColumns, setBlockedColumn } from './columns';
-import type { Ctx } from './db';
+import { actorId, type Ctx } from './db';
 import { badRequest, DemoError, idParam, notFound, notInDemo, parse } from './errors';
 import { createLabel, deleteLabel, reorderLabels, updateLabel } from './labels';
 import { createLink, deleteLink } from './links';
@@ -130,6 +135,7 @@ import {
   updateSubmitSettings,
 } from './settings';
 import { checkSubmitKey, MAX_UPLOAD_BYTES, publicSubmitConfig, submitTicket } from './submit';
+import { actorIsAdmin, createUser, getOwner, listUsers, meResponse, updateMe, updateUser } from './users';
 import { addWorklog, listRevisions, updateWorklog } from './worklog';
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -251,6 +257,12 @@ export interface DemoApi {
   'GET /api/tokens': ApiTokenInfo[];
   'POST /api/tokens': { token: string; info: ApiTokenInfo };
   'DELETE /api/tokens/:id': void;
+  // ---- people (routes/users.ts) ----
+  'GET /api/me': MeResponse;
+  'PATCH /api/me': MeResponse;
+  'GET /api/users': UserInfo[];
+  'POST /api/users': UserInfo;
+  'PATCH /api/users/:id': UserInfo;
   // ---- the public submit page (routes/submit.ts) ----
   'GET /api/public/submit/:key': PublicSubmitConfig;
   'POST /api/public/submit/:key': SubmitResult;
@@ -274,6 +286,8 @@ interface RouteDef<R> {
   status: number | ((req: DemoRequest) => number);
   /** Reachable signed out (the server's PUBLIC_ROUTES). */
   public?: boolean;
+  /** Admins only (the server's ADMIN routes; routes.test.ts keeps the two lists equal). */
+  admin?: boolean;
   /** GET routes normally only read; these may also change data (the recurring scheduler). */
   writes?: boolean;
 }
@@ -286,6 +300,10 @@ const noContent = (run: (ctx: Ctx, req: DemoRequest) => void, extra: Partial<Rou
   ...extra,
 });
 const id = (req: DemoRequest, name = 'id') => idParam(req.params, name);
+/** Marks a route admin-only, like the server's ADMIN option. */
+const admin = <R>(def: RouteDef<R>): RouteDef<R> => ({ ...def, admin: true });
+/** The signed-in person (dispatch sets the actor on every signed-in route). */
+const me = (ctx: Ctx): number => actorId(ctx)!;
 
 const NO_FILES = 'attachments need the server’s file storage';
 const NO_BACKUPS = 'backups and restores work on the server’s database';
@@ -319,14 +337,14 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'POST /api/auth/login': noContent(
     (ctx, req) => {
       parse(LoginBody, req.body);
-      // No password in the demo: any password signs you in.
-      ctx.s.session.signedIn = true;
+      // No passwords in the demo: any password (and any username, or none) signs you in as the owner.
+      ctx.s.session = { signedIn: true, userId: getOwner(ctx)?.id ?? null };
     },
     { public: true },
   ),
   'POST /api/auth/logout': noContent(
     (ctx) => {
-      ctx.s.session.signedIn = false;
+      ctx.s.session = { signedIn: false, userId: null };
     },
     { public: true },
   ),
@@ -442,20 +460,20 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'DELETE /api/templates/:id': noContent((ctx, req) => deleteTemplate(ctx, id(req))),
   'POST /api/templates/:id/run': created((ctx, req) => runTemplateNow(ctx, id(req), req.query.force === '1')),
 
-  'GET /api/backup/export.json': ok(() => {
+  'GET /api/backup/export.json': admin(ok(() => {
     throw notInDemo(NO_BACKUPS);
-  }),
-  'GET /api/backup/export.zip': ok(() => {
+  })),
+  'GET /api/backup/export.zip': admin(ok(() => {
     throw notInDemo(NO_BACKUPS);
-  }),
-  'POST /api/backup/restore': ok(() => {
+  })),
+  'POST /api/backup/restore': admin(ok(() => {
     throw notInDemo(NO_BACKUPS);
-  }),
-  'POST /api/backup/restore/:token/confirm': ok(() => {
+  })),
+  'POST /api/backup/restore/:token/confirm': admin(ok(() => {
     throw notInDemo(NO_BACKUPS);
-  }),
-  'DELETE /api/backup/restore/:token': noContent(() => undefined),
-  'GET /api/backup/snapshots': ok(() => []),
+  })),
+  'DELETE /api/backup/restore/:token': admin(noContent(() => undefined)),
+  'GET /api/backup/snapshots': admin(ok(() => [])),
   'POST /api/import/cards': {
     status: (req) => (parse(CardImportBody, req.body).dryRun ? 200 : 201),
     run: (ctx, req) => {
@@ -471,56 +489,56 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   },
 
   'GET /api/settings': ok((ctx) => settingsResponse(ctx)),
-  'PUT /api/settings/general': ok((ctx, req) => {
+  'PUT /api/settings/general': admin(ok((ctx, req) => {
     updateGeneralSettings(ctx, parse(GeneralSettingsBody, req.body));
     return settingsResponse(ctx);
-  }),
-  'PUT /api/settings/submit': ok((ctx, req) => {
+  })),
+  'PUT /api/settings/submit': admin(ok((ctx, req) => {
     updateSubmitSettings(ctx, parse(SubmitSettingsBody, req.body));
     return settingsResponse(ctx);
-  }),
-  'PUT /api/settings/resolutions': ok((ctx, req) => {
+  })),
+  'PUT /api/settings/resolutions': admin(ok((ctx, req) => {
     setResolutionReasons(ctx, parse(ResolutionReasonsBody, req.body).reasons);
     return settingsResponse(ctx);
-  }),
-  'POST /api/settings/submit/new-link': ok((ctx) => {
+  })),
+  'POST /api/settings/submit/new-link': admin(ok((ctx) => {
     regenerateSubmitKey(ctx);
     return settingsResponse(ctx);
-  }),
-  'POST /api/settings/submit/reset-status-links': ok((ctx) => {
+  })),
+  'POST /api/settings/submit/reset-status-links': admin(ok((ctx) => {
     resetStatusLinks(ctx);
     return settingsResponse(ctx);
-  }),
-  'PUT /api/settings/discord': ok((ctx, req) => {
+  })),
+  'PUT /api/settings/discord': admin(ok((ctx, req) => {
     const body = parse(DiscordSettingsBody, req.body);
     if (body.webhookUrl) throw notInDemo(NO_DISCORD);
     updateDiscordSettings(ctx, body);
     return settingsResponse(ctx);
-  }),
-  'POST /api/settings/discord/test': ok(() => {
+  })),
+  'POST /api/settings/discord/test': admin(ok(() => {
     throw notInDemo(NO_DISCORD);
-  }),
-  'POST /api/settings/discord/digest-now': ok(() => {
+  })),
+  'POST /api/settings/discord/digest-now': admin(ok(() => {
     throw notInDemo(NO_DISCORD);
-  }),
-  'PUT /api/settings/notify': ok((ctx, req) => {
+  })),
+  'PUT /api/settings/notify': admin(ok((ctx, req) => {
     updateAlertSettings(ctx, parse(NotifyAlertsBody, req.body));
     return settingsResponse(ctx);
-  }),
-  'PUT /api/settings/notify/ntfy': ok(saveChannel('ntfy')),
-  'PUT /api/settings/notify/gotify': ok(saveChannel('gotify')),
-  'PUT /api/settings/notify/webhook': ok(saveChannel('webhook')),
-  'POST /api/settings/notify/ntfy/test': ok(notSent),
-  'POST /api/settings/notify/gotify/test': ok(notSent),
-  'POST /api/settings/notify/webhook/test': ok(notSent),
-  'POST /api/settings/notify/ntfy/digest-now': ok(notSent),
-  'POST /api/settings/notify/gotify/digest-now': ok(notSent),
-  'POST /api/settings/notify/webhook/digest-now': ok(notSent),
+  })),
+  'PUT /api/settings/notify/ntfy': admin(ok(saveChannel('ntfy'))),
+  'PUT /api/settings/notify/gotify': admin(ok(saveChannel('gotify'))),
+  'PUT /api/settings/notify/webhook': admin(ok(saveChannel('webhook'))),
+  'POST /api/settings/notify/ntfy/test': admin(ok(notSent)),
+  'POST /api/settings/notify/gotify/test': admin(ok(notSent)),
+  'POST /api/settings/notify/webhook/test': admin(ok(notSent)),
+  'POST /api/settings/notify/ntfy/digest-now': admin(ok(notSent)),
+  'POST /api/settings/notify/gotify/digest-now': admin(ok(notSent)),
+  'POST /api/settings/notify/webhook/digest-now': admin(ok(notSent)),
   'GET /api/request-types': ok((ctx) => listRequestTypes(ctx)),
-  'POST /api/request-types': created((ctx, req) => createRequestType(ctx, parse(RequestTypeBody, req.body))),
-  'PUT /api/request-types/order': ok((ctx, req) => reorderRequestTypes(ctx, parse(ReorderBody, req.body).ids)),
-  'PUT /api/request-types/:id': ok((ctx, req) => updateRequestType(ctx, id(req), parse(RequestTypeBody, req.body))),
-  'DELETE /api/request-types/:id': noContent((ctx, req) => deleteRequestType(ctx, id(req))),
+  'POST /api/request-types': admin(created((ctx, req) => createRequestType(ctx, parse(RequestTypeBody, req.body)))),
+  'PUT /api/request-types/order': admin(ok((ctx, req) => reorderRequestTypes(ctx, parse(ReorderBody, req.body).ids))),
+  'PUT /api/request-types/:id': admin(ok((ctx, req) => updateRequestType(ctx, id(req), parse(RequestTypeBody, req.body)))),
+  'DELETE /api/request-types/:id': admin(noContent((ctx, req) => deleteRequestType(ctx, id(req)))),
   'GET /api/tokens': ok(() => []),
   'POST /api/tokens': ok((_ctx, req) => {
     parse(ApiTokenBody, req.body);
@@ -529,6 +547,25 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'DELETE /api/tokens/:id': noContent(() => {
     throw notFound('Token not found');
   }),
+
+  'GET /api/me': ok((ctx) => meResponse(ctx, me(ctx))),
+  'PATCH /api/me': ok((ctx, req) => {
+    updateMe(ctx, me(ctx), parse(UpdateMeBody, req.body));
+    return meResponse(ctx, me(ctx));
+  }),
+  'GET /api/users': ok((ctx) => listUsers(ctx)),
+  'POST /api/users': admin(
+    created((ctx, req) => {
+      const { password: _password, ...body } = parse(CreateUserBody, req.body);
+      return createUser(ctx, body);
+    }),
+  ),
+  'PATCH /api/users/:id': admin(
+    ok((ctx, req) => {
+      const { password, ...patch } = parse(UpdateUserBody, req.body);
+      return updateUser(ctx, id(req), patch, password !== undefined);
+    }),
+  ),
 
   'GET /api/public/submit/:key': ok((ctx, req) => publicSubmitConfig(ctx, req.params.key ?? ''), { public: true }),
   'GET /api/public/status/:id/:sig': ok((ctx, req) => publicStatus(ctx, req.params.id ?? '', req.params.sig ?? ''), { public: true }),
@@ -654,7 +691,12 @@ export function dispatch(backend: DemoBackend, req: Omit<DemoRequest, 'params'>)
     if (!def.public && !backend.signedIn()) throw new DemoError(401, 'unauthenticated', 'Please log in');
     const full: DemoRequest = { ...req, params: match.params };
     const commit = req.method !== 'GET' ? true : def.writes ? 'if-changed' : false;
-    const body = backend.transaction((ctx) => def.run(ctx, full), commit);
+    const body = backend.transaction((base) => {
+      // Like the server's req.ctx: public routes act as nobody, the rest as the signed-in person.
+      const ctx: Ctx = { ...base, userId: def.public ? null : base.s.session.userId };
+      if (def.admin && !actorIsAdmin(ctx)) throw new DemoError(403, 'forbidden', 'Only an admin can do that');
+      return def.run(ctx, full);
+    }, commit);
     const status = typeof def.status === 'function' ? def.status(full) : def.status;
     return status === 204 ? { status } : { status, body };
   } catch (err) {

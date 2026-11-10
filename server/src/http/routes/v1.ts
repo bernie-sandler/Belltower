@@ -23,8 +23,7 @@ declare module 'fastify' {
 export const V1_LIMIT = { max: 120, windowMs: 60_000 };
 
 export function registerV1Routes(app: FastifyInstance, deps: AppDeps): void {
-  const { ctx } = deps;
-  const limiter = new WindowLimiter(ctx.clock, V1_LIMIT.max, V1_LIMIT.windowMs);
+  const limiter = new WindowLimiter(deps.baseCtx.clock, V1_LIMIT.max, V1_LIMIT.windowMs);
 
   const token = (req: FastifyRequest): TokenIdentity => {
     const t = req.apiToken;
@@ -37,11 +36,11 @@ export function registerV1Routes(app: FastifyInstance, deps: AppDeps): void {
   /** Ticket counts for dashboards. Read-only tokens may call this. */
   app.get('/api/v1/summary', { config: { readScope: true } }, async (req) => {
     token(req);
-    return apiSummary(ctx);
+    return apiSummary(req.ctx);
   });
 
   app.post('/api/v1/cards', async (req, reply) => {
-    const result = intakeCard(ctx, token(req), req.body);
+    const result = intakeCard(req.ctx, token(req), req.body);
     return reply.status(result.status === 'created' ? 201 : 200).send(result);
   });
 
@@ -53,7 +52,7 @@ export function registerV1Routes(app: FastifyInstance, deps: AppDeps): void {
         .filter((k) => typeof q[k] === 'string' && (q[k] as string).trim())
         .map((k) => [k, (q[k] as string).trim().slice(0, 200)]),
     );
-    const result = intakeUptimeKuma(ctx, token(req), (req.body ?? {}) as Parameters<typeof intakeUptimeKuma>[2], defaults);
+    const result = intakeUptimeKuma(req.ctx, token(req), (req.body ?? {}) as Parameters<typeof intakeUptimeKuma>[2], defaults);
     return reply.status(result.status === 'created' ? 201 : 200).send(result);
   });
 }

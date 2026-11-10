@@ -38,13 +38,16 @@ in the folder, this does the same thing:
 docker compose up -d
 ```
 
-## 4. Set your password
+## 4. Create your account
 
 Open `http://tower:8080` (or `http://<server-ip>:8080`). On the very first run it asks for a one-time **setup code**,
 which is printed in the container log: in the Docker tab, click the belltower icon and choose **Logs**, or run
-`docker logs belltower`. Then choose a password of at least 12 characters.
+`docker logs belltower`. Then choose a username (`admin` unless you change it) and a password of at least 12
+characters. This is the **owner** account: an admin that can't be demoted or deactivated, so there's always a way in.
+You can add other people later, as admins or members.
 
-If you'd rather skip that step, set `APP_PASSWORD` in `.env` before starting.
+If you'd rather skip that step, set `APP_PASSWORD` in `.env` before starting: the owner account is then `admin` with
+that password.
 
 That's it. Next steps you might want:
 - [reach it from your phone](REMOTE-ACCESS.md);
@@ -78,7 +81,7 @@ That recreates the container and leaves your data alone.
 | `PORT` | `8080` | The port the app is reached on. One setting covers both Unraid and the container. |
 | `DATA_PATH` | `/mnt/cache/appdata/belltower` | The host folder for the database, attachments and backups. |
 | `TZ` | `America/Chicago` | Your time zone. Every date, due badge, calendar day and schedule uses it. |
-| `APP_PASSWORD` | (empty) | Optional. When set, this *is* the password, and it can't be changed in the app. Wrap it in single quotes if it contains a `$`. |
+| `APP_PASSWORD` | (empty) | Optional. When set, this *is* the owner account's password, and it can't be changed in the app. Other people's passwords aren't affected. Wrap it in single quotes if it contains a `$`. |
 | `MAX_UPLOAD_MB` | `25` | The largest attachment you can upload. |
 | `PUID` / `PGID` | `99` / `100` | Who owns the files in `DATA_PATH` (Unraid's nobody:users). |
 | `TRUST_PROXY` | (empty) | Only when a reverse proxy sits in front: that proxy's LAN IP. Never `true`. See [remote access](REMOTE-ACCESS.md). |
@@ -90,7 +93,7 @@ A few more the app understands, for the rare case you need them. Add them under 
 | Setting | Default | What it does |
 |---|---|---|
 | `MAX_IMPORT_MB` | `2048` | The largest backup you can restore. |
-| `APP_PASSWORD_FILE` | (empty) | Read the password from a file instead. |
+| `APP_PASSWORD_FILE` | (empty) | Read the owner's password from a file instead. |
 | `ANTHROPIC_API_KEY_FILE` | (empty) | Read the API key from a file instead. |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | The Claude model (Settings can override it). |
 | `SESSION_DAYS` | `90` | How long "Remember this device" lasts. It renews as you use the app. |
@@ -100,8 +103,12 @@ A few more the app understands, for the rare case you need them. Add them under 
 
 ## Forgot the password?
 
-Set `APP_PASSWORD` in `.env` and run `docker compose up -d`. That sets the new password and signs out every device.
-You can remove the line afterwards; the password stays.
+Set `APP_PASSWORD` in `.env` and run `docker compose up -d`. That sets the owner account's password, makes sure the
+owner is an active admin again, and signs the owner out on every device (nobody else). Sign in with the owner's
+username (`admin` on installs from before 1.5, which also accept the old name `tower-tracker`) or leave the username
+empty. You can remove the line afterwards; the password stays.
+
+Someone else forgot theirs? An admin sets a new password for them; that signs them out everywhere.
 
 ## Troubleshooting
 

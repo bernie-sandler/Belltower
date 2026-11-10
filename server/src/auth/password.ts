@@ -83,6 +83,15 @@ export function verifyPassword(password: string, stored: string): Promise<boolea
   });
 }
 
+/**
+ * Does the same work as checking a real password, and always fails. Login runs it for unknown,
+ * deactivated and single-sign-on-only accounts, so the answer time doesn't tell which usernames exist.
+ */
+export function verifyDummy(password: string): Promise<false> {
+  const fake = ['scrypt', logN, R, P, randomBytes(16).toString('base64'), randomBytes(KEY_LEN).toString('base64')].join('$');
+  return verifyPassword(password, fake).then(() => false);
+}
+
 export function needsRehash(stored: string): boolean {
   const parsed = parse(stored);
   return !parsed || parsed.logN !== logN || parsed.r !== R || parsed.p !== P;

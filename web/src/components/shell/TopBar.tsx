@@ -1,9 +1,10 @@
-import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2 } from 'lucide-react';
+import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2, UserRound } from 'lucide-react';
 import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
 import { useState } from 'react';
 import { useLogout } from '../../api/auth';
+import { useIsAdmin } from '../../api/me';
 import { useAiStatus } from '../../api/tickets';
 import { BrandMark } from '../common/BrandMark';
 import { Menu } from '../common/Menu';
@@ -23,6 +24,7 @@ const EXTRA_PAGES: Record<string, string> = {
   '/import': 'Import',
   '/backup': 'Backup',
   '/settings': 'Settings',
+  '/account': 'Account',
 };
 
 export function TopBar() {
@@ -31,6 +33,7 @@ export function TopBar() {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
   const aiEnabled = useAiStatus().data?.enabled === true;
+  const isAdmin = useIsAdmin();
   const location = useLocation();
   const navigate = useNavigate();
   const page = (backgroundOf(location) ?? location).pathname;
@@ -138,9 +141,12 @@ export function TopBar() {
             ...(aiEnabled
               ? []
               : [{ key: 'import', label: 'Import cards', icon: <FileUp size={16} />, onSelect: () => void navigate('/import') }]),
-            { key: 'backup', label: 'Backup & restore', icon: <DatabaseBackup size={16} />, onSelect: () => void navigate('/backup') },
+            ...(isAdmin
+              ? [{ key: 'backup', label: 'Backup & restore', icon: <DatabaseBackup size={16} />, onSelect: () => void navigate('/backup') }]
+              : []),
             { key: 'settings', label: 'Settings', icon: <Settings size={16} />, onSelect: () => void navigate('/settings') },
             'separator',
+            { key: 'account', label: 'Account', icon: <UserRound size={16} />, onSelect: () => void navigate('/account') },
             {
               key: 'logout',
               label: logout.isPending ? 'Logging out…' : 'Log out',

@@ -7,11 +7,32 @@ import { qk } from '../../api/keys';
 import { AuthLayout } from './AuthLayout';
 import { LockoutMessage, useLockout } from './lockout';
 
+/** The last username signed in with on this device (only when "Remember this device" was on). */
+const LAST_USERNAME_KEY = 'tt:last-username';
+
+function readLastUsername(): string {
+  try {
+    return localStorage.getItem(LAST_USERNAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberUsername(username: string, remember: boolean): void {
+  try {
+    if (remember && username) localStorage.setItem(LAST_USERNAME_KEY, username);
+    else localStorage.removeItem(LAST_USERNAME_KEY);
+  } catch {
+    // Storage blocked: nothing to remember.
+  }
+}
+
 export function LoginPage() {
   const qc = useQueryClient();
   const login = useLogin();
   const lockout = useLockout();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [username, setUsername] = useState(readLastUsername);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,24 +41,26 @@ export function LoginPage() {
     e.preventDefault();
     if (!password || lockout.locked || login.isPending) return;
     setError(null);
-    login.mutate(
-      { password, remember },
-      {
-        onError: (err) => {
-          const wait = retryAfterSec(err);
-          if (wait !== null) {
-            lockout.lock(wait);
-          } else if (isApiError(err, 'invalid_password')) {
-            setError('Incorrect password.');
-          } else if (isApiError(err, 'setup_required')) {
-            // No password exists any more (e.g. a fresh data folder): the gate shows setup.
-            void qc.invalidateQueries({ queryKey: qk.auth });
-          } else {
-            setError(errorMessage(err));
-          }
-          setPassword('');
-          inputRef.current?.focus();
-        },
+    const name = username.trim();
+    // No username signs in the owner (how 1.4 signed in), as does the old saved name "tower-tracker".
+    // mutateAsync rather than mutate's callbacks: success swaps this page for the app, and a
+    // callback given to mutate() doesn't run once its component has unmounted.
+    login.mutateAsync({ ...(name ? { username: name } : {}), password, remember }).then(
+      () => rememberUsername(name, remember),
+      (err: unknown) => {
+        const wait = retryAfterSec(err);
+        if (wait !== null) {
+          lockout.lock(wait);
+        } else if (isApiError(err, 'invalid_password')) {
+          setError('Incorrect username or password.');
+        } else if (isApiError(err, 'setup_required')) {
+          // No account exists any more (e.g. a fresh data folder): the gate shows setup.
+          void qc.invalidateQueries({ queryKey: qk.auth });
+        } else {
+          setError(errorMessage(err));
+        }
+        setPassword('');
+        inputRef.current?.focus();
       },
     );
   }
@@ -45,8 +68,28 @@ export function LoginPage() {
   return (
     <AuthLayout title="Log in">
       <form className="auth-form" onSubmit={onSubmit} noValidate>
-        {/* Lets password managers (incl. iOS Keychain) file the password under a name. */}
-        <input type="text" name="username" autoComplete="username" value="tower-tracker" readOnly hidden />
+        <label className="field">
+          <span className="field-label">Username</span>
+          {/* Password managers file the password under this name (iOS Keychain included). */}
+          <input
+            className="input"
+            type="text"
+            name="username"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={100}
+            value={username}
+            onChange={(e) => {
+              setUsername(e.target.value);
+              setError(null);
+            }}
+            autoFocus={!username}
+            aria-invalid={error !== null || undefined}
+            aria-describedby={error ? 'login-error' : undefined}
+          />
+        </label>
         <label className="field">
           <span className="field-label">Password</span>
           {/* Stays enabled during a lockout so focus and the iOS keyboard aren't lost. */}
@@ -62,7 +105,7 @@ export function LoginPage() {
               setPassword(e.target.value);
               setError(null);
             }}
-            autoFocus
+            autoFocus={!!username}
             required
             aria-invalid={error !== null || undefined}
             aria-describedby={error ? 'login-error' : undefined}

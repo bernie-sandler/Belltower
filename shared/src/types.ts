@@ -8,6 +8,7 @@ import type {
   Priority,
   RequestFieldKind,
   Severity,
+  UserRole,
 } from './constants';
 import type { NotifyChannel, TokenScope } from './schemas';
 
@@ -39,6 +40,45 @@ export interface AuthStatus {
   /** Password comes from APP_PASSWORD/APP_PASSWORD_FILE; the change-password form is disabled. */
   passwordManagedByEnv: boolean;
 }
+
+// ---- people ----
+
+/** A person as everyone sees them (pickers, mentions, who did what). */
+export interface UserRef {
+  id: number;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  /** Deactivated: can't sign in, their tokens stop working, and they're kept for history. */
+  disabled: boolean;
+}
+
+/** GET /api/users: the directory. `email` is only filled in for admins and for your own entry. */
+export interface UserInfo extends UserRef {
+  /** The account that runs the install (APP_PASSWORD manages its password); it can't be demoted or deactivated. */
+  isOwner: boolean;
+  email: string | null;
+  /** False for accounts that sign in only with single sign-on. */
+  hasPassword: boolean;
+  createdAt: IsoTimestamp;
+  disabledAt: IsoTimestamp | null;
+}
+
+/** GET /api/me: the signed-in person. */
+export interface MeResponse extends UserInfo {
+  /** Your password comes from APP_PASSWORD (owner only); it can't be changed in the app. */
+  passwordManagedByEnv: boolean;
+}
+
+/**
+ * Who did something. Absent on the server means the system (startup, timers, tests). A token acts
+ * for the person who made it (`userId`, null for tokens from before 1.5 that nobody owns yet).
+ */
+export type Actor =
+  | { kind: 'user'; userId: number }
+  | { kind: 'token'; tokenId: number; userId: number | null }
+  | { kind: 'public' }
+  | { kind: 'system' };
 
 export interface AppConfig {
   appVersion: string;
@@ -187,6 +227,8 @@ export interface ActivityRevision {
   occurredAt: IsoTimestamp;
   /** When this version was replaced. */
   revisedAt: IsoTimestamp;
+  /** Who replaced it (null before 1.5, or when no person did). */
+  userId: number | null;
 }
 
 export interface BoardResponse {
@@ -257,6 +299,12 @@ export interface ActivityEntry {
   retractedAt: IsoTimestamp | null;
   /** Number of earlier versions kept for an edited work-log entry. */
   revisionCount: number;
+  /**
+   * Who did it: the person (for an API token, the token's owner), and the token when one was used.
+   * Both null for entries from before 1.5 and for the submit page, recurring templates and startup.
+   */
+  userId: number | null;
+  tokenId: number | null;
 }
 
 // ---- Phase 3: search, calendar, recurring templates ----
@@ -507,6 +555,8 @@ export interface ApiTokenInfo {
   createdAt: IsoTimestamp;
   lastUsedAt: IsoTimestamp | null;
   revokedAt: IsoTimestamp | null;
+  /** The person the token acts for. It stops working while they're deactivated. */
+  owner: UserRef | null;
 }
 
 /**

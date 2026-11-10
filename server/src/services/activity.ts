@@ -1,6 +1,6 @@
 import type { ActivityEntry, ActivityEventType, ColumnRef, LabelRef } from '@tt/shared';
 import { stmt } from '../db/connection';
-import { nowIso, type Ctx } from './context';
+import { actorTokenId, actorUserId, nowIso, type Ctx } from './context';
 
 export interface ActivityRow {
   id: number;
@@ -13,6 +13,8 @@ export interface ActivityRow {
   created_at: string;
   edited_at: string | null;
   retracted_at: string | null;
+  user_id: number | null;
+  token_id: number | null;
   revision_count?: number;
 }
 
@@ -25,8 +27,8 @@ export function recordEvent(ctx: Ctx, cardId: number, type: ActivityEventType, d
   const now = nowIso(ctx);
   const info = stmt(
     ctx.db,
-    `INSERT INTO activity (card_id, kind, type, data, occurred_at, created_at) VALUES (?, 'event', ?, ?, ?, ?)`,
-  ).run(cardId, type, JSON.stringify(data), now, now);
+    `INSERT INTO activity (card_id, kind, type, data, occurred_at, created_at, user_id, token_id) VALUES (?, 'event', ?, ?, ?, ?, ?, ?)`,
+  ).run(cardId, type, JSON.stringify(data), now, now, actorUserId(ctx), actorTokenId(ctx));
   return Number(info.lastInsertRowid);
 }
 
@@ -43,6 +45,8 @@ export function toActivityEntry(row: ActivityRow): ActivityEntry {
     editedAt: row.edited_at,
     retractedAt: row.retracted_at,
     revisionCount: row.revision_count ?? 0,
+    userId: row.user_id ?? null,
+    tokenId: row.token_id ?? null,
   };
 }
 

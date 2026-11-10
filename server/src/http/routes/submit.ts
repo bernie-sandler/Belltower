@@ -27,26 +27,26 @@ export const STATUS_LIMIT = { max: 60, windowMs: 60_000 };
 const keyParam = (req: FastifyRequest) => String((req.params as { key?: string }).key ?? '');
 
 export function registerSubmitRoutes(app: FastifyInstance, deps: AppDeps): void {
-  const { ctx, config } = deps;
-  const perClient = new WindowLimiter(ctx.clock, SUBMIT_LIMITS.perClient.max, SUBMIT_LIMITS.perClient.windowMs);
-  const overall = new WindowLimiter(ctx.clock, SUBMIT_LIMITS.overall.max, SUBMIT_LIMITS.overall.windowMs);
-  const statusLimiter = new WindowLimiter(ctx.clock, STATUS_LIMIT.max, STATUS_LIMIT.windowMs);
+  const { baseCtx, config } = deps;
+  const perClient = new WindowLimiter(baseCtx.clock, SUBMIT_LIMITS.perClient.max, SUBMIT_LIMITS.perClient.windowMs);
+  const overall = new WindowLimiter(baseCtx.clock, SUBMIT_LIMITS.overall.max, SUBMIT_LIMITS.overall.windowMs);
+  const statusLimiter = new WindowLimiter(baseCtx.clock, STATUS_LIMIT.max, STATUS_LIMIT.windowMs);
 
   app.get('/api/public/submit/:key', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
-    return publicSubmitConfig(ctx, keyParam(req), config.maxUploadBytes);
+    return publicSubmitConfig(req.ctx, keyParam(req), config.maxUploadBytes);
   });
 
   app.get('/api/public/status/:id/:sig', async (req) => {
     const r = statusLimiter.take(clientKey(req.ip));
     if (!r.ok) throw new AppError(429, 'rate_limited', 'Too many requests from here right now. Try again in a minute.', { retryAfterSec: r.retryAfterSec });
     const { id = '', sig = '' } = req.params as { id?: string; sig?: string };
-    return publicStatus(ctx, id, sig);
+    return publicStatus(req.ctx, id, sig);
   });
 
   app.post('/api/public/submit/:key', async (req, reply) => {
     const key = keyParam(req);
-    checkSubmitKey(ctx, key); // before reading any upload
+    checkSubmitKey(req.ctx, key); // before reading any upload
     if (!req.isMultipart()) throw badRequest('validation', 'Expected a multipart/form-data form');
     for (const limiter of [perClient.take(clientKey(req.ip)), overall.take('all')]) {
       if (!limiter.ok) {
@@ -78,7 +78,7 @@ export function registerSubmitRoutes(app: FastifyInstance, deps: AppDeps): void 
         }
       }
       const body = parse(SubmitBody, data);
-      return reply.status(201).send(submitTicket(ctx, key, body, files, config.attachmentsDir));
+      return reply.status(201).send(submitTicket(req.ctx, key, body, files, config.attachmentsDir));
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === 'FST_REQ_FILE_TOO_LARGE') throw tooLarge(config.maxUploadBytes);

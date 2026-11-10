@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CARD_KINDS, CHECKLIST_ITEM_STATES, LIMITS, PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES } from './constants';
+import { CARD_KINDS, CHECKLIST_ITEM_STATES, LIMITS, OWNER_ALIAS, PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES, USER_ROLES } from './constants';
 
 const id = z.number().int().positive();
 
@@ -31,8 +31,24 @@ export const IsoInstant = z
   .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, 'Expected an ISO timestamp')
   .refine((s) => !Number.isNaN(Date.parse(s)), 'Not a real timestamp');
 
-// ---- auth ----
+// ---- auth and people ----
+
+/** 2–32 of a-z 0-9 . _ - (typed upper case is lowered). `tower-tracker` is the owner's old saved name. */
+export const Username = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(2, 'At least 2 characters')
+  .max(32, 'At most 32 characters')
+  .regex(/^[a-z0-9._-]+$/, 'Use only letters, digits, dots, dashes and underscores')
+  .refine((u) => u !== OWNER_ALIAS, 'That name is reserved');
+export const DisplayName = z.string().trim().min(1).max(60).refine(noNul, NUL_MESSAGE);
+export const Email = z.string().trim().max(254).pipe(z.email('Not an email address'));
+const NewPassword = z.string().min(PASSWORD_MIN_LENGTH).max(1024);
+
 export const LoginBody = z.object({
+  /** Empty or left out: the owner account (how 1.4 signed in), as is `tower-tracker`. */
+  username: z.string().trim().max(100).optional(),
   password: z.string().min(1).max(1024),
   remember: z.boolean().default(false),
 });
@@ -40,9 +56,39 @@ export type LoginBody = z.infer<typeof LoginBody>;
 
 export const SetupBody = z.object({
   setupCode: z.string().trim().min(1).max(64),
-  password: z.string().min(PASSWORD_MIN_LENGTH).max(1024),
+  /** The owner account's name (default `admin`). */
+  username: Username.default('admin'),
+  displayName: DisplayName.optional(),
+  password: NewPassword,
 });
 export type SetupBody = z.infer<typeof SetupBody>;
+
+export const CreateUserBody = z.object({
+  username: Username,
+  displayName: DisplayName,
+  role: z.enum(USER_ROLES).default('member'),
+  email: Email.nullable().optional(),
+  /** A temporary password to hand over; they can change it under Account. */
+  password: NewPassword,
+});
+export type CreateUserBody = z.infer<typeof CreateUserBody>;
+
+export const UpdateUserBody = z.object({
+  displayName: DisplayName.optional(),
+  email: Email.nullable().optional(),
+  role: z.enum(USER_ROLES).optional(),
+  /** Deactivate (true) or re-enable (false). Deactivating signs them out everywhere. */
+  disabled: z.boolean().optional(),
+  /** Reset to a new temporary password (signs them out everywhere). */
+  password: NewPassword.optional(),
+});
+export type UpdateUserBody = z.infer<typeof UpdateUserBody>;
+
+export const UpdateMeBody = z.object({
+  displayName: DisplayName.optional(),
+  email: Email.nullable().optional(),
+});
+export type UpdateMeBody = z.infer<typeof UpdateMeBody>;
 
 export const ChangePasswordBody = z.object({
   currentPassword: z.string().min(1).max(1024),

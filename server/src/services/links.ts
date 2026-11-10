@@ -77,7 +77,7 @@ export function createLink(ctx: Ctx, cardId: number, otherId: number, direction:
       parkIfBlocked(ctx, to);
       const blocked = getCardRow(ctx, to);
       const blocker = getCardRow(ctx, from);
-      if (!blocked.completed_at && !blocker.completed_at) ctx.emit?.({ type: 'card_blocked', cardId: to, blockerIds: [from] });
+      if (!blocked.completed_at && !blocker.completed_at) ctx.emit?.({ type: 'card_blocked', cardId: to, blockerIds: [from], actor: ctx.actor });
     }
     return getCard(ctx, cardId);
   });

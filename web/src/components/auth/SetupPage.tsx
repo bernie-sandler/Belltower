@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { PASSWORD_MIN_LENGTH } from '@tt/shared';
+import { OWNER_ALIAS, PASSWORD_MIN_LENGTH } from '@tt/shared';
 import { useRef, useState, type FormEvent } from 'react';
 import { useSetup } from '../../api/auth';
 import { isApiError } from '../../api/client';
@@ -14,14 +14,18 @@ export function SetupPage() {
   const lockout = useLockout();
   const codeRef = useRef<HTMLInputElement>(null);
   const [code, setCode] = useState('');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const name = username.trim().toLowerCase();
+  const badName = !/^[a-z0-9._-]{2,32}$/.test(name) || name === OWNER_ALIAS;
   const tooShort = password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
   const mismatch = confirm.length > 0 && confirm !== password;
   const canSubmit =
     code.trim().length > 0 &&
+    !badName &&
     password.length >= PASSWORD_MIN_LENGTH &&
     confirm === password &&
     !setup.isPending &&
@@ -32,7 +36,7 @@ export function SetupPage() {
     if (!canSubmit) return;
     setError(null);
     setup.mutate(
-      { setupCode: code.trim(), password },
+      { setupCode: code.trim(), username: name, password },
       {
         onError: (err) => {
           const wait = retryAfterSec(err);
@@ -45,7 +49,7 @@ export function SetupPage() {
             codeRef.current?.focus();
             codeRef.current?.select();
           } else if (isApiError(err, 'setup_not_available')) {
-            // A password already exists (set up elsewhere, or via APP_PASSWORD): go to login.
+            // An account already exists (set up elsewhere, or via APP_PASSWORD): go to login.
             void qc.invalidateQueries({ queryKey: qk.auth });
           } else {
             setError(errorMessage(err));
@@ -59,8 +63,8 @@ export function SetupPage() {
     <AuthLayout title="Set up Belltower">
       <div className="auth-intro">
         <p>
-          Choose the password for this tracker. To prove you run the server, first enter the one-time setup code from
-          the container log. It looks like <code>ABCDE-FGHJK-MNPQR-STUVW</code>.
+          Create the owner account for this tracker. To prove you run the server, first enter the one-time setup code
+          from the container log. It looks like <code>ABCDE-FGHJK-MNPQR-STUVW</code>.
         </p>
         <ul className="setup-steps">
           <li>
@@ -102,7 +106,27 @@ export function SetupPage() {
             Dashes and upper/lower case don&apos;t matter.
           </span>
         </label>
-        <input type="text" name="username" autoComplete="username" value="tower-tracker" readOnly hidden />
+        <label className="field">
+          <span className="field-label">Username</span>
+          <input
+            className="input"
+            type="text"
+            name="username"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={32}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            aria-invalid={(username.length > 0 && badName) || undefined}
+            aria-describedby="setup-username-help"
+            required
+          />
+          <span id="setup-username-help" className={username.length > 0 && badName ? 'field-help is-error' : 'field-help'}>
+            You sign in with it. 2–32 letters, digits, dots, dashes or underscores. You can add other people later.
+          </span>
+        </label>
         <label className="field">
           <span className="field-label">Password</span>
           <input
@@ -149,7 +173,7 @@ export function SetupPage() {
         )}
 
         <button type="submit" className="btn btn-primary btn-block" disabled={!canSubmit}>
-          {setup.isPending ? 'Saving…' : 'Set password and continue'}
+          {setup.isPending ? 'Saving…' : 'Create account and continue'}
         </button>
       </form>
     </AuthLayout>

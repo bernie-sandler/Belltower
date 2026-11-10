@@ -12,13 +12,50 @@ import type {
   RequestFieldDef,
   Severity,
   TemplateChecklist,
+  UserRole,
 } from '@tt/shared';
 
 /**
  * Bump this whenever DemoState changes shape. Saved data with another version is thrown away and
  * the demo seeds itself again, instead of crashing on data it doesn't understand.
+ * 3: people (1.5): users, assignees, watchers, notifications, and who did what.
  */
-export const DEMO_SCHEMA_VERSION = 2;
+export const DEMO_SCHEMA_VERSION = 3;
+
+/** The users table (no passwords: the demo signs anyone in as the owner). */
+export interface UserRow {
+  id: number;
+  username: string;
+  displayName: string;
+  email: string | null;
+  role: UserRole;
+  isOwner: boolean;
+  /** Mirrors password_hash IS NOT NULL. */
+  hasPassword: boolean;
+  discordUserId: string | null;
+  ntfyTopic: string | null;
+  notifyPrefs: Record<string, unknown>;
+  createdAt: string;
+  disabledAt: string | null;
+}
+
+export interface WatcherRow {
+  cardId: number;
+  userId: number;
+  createdAt: string;
+}
+
+export interface NotificationRow {
+  id: number;
+  userId: number;
+  cardId: number;
+  activityId: number | null;
+  type: string;
+  actorUserId: number | null;
+  data: Record<string, unknown>;
+  createdAt: string;
+  readAt: string | null;
+}
 
 export interface ColumnRow {
   id: number;
@@ -58,6 +95,8 @@ export interface CardRow {
   parentId: number | null;
   resolution: string | null;
   resolutionMd: string;
+  /** Who it's assigned to (1.5). */
+  assigneeId: number | null;
   createdAt: string;
   updatedAt: string;
   /** card_labels, in the order they were added (read through labelIdsOf for label order). */
@@ -103,6 +142,9 @@ export interface ActivityRow {
   createdAt: string;
   editedAt: string | null;
   retractedAt: string | null;
+  /** Who did it (a token's owner for a token); null for the submit page, templates and the seed's system steps. */
+  userId: number | null;
+  tokenId: number | null;
 }
 
 export interface RevisionRow {
@@ -111,6 +153,7 @@ export interface RevisionRow {
   bodyMd: string;
   occurredAt: string;
   revisedAt: string;
+  userId: number | null;
 }
 
 export interface TemplateRow {
@@ -184,7 +227,9 @@ export type TableName =
   | 'revisions'
   | 'templates'
   | 'templateRuns'
-  | 'requestTypes';
+  | 'requestTypes'
+  | 'users'
+  | 'notifications';
 
 export interface DemoState {
   version: number;
@@ -203,17 +248,27 @@ export interface DemoState {
   templates: TemplateRow[];
   templateRuns: TemplateRunRow[];
   requestTypes: RequestTypeRow[];
+  users: UserRow[];
+  watchers: WatcherRow[];
+  notifications: NotificationRow[];
   settings: DemoSettings;
-  /** The demo's stand-in for a session cookie. */
-  session: { signedIn: boolean };
+  /** The demo's stand-in for a session cookie: signed in, as whom (the owner). */
+  session: { signedIn: boolean; userId: number | null };
 }
 
-/** What every service gets: the state to read and change, the app time zone, and the clock. */
+/**
+ * What every service gets: the state to read and change, the app time zone, the clock, and who is
+ * acting (like the server's ctx.actor; absent or null means the system or the public).
+ */
 export interface Ctx {
   s: DemoState;
   tz: string;
   now(): Date;
+  userId?: number | null;
 }
+
+/** The person acting, or null. */
+export const actorId = (ctx: Ctx): number | null => ctx.userId ?? null;
 
 export const nowIso = (ctx: Ctx) => ctx.now().toISOString();
 
@@ -235,6 +290,8 @@ export function emptyState(seededAt: string): DemoState {
     'templates',
     'templateRuns',
     'requestTypes',
+    'users',
+    'notifications',
   ] as TableName[]) {
     ids[t] = 1;
   }
@@ -253,6 +310,9 @@ export function emptyState(seededAt: string): DemoState {
     templates: [],
     templateRuns: [],
     requestTypes: [],
+    users: [],
+    watchers: [],
+    notifications: [],
     settings: {
       general: { ticketFormat: '{YY}{MM}{DD}-{N}', appUrl: '', claudeModel: '' },
       submit: {
@@ -272,7 +332,7 @@ export function emptyState(seededAt: string): DemoState {
       blockedColumn: null,
       resolutionReasons: null,
     },
-    session: { signedIn: true },
+    session: { signedIn: true, userId: null },
   };
 }
 

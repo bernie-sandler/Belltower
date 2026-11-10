@@ -3,7 +3,8 @@
 // the calendar and "blocked" moves all come out the way a real install would show them.
 //
 // Mostly the owner's own tickets, with a few from other people through the submit page and two
-// from recurring templates. Dates are relative to the moment the demo is seeded.
+// from recurring templates. Dates are relative to the moment the demo is seeded. The visitor is the
+// owner (`admin`); two more people show what a shared install looks like.
 
 import { SubmitBody, type ChecklistItemState, type Priority, type Severity } from '@tt/shared';
 import { archiveCard, completeCard, createCard, getCardRow, moveCard } from './server/cards';
@@ -15,6 +16,7 @@ import { createLink } from './server/links';
 import { runTemplateNow } from './server/recurring';
 import { createRequestType, newSubmitKey } from './server/settings';
 import { submitTicket } from './server/submit';
+import { addUser } from './server/users';
 import { addWorklog } from './server/worklog';
 
 // ---- defaults, as server/src/db/seed.ts and services/requestTypes.ts create them ----
@@ -505,6 +507,16 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
     return t.getTime() < now.getTime() ? t : new Date(now.getTime() - 60_000);
   };
 
+  // ---- people: the owner (the visitor signs in as them) and two others, there from the start ----
+  clock = at([45, '09:00']);
+  const owner = addUser(ctx, { username: 'admin', displayName: 'Admin', role: 'admin', isOwner: true });
+  addUser(ctx, { username: 'alex', displayName: 'Alex Chen', role: 'admin', email: 'alex@example.com' });
+  addUser(ctx, { username: 'jordan', displayName: 'Jordan Lee', role: 'member', email: 'jordan@example.com' });
+  clock = now;
+  // The owner does what the history shows, except what came in through the submit page.
+  ctx.userId = owner.id;
+  const asPublic: Ctx = { ...ctx, userId: null };
+
   // ---- defaults ----
   const nowIso = now.toISOString();
   COLUMNS.forEach((c, i) => s.columns.push({ id: nextId(ctx, 'columns'), name: c.name, position: i, role: c.role, createdAt: nowIso }));
@@ -599,7 +611,7 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
     step(sub.at, () => {
       const type = s.requestTypes.find((t) => t.name === sub.type)!;
       const body = parse(SubmitBody, { typeId: type.id, ...sub.body });
-      submitTicket(ctx, s.settings.submit.key!, body);
+      submitTicket(asPublic, s.settings.submit.key!, body);
       ids.set(sub.ref, s.cards[s.cards.length - 1]!.id);
     });
     for (const w of sub.worklog ?? []) step(w.at, () => addWorklog(ctx, ids.get(sub.ref)!, { bodyMd: w.text, occurredAt: clock.toISOString() }));
@@ -634,7 +646,7 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
     });
 
   // A first-time visitor lands signed in, as the owner.
-  s.session.signedIn = true;
+  s.session = { signedIn: true, userId: owner.id };
   clock = now;
   return s;
 }

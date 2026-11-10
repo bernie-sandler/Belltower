@@ -284,6 +284,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     parentId: parent?.id ?? null,
     resolution: null,
     resolutionMd: '',
+    assigneeId: null,
     createdAt: now,
     updatedAt: now,
     labelIds: labels.map((l) => l.id),
