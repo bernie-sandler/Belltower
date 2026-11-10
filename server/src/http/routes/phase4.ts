@@ -99,7 +99,7 @@ export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void 
   });
 
   /** What's in /data/backups: nightly snapshots and pre-restore copies. */
-  app.get('/api/backup/snapshots', ADMIN, async (req) => {
+  app.get('/api/backup/snapshots', ADMIN, async () => {
     if (!existsSync(config.backupsDir)) return [];
     return readdirSync(config.backupsDir)
       .filter((f) => f.endsWith('.db'))
