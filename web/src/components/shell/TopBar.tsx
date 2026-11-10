@@ -1,4 +1,5 @@
 import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2, UserRound } from 'lucide-react';
+import { Inbox, UserRoundCheck } from 'lucide-react';
 import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
@@ -12,6 +13,9 @@ import { useShell } from './ShellContext';
 
 const NAV = [
   { to: '/', label: 'Board', icon: KanbanSquare },
+  // Assignees: my open cards, and the queue of cards nobody has ("Triage" is already a column name).
+  { to: '/mine', label: 'Mine', icon: UserRoundCheck },
+  { to: '/triage', label: 'Unassigned', icon: Inbox },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/search', label: 'Search', icon: Search },
   { to: '/templates', label: 'Recurring', icon: Repeat },
