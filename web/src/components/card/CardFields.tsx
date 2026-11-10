@@ -1,6 +1,6 @@
-// Priority (P0–P3, with an impact × urgency helper), severity (S1–S4), due date (+ optional time)
-// and completion date. Each control saves on its own as soon
-// as it changes; native inputs keep it quick on a phone (iOS shows its own pickers).
+// Assignee, priority (P0–P3, with an impact × urgency helper), severity (S1–S4), due date (+
+// optional time) and completion date. Each control saves on its own as soon as it changes; native
+// inputs keep it quick on a phone (iOS shows its own pickers).
 
 import {
   LEVELS,
@@ -14,9 +14,10 @@ import {
   type Priority,
   type Severity,
 } from '@tt/shared';
-import { CircleCheck, Clock, Flag, Grid3x3, OctagonAlert, X } from 'lucide-react';
+import { CircleCheck, Clock, Flag, Grid3x3, OctagonAlert, UserRound, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useUpdateCard, type CardPatch } from '../../api/cards';
+import { useMe, useUsers } from '../../api/me';
 import { cls } from '../../lib/cls';
 import { dueStatus, formatDateTime, formatDue, fromLocalInput, toLocalInput, useNow } from '../../lib/time';
 import { toast } from '../../lib/toast';
@@ -36,6 +37,9 @@ export function CardFields({ card, readOnly }: { card: CardDetail; readOnly: boo
 
   return (
     <section className="card-section card-fields" aria-label="Details">
+      <div className="field-row">
+        <AssigneeField card={card} readOnly={readOnly} onSave={save} />
+      </div>
       <div className="field-row">
         <div className="field-inline">
           <span className="field-inline-label" id={`prio-${card.id}`}>
@@ -84,6 +88,54 @@ export function CardFields({ card, readOnly }: { card: CardDetail; readOnly: boo
 
       {card.completedAt && <CompletedField card={card} readOnly={readOnly} onSave={save} now={now} />}
     </section>
+  );
+}
+
+/**
+ * Who has the card: active people, "Unassigned", and an "Assign to me" shortcut. Someone who was
+ * deactivated while assigned still shows (they can be replaced or removed, not picked again).
+ */
+function AssigneeField({ card, readOnly, onSave }: { card: CardDetail; readOnly: boolean; onSave: (p: CardPatch) => void }) {
+  const me = useMe().data;
+  const users = useUsers();
+  const active = (users.data ?? []).filter((u) => !u.disabled);
+  const current = card.assigneeId !== null ? users.data?.find((u) => u.id === card.assigneeId) : undefined;
+  const id = `assignee-${card.id}`;
+  return (
+    <div className="field-inline assignee-field">
+      <label className="field-inline-label" htmlFor={id}>
+        <UserRound size={14} aria-hidden /> Assignee
+      </label>
+      <select
+        id={id}
+        className="input"
+        value={card.assigneeId ?? ''}
+        disabled={readOnly}
+        onChange={(e) => onSave({ assigneeId: e.target.value ? Number(e.target.value) : null })}
+      >
+        <option value="">Unassigned</option>
+        {active.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.id === me?.id ? `${u.displayName} (me)` : u.displayName}
+          </option>
+        ))}
+        {current?.disabled && (
+          <option value={current.id} disabled>
+            {current.displayName} (deactivated)
+          </option>
+        )}
+        {card.assigneeId !== null && !current && (
+          <option value={card.assigneeId} disabled>
+            {users.isPending ? 'Loading…' : 'Someone no longer listed'}
+          </option>
+        )}
+      </select>
+      {!readOnly && me && !me.disabled && card.assigneeId !== me.id && (
+        <button type="button" className="btn btn-sm" onClick={() => onSave({ assigneeId: me.id })}>
+          Assign to me
+        </button>
+      )}
+    </div>
   );
 }
 

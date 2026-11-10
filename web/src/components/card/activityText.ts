@@ -97,6 +97,13 @@ export function activityText(entry: ActivityEntry): string {
       const verb = str(d.from) ? 'Resolution changed to' : 'Resolved:';
       return note ? `${verb} ${reason} — ${quoted(note, 80)}` : `${verb} ${reason}`;
     }
+    case 'assigned': {
+      // Names are copied in as they were then; whoever made the change is the entry's userId.
+      const to = typeof d.to === 'number' ? d.to : null;
+      if (to === null) return typeof d.from === 'number' ? `Unassigned ${str(d.fromName) ?? 'someone'}` : 'Unassigned';
+      if (entry.userId !== null && to === entry.userId) return 'Took this';
+      return `Assigned this to ${str(d.toName) ?? 'someone'}`;
+    }
     case 'title_changed':
       return `Renamed from ${quoted(str(d.from))} to ${quoted(str(d.to))}`;
     case 'description_changed': {

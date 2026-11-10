@@ -18,6 +18,7 @@ import { useArchiveCard } from '../../api/cardParts';
 import { useDeleteCard, useCompleteCard,
   useMoveCard, useMoveCards, useRestoreCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
+import { useMe } from '../../api/me';
 import { cls } from '../../lib/cls';
 import { useShortcut } from '../../lib/keyboard';
 import { useOpenCard } from '../../lib/navigation';
@@ -83,14 +84,15 @@ function BoardView({ board }: { board: BoardResponse }) {
   const tilesById = useMemo(() => new Map(board.cards.map((c) => [c.id, c] as const)), [board.cards]);
   const labelsById = useMemo(() => new Map(board.labels.map((l) => [l.id, l] as const)), [board.labels]);
   const { filter, setFilter, active: filtering } = useBoardFilter();
+  const meId = useMe().data?.id ?? null;
   const [collapsed, toggleGroup] = useCollapsedGroups();
   // What the board shows (and drags over): everything, or just the cards that pass the filter.
   const visibleBoard = useMemo(
     () =>
       filtering
-        ? { ...board, cards: board.cards.filter((c) => c.id < 0 || matchesFilter(c, filter, labelsById, now)) }
+        ? { ...board, cards: board.cards.filter((c) => c.id < 0 || matchesFilter(c, filter, labelsById, now, meId)) }
         : board,
-    [board, filtering, filter, labelsById, now],
+    [board, filtering, filter, labelsById, now, meId],
   );
   // Cards still being created (temporary negative ids), shown dimmed at the bottom of their column.
   const pendingByColumn = useMemo(() => {

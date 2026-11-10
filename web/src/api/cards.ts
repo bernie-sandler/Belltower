@@ -126,6 +126,7 @@ function optimisticFields(patch: CardPatch): Partial<CardDetail> {
   const out: Partial<CardDetail> = {};
   if (patch.title !== undefined) out.title = patch.title.trim();
   if (patch.labelIds !== undefined) out.labelIds = patch.labelIds;
+  if (patch.assigneeId !== undefined) out.assigneeId = patch.assigneeId;
   return out;
 }
 
