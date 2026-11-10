@@ -201,9 +201,11 @@ export function buildRestoreDb(data: BackupData, dbPath: string, tz: string, clo
             if (table === 'attachments' && (!UUID.test(String(row.stored_name)) || !Number.isInteger(row.card_id))) {
               throw badRequest('validation', 'Invalid attachment entry in backup');
             }
-            // A backup never brings a password or the owner flag (a hand-edited one could try; both
-            // default to none when left out). confirmRestore copies them from the live install.
-            const fixed: Record<string, unknown> = table === 'users' ? { ...row, password_hash: null, is_owner: 0 } : row;
+            // A backup never brings a way to sign in: no password, owner flag or single sign-on link
+            // (a hand-edited one could try; all default to none when left out). confirmRestore
+            // copies them from the live install.
+            const fixed: Record<string, unknown> =
+              table === 'users' ? { ...row, password_hash: null, is_owner: 0, oidc_issuer: null, oidc_subject: null } : row;
             const values = cols.map((c) => {
               const v = fixed[c];
               return typeof v === 'boolean' ? (v ? 1 : 0) : (v as unknown);
@@ -377,7 +379,8 @@ function carryOverAccess(live: DB, next: DB): void {
     for (const u of users) {
       const match = next.prepare('SELECT id FROM users WHERE username = ?').pluck().get(u.username) as number | undefined;
       if (u.oidc_subject !== null) {
-        // The live link wins; another restored person holding it would break the unique index.
+        // Restored people come without links (buildRestoreDb drops them); clearing any holder anyway
+        // keeps the unique index safe whatever the restored file contains.
         next
           .prepare('UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE oidc_issuer = ? AND oidc_subject = ? AND id IS NOT ?')
           .run(u.oidc_issuer, u.oidc_subject, match ?? null);

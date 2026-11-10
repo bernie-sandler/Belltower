@@ -105,16 +105,17 @@ describe('restore with people', () => {
     expect(db.prepare('SELECT count(*) FROM sessions WHERE user_id IS NULL').pluck().get()).toBe(0);
   });
 
-  it('a planted password or owner flag in a hand-edited backup is ignored', async () => {
+  it('a planted password, owner flag or single sign-on link in a hand-edited backup is ignored', async () => {
     const { data } = await source();
     const planted = await hashPassword('planted password!');
     for (const u of data.tables.users) {
-      if (u.username === 'alex') Object.assign(u, { password_hash: planted, is_owner: 1 });
+      if (u.username === 'alex') Object.assign(u, { password_hash: planted, is_owner: 1, oidc_issuer: 'https://idp.example', oidc_subject: 'attacker' });
     }
     const { dst, cookies } = await destination();
     expect(await restore(dst, cookies.admin, data)).toBe(200);
     expect(await loginStatus(dst, 'alex', 'planted password!')).toBe(401);
     expect(dst.ctx.db.prepare('SELECT username FROM users WHERE is_owner = 1').pluck().all()).toEqual(['admin']);
+    expect(dst.ctx.db.prepare(`SELECT oidc_issuer, oidc_subject FROM users WHERE username = 'alex'`).get()).toEqual({ oidc_issuer: null, oidc_subject: null });
   });
 
   it('a backup from before 1.5: the live people are added, tokens go to the owner, nobody is signed out', async () => {
