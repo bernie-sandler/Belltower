@@ -1,20 +1,27 @@
-// Settings → Automation: API tokens for Uptime Kuma, scripts, Home Assistant… A new token is shown
-// once, with ready-to-use examples. Read-only tokens are for dashboards: they can only read
-// GET /api/v1/summary.
+// API tokens for Uptime Kuma, scripts, Home Assistant… A new token is shown once, with
+// ready-to-use examples. Read-only tokens are for dashboards: they can only read
+// GET /api/v1/summary. A token acts as the person who made it. Two places show it:
+// Settings → Automation (admins: everyone's tokens, with whose each is) and Account → Your tokens
+// (`mine`: only your own).
 
 import type { ApiTokenInfo, TokenScope } from '@tt/shared';
 import { Copy, Plug } from 'lucide-react';
 import { useState } from 'react';
 import { errorMessage } from '../../api/errors';
+import { useIsAdmin, useMe } from '../../api/me';
 import { useSettings, useTokenActions, useTokens } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
 import { formatDateTime, useNow } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
-export function TokensSection() {
+export function TokensSection({ mine = false }: { mine?: boolean }) {
   const now = useNow();
-  const { data: tokens } = useTokens();
+  const { data: all } = useTokens();
+  const { data: me } = useMe();
+  const isAdmin = useIsAdmin();
+  // Admins get everyone's tokens from the server; members only their own.
+  const tokens = mine ? all?.filter((t) => t.owner !== null && t.owner.id === me?.id) : all;
   const { data: settings } = useSettings();
   const { create, revoke } = useTokenActions();
   const [name, setName] = useState('');
@@ -33,13 +40,18 @@ export function TokensSection() {
   return (
     <section className="settings-block">
       <h3 className="card-section-title">
-        <Plug size={16} aria-hidden /> Automation
+        <Plug size={16} aria-hidden /> {mine ? 'Your tokens' : 'Automation'}
       </h3>
       <p className="muted">
         Tokens let monitoring tools and scripts open tickets (<code>POST {base}/api/v1/cards</code>). A repeated alert with the same{' '}
         <code>dedupeKey</code> adds a note to the open ticket instead of a new one. Dashboards like Homepage or Home Assistant can
         show ticket counts from <code>GET {base}/api/v1/summary</code> with a read-only token. See <code>docs/AUTOMATION.md</code>{' '}
         for recipes.
+      </p>
+      <p className="muted">
+        {mine
+          ? 'A token acts as you: the history shows what it did as “via API token” with your name. It stops working while your account is deactivated.'
+          : 'A token acts as the person who made it, and stops working while they’re deactivated. This list has everyone’s tokens; each person also sees their own under Account.'}
       </p>
 
       {fresh && (
@@ -58,7 +70,8 @@ export function TokensSection() {
             <p className="import-warning small">
               These examples use <code>{base}</code>, which only works on this computer. From another machine (like the one
               running {fresh.info.scope === 'read' ? 'your dashboard' : 'Uptime Kuma'}), use this computer’s address instead, e.g.{' '}
-              <code>http://192.168.1.50:{window.location.port || '80'}</code>, or set “This app’s address” under General.
+              <code>http://192.168.1.50:{window.location.port || '80'}</code>
+              {isAdmin ? ', or set “This app’s address” under Settings → General.' : ', or ask an admin to set “This app’s address” in Settings.'}
             </p>
           )}
           {fresh.info.scope === 'read' ? <DashboardExamples base={base} token={fresh.token} /> : <TicketExamples base={base} token={fresh.token} />}
@@ -76,6 +89,7 @@ export function TokensSection() {
             <li key={t.id} className={t.revokedAt ? 'is-revoked' : undefined}>
               <span className="token-name">{t.name}</span>
               <code className="muted">{t.prefix}…</code>
+              {!mine && <TokenOwner owner={t.owner} />}
               <span className="muted small">
                 {t.scope === 'read' && 'read-only · '}
                 {t.canComplete && 'can complete · '}
@@ -168,6 +182,17 @@ export function TokensSection() {
         />
       )}
     </section>
+  );
+}
+
+/** Whose token it is (Settings → Automation). A deactivated owner's tokens are stopped, not revoked. */
+function TokenOwner({ owner }: { owner: ApiTokenInfo['owner'] }) {
+  if (!owner) return <span className="muted small token-owner">nobody’s</span>;
+  return (
+    <span className="small token-owner" title={`@${owner.username}`}>
+      {owner.displayName}
+      {owner.disabled && <span className="muted"> (deactivated: stopped)</span>}
+    </span>
   );
 }
 

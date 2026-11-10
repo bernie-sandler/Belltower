@@ -17,7 +17,7 @@ const token = (over: Partial<ApiTokenInfo>): ApiTokenInfo => ({
   ...over,
 });
 
-function setup(existing: ApiTokenInfo[] = []) {
+function setup(existing: ApiTokenInfo[] = [], opts: { mine?: boolean; me?: { id: number; role: 'admin' | 'member' } } = {}) {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/tokens' && init?.method === 'POST') {
@@ -25,12 +25,13 @@ function setup(existing: ApiTokenInfo[] = []) {
       return json({ token: 'tt_secretsecretsecretsecret', info: token({ id: 9, name: body.name, scope: body.scope, canComplete: body.canComplete }) }, 201);
     }
     if (url === '/api/tokens') return json(existing);
+    if (url === '/api/me' && opts.me) return json(opts.me);
     return json({ general: { appUrl: 'http://tower.lan:8080' } });
   });
   vi.stubGlobal('fetch', fetchMock);
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <TokensSection />
+      <TokensSection mine={opts.mine} />
     </QueryClientProvider>,
   );
   const posted = () => {
@@ -73,5 +74,27 @@ describe('TokensSection', () => {
     setup([token({ id: 2, name: 'Homepage', scope: 'read' }), token({ id: 1, canComplete: true })]);
     expect(await screen.findByText(/read-only · never used/)).toBeTruthy();
     expect(screen.getByText(/can complete · never used/)).toBeTruthy();
+  });
+
+  it('shows whose each token is, and when a deactivated owner has stopped it', async () => {
+    const alice = { id: 2, username: 'alice', displayName: 'Alice', role: 'member' as const, disabled: false };
+    setup([token({ id: 2, name: 'Homepage', owner: alice }), token({ id: 1, owner: { ...alice, id: 3, displayName: 'Sam', disabled: true } })], {
+      me: { id: 1, role: 'admin' },
+    });
+    expect(await screen.findByText('Alice')).toBeTruthy();
+    expect(screen.getByText(/deactivated: stopped/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Automation' })).toBeTruthy();
+  });
+
+  it('Your tokens lists only your own, without an owner column', async () => {
+    const me = { id: 2, username: 'alice', displayName: 'Alice', role: 'admin' as const, disabled: false };
+    setup([token({ id: 2, name: 'Mine', owner: me }), token({ id: 1, name: 'Someone else’s', owner: { ...me, id: 3, displayName: 'Sam' } })], {
+      mine: true,
+      me,
+    });
+    expect(await screen.findByText('Mine')).toBeTruthy();
+    expect(screen.queryByText('Someone else’s')).toBeNull();
+    expect(screen.queryByText('Alice')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Your tokens' })).toBeTruthy();
   });
 });
