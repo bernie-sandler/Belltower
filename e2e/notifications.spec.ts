@@ -65,17 +65,28 @@ test('Watch and Unwatch a card from its header @mobile', async ({ page, api }) =
   expect((await api.call<{ watching: boolean }>('GET', `/api/cards/${card.id}`)).watching).toBe(true);
 });
 
-test('the bell fits a 375-pixel phone with the whole top bar, and its list opens on screen @mobile', async ({ page, api: _signedIn }) => {
+test('the bell fits a 375-pixel phone with the whole top bar, with room to spare, and its list opens on screen @mobile', async ({ page, api: _signedIn }) => {
   await page.setViewportSize({ width: 375, height: 740 });
   const bell = page.getByRole('button', { name: /^Notifications/ });
-  for (const path of ['/', '/triage', '/mine', '/calendar', '/templates']) {
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  const add = page.getByRole('button', { name: 'Add ticket' });
+  for (const path of ['/', '/mine', '/triage', '/search', '/calendar', '/templates']) {
     await page.goto(path);
     await expect(bell).toBeVisible();
-    const links = page.getByRole('navigation', { name: 'Main' }).getByRole('link');
+    const links = nav.getByRole('link');
     await expect(links.first()).toBeVisible();
-    for (const el of [...(await links.all()), bell, page.getByRole('button', { name: 'Add ticket' }), page.getByRole('button', { name: 'Main menu' })]) {
+    // The current page still shows, by its highlight, and keeps its name for screen readers.
+    await expect(nav.locator('a[aria-current="page"]')).toHaveCount(1);
+    await expect(nav.locator('a[aria-current="page"]')).toHaveAccessibleName(/\w/);
+    for (const el of [...(await links.all()), bell, add, page.getByRole('button', { name: 'Main menu' })]) {
       await expect(el, `${path}: ${await el.textContent()}`).toBeInViewport({ ratio: 1 });
     }
+    // Headroom, so a wider system font (Linux, Android) can't push the nav off the screen: the nav
+    // doesn't scroll, and at least 24 pixels are free between its last link and Add ticket.
+    expect(await nav.evaluate((n) => n.scrollWidth - n.clientWidth), `${path}: nav overflow`).toBeLessThanOrEqual(0);
+    const navEnd = Math.max(...(await Promise.all((await links.all()).map(async (l) => ((b) => (b ? b.x + b.width : 0))(await l.boundingBox())))));
+    const addStart = (await add.boundingBox())!.x;
+    expect(addStart - navEnd, `${path}: room between the nav and Add ticket`).toBeGreaterThanOrEqual(24);
   }
   await bell.click();
   const list = page.getByRole('dialog', { name: 'Notifications' });

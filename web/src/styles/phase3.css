@@ -73,6 +73,30 @@
   }
 }
 
+/*
+ * Narrow phones: icons only, the current page included, so the bar fits whatever the system font
+ * (Android's are wider). The highlight and aria-current mark the current page, and every link keeps
+ * its name for screen readers (hidden visually only). Calendar and Recurring, shown here only while
+ * open, get their icon back; a menu page's name (Settings, Account…) is hidden the same way.
+ */
+@media (max-width: 480px) {
+  .topnav .topnav-item .topnav-label,
+  .topnav span.topnav-item.is-current {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .topnav .topnav-item.topnav-phone-menu svg {
+    display: block;
+  }
+}
+
 /* Board filter bar */
 .filter-bar {
   display: flex;
