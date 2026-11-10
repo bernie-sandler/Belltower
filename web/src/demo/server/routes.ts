@@ -27,6 +27,10 @@ import {
   DiscordSettingsBody,
   NotifyAlertsBody,
   NotifyChannelBody,
+  OidcSettingsBody,
+  OidcTestBody,
+  type OidcSettingsInfo,
+  type OidcTestResult,
   DraftTicketBody,
   GeneralSettingsBody,
   LabelBody,
@@ -165,6 +169,14 @@ export interface DemoApi {
   'POST /api/auth/login': void;
   'POST /api/auth/logout': void;
   'POST /api/auth/password': void;
+  // ---- single sign-on (routes/oidc.ts): needs a real server and an identity provider ----
+  'GET /api/auth/oidc/start': never;
+  'GET /api/auth/oidc/callback': never;
+  'POST /api/auth/oidc/link': { url: string };
+  'DELETE /api/auth/oidc/link': void;
+  'GET /api/settings/oidc': OidcSettingsInfo;
+  'PUT /api/settings/oidc': OidcSettingsInfo;
+  'POST /api/settings/oidc/test': OidcTestResult;
   // ---- board, columns, labels, cards (routes/board.ts) ----
   'GET /api/config': AppConfig;
   'GET /api/board': BoardResponse;
@@ -322,10 +334,15 @@ const notSent = () => {
 };
 const NO_CLAUDE = 'Claude drafting needs the server and an Anthropic API key';
 const NO_AUTOMATION = 'the automation API is for other tools calling a real server';
+const NO_SSO = 'single sign-on needs the server and an identity provider like Authentik or Authelia';
+const noSso = (): never => {
+  throw notInDemo(NO_SSO);
+};
 
 export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'GET /api/auth/status': ok(
-    (ctx) => ({ authenticated: ctx.s.session.signedIn, setupRequired: false, passwordManagedByEnv: false }),
+    // No single sign-on in the demo, so the login page shows no button for it.
+    (ctx) => ({ authenticated: ctx.s.session.signedIn, setupRequired: false, passwordManagedByEnv: false, sso: null }),
     { public: true },
   ),
   'POST /api/auth/setup': noContent(
@@ -352,6 +369,24 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     parse(ChangePasswordBody, req.body);
     throw notInDemo('the demo has no password to change');
   }),
+  'GET /api/auth/oidc/start': ok(noSso, { public: true }),
+  'GET /api/auth/oidc/callback': ok(noSso, { public: true }),
+  'POST /api/auth/oidc/link': ok(noSso),
+  'DELETE /api/auth/oidc/link': noContent(noSso),
+  // The settings section shows this message as its demo notice.
+  'GET /api/settings/oidc': admin(ok(noSso)),
+  'PUT /api/settings/oidc': admin(
+    ok((_ctx, req) => {
+      parse(OidcSettingsBody, req.body);
+      return noSso();
+    }),
+  ),
+  'POST /api/settings/oidc/test': admin(
+    ok((_ctx, req) => {
+      parse(OidcTestBody, req.body);
+      return noSso();
+    }),
+  ),
 
   'GET /api/config': ok((ctx) => ({
     appVersion: `${APP_VERSION} (demo)`,

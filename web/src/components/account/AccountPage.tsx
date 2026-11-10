@@ -11,6 +11,7 @@ import { toast } from '../../lib/toast';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { Section } from '../settings/SettingsPage';
 import { useShell } from '../shell/ShellContext';
+import { SignInSection } from './SignInSection';
 
 export function AccountPage() {
   const me = useMe();
@@ -22,6 +23,7 @@ export function AccountPage() {
         <UserRound size={20} aria-hidden /> Account
       </h2>
       <ProfileSection me={me.data} />
+      <SignInSection me={me.data} />
       <PasswordSection me={me.data} />
     </div>
   );

@@ -96,6 +96,86 @@ export const ChangePasswordBody = z.object({
 });
 export type ChangePasswordBody = z.infer<typeof ChangePasswordBody>;
 
+// ---- single sign-on (OIDC) ----
+
+export const OIDC_PRESETS = ['authentik', 'authelia', 'custom'] as const;
+export type OidcPreset = (typeof OIDC_PRESETS)[number];
+
+/** What a preset means when a field is left empty: the button's name and the scopes asked for. */
+export const OIDC_PRESET_DEFAULTS: Record<OidcPreset, { label: string; scopes: string }> = {
+  authentik: { label: 'Authentik', scopes: 'openid profile email' },
+  // Authelia only sends groups for the groups scope, and only from the userinfo endpoint.
+  authelia: { label: 'Authelia', scopes: 'openid profile email groups' },
+  custom: { label: 'single sign-on', scopes: 'openid profile email' },
+};
+
+/** An http(s) issuer with no user name, query or fragment (the server parses it properly). */
+const ISSUER_URL = /^https?:\/\/[^\s/?#@]+(?:\/[^\s?#]*)?$/i;
+const ClaimName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[\w.:/-]+$/, 'A claim name like preferred_username');
+
+/**
+ * PUT /api/settings/oidc. `clientSecret`: null keeps the saved one, '' removes it. Pointing the
+ * issuer at another host forgets the saved secret unless a new one comes with it.
+ */
+export const OidcSettingsBody = z.object({
+  enabled: z.boolean(),
+  preset: z.enum(OIDC_PRESETS),
+  buttonLabel: z.string().trim().max(40).refine(noNul, NUL_MESSAGE).default(''),
+  issuer: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((s) => s === '' || ISSUER_URL.test(s), 'Enter the issuer’s http:// or https:// address (no user name, ? or #)'),
+  clientId: z.string().trim().max(200).refine(noNul, NUL_MESSAGE),
+  clientSecret: z.string().trim().max(500).refine(noNul, NUL_MESSAGE).nullable().default(null),
+  /** Space-separated; '' = the preset's. `openid` is always asked for. */
+  scopes: z
+    .string()
+    .trim()
+    .max(300)
+    .regex(/^[\x21-\x7e ]*$/, 'Scopes are words separated by spaces')
+    .default(''),
+  usernameClaim: ClaimName.default('preferred_username'),
+  groupsClaim: ClaimName.default('groups'),
+  requiredGroup: z.string().trim().max(200).refine(noNul, NUL_MESSAGE).default(''),
+  /** Create a member the first time someone new signs in. */
+  autoCreate: z.boolean().default(false),
+  /** Link a first sign-in to the one active, non-admin account with the same verified email. */
+  linkByEmail: z.boolean().default(false),
+  /** Allow an http:// issuer (LAN only): the token exchange then travels unencrypted. */
+  allowHttpIssuer: z.boolean().default(false),
+});
+export type OidcSettingsBody = z.infer<typeof OidcSettingsBody>;
+
+/** POST /api/settings/oidc/test: the form's values, before they're saved. */
+export const OidcTestBody = z.object({
+  preset: z.enum(OIDC_PRESETS),
+  issuer: z.string().trim().min(1, 'Enter the issuer first').max(500).refine((s) => ISSUER_URL.test(s), 'Enter the issuer’s http:// or https:// address'),
+  allowHttpIssuer: z.boolean().default(false),
+});
+export type OidcTestBody = z.infer<typeof OidcTestBody>;
+
+/** Why single sign-on sent you back to the login (or Account) page: `?sso_error=<code>`. */
+export const SSO_ERROR_CODES = [
+  'not_configured',
+  'state',
+  'denied',
+  'idp',
+  'clock',
+  'group',
+  'no_account',
+  'link_required',
+  'disabled',
+  'link_session',
+  'taken',
+] as const;
+export type SsoErrorCode = (typeof SSO_ERROR_CODES)[number];
+
 // ---- columns / labels ----
 export const ColumnNameBody = z.object({
   name: z.string().trim().min(1).max(LIMITS.columnName).refine(noNul, NUL_MESSAGE),

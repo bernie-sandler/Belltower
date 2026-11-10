@@ -95,6 +95,8 @@ A few more the app understands, for the rare case you need them. Add them under 
 | `MAX_IMPORT_MB` | `2048` | The largest backup you can restore. |
 | `APP_PASSWORD_FILE` | (empty) | Read the owner's password from a file instead. |
 | `ANTHROPIC_API_KEY_FILE` | (empty) | Read the API key from a file instead. |
+| `OIDC_CLIENT_SECRET` | (empty) | The [single sign-on](SSO.md) client secret, so it isn't stored in the database. It wins over one saved in Settings. |
+| `OIDC_CLIENT_SECRET_FILE` | (empty) | Read the single sign-on client secret from a file instead (a Docker secret). |
 | `ANTHROPIC_MODEL` | `claude-opus-5-5` | The Claude model (Settings can override it). |
 | `SESSION_DAYS` | `90` | How long "Remember this device" lasts. It renews as you use the app. |
 | `COOKIE_SECURE` | `auto` | `auto` marks cookies Secure on HTTPS requests. |
@@ -109,6 +111,8 @@ username (`admin` on installs from before 1.5, which also accept the old name `t
 empty. You can remove the line afterwards; the password stays.
 
 Someone else forgot theirs? An admin sets a new password for them; that signs them out everywhere.
+
+Password login keeps working while [single sign-on](SSO.md) is on, so a broken identity provider never locks you out.
 
 ## Troubleshooting
 

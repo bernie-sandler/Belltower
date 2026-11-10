@@ -93,6 +93,7 @@ The full walkthrough (where the data should live, every setting) is in
 | [Upgrading](docs/UPGRADING.md) | Updating, picking a version, rolling back |
 | [Using Belltower](docs/USING.md) | A tour of the board, cards, work cards, history, search and settings |
 | [Phone and remote access](docs/REMOTE-ACCESS.md) | Tailscale, Nginx Proxy Manager, the Home Screen app |
+| [Single sign-on](docs/SSO.md) | Signing in with Authentik, Authelia or another OIDC provider |
 | [Backups](docs/BACKUP.md) | Snapshots, export and restore, moving to a new server |
 | [Submit page](docs/SUBMIT-PAGE.md) | Letting other people file tickets and check on them |
 | [Notifications](docs/NOTIFICATIONS.md) | Discord, ntfy, Gotify and webhooks: what gets announced and how to set it up |

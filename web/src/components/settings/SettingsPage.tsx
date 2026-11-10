@@ -23,6 +23,7 @@ import { useShell } from '../shell/ShellContext';
 import { RequestTypesEditor } from './RequestTypesEditor';
 import { NotificationsSection } from './NotificationsSection';
 import { ResolutionReasonsSection } from './ResolutionReasonsSection';
+import { SsoSection } from './SsoSection';
 import { TokensSection } from './TokensSection';
 
 export function Section({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
@@ -53,6 +54,7 @@ export function SettingsPage() {
       {isAdmin && <SubmitSection s={s} />}
       <TokensSection />
       {isAdmin && <NotificationsSection s={s} />}
+      {isAdmin && <SsoSection />}
       <AccountSection />
     </div>
   );

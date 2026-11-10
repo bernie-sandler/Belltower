@@ -45,6 +45,9 @@ const PUBLIC_ROUTES = new Set([
   'POST /api/auth/login',
   'POST /api/auth/setup',
   'POST /api/auth/logout',
+  // Single sign-on: the flow cookie and the state the provider returns are checked by the route.
+  'GET /api/auth/oidc/start',
+  'GET /api/auth/oidc/callback',
   // The submit page: its secret key is checked by the route (wrong key → 404).
   'GET /api/public/submit/:key',
   'POST /api/public/submit/:key',

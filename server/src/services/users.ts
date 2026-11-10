@@ -98,7 +98,7 @@ export function userInfo(ctx: Ctx, id: number): UserInfo {
 
 export function meResponse(ctx: Ctx, id: number, passwordSourceEnv: boolean): MeResponse {
   const row = getUser(ctx, id);
-  return { ...toUserInfo(row, true), passwordManagedByEnv: passwordSourceEnv && row.is_owner === 1 };
+  return { ...toUserInfo(row, true), passwordManagedByEnv: passwordSourceEnv && row.is_owner === 1, ssoLinked: row.oidc_subject !== null };
 }
 
 function assertUsernameFree(ctx: Ctx, username: string): void {
