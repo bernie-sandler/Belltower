@@ -22,9 +22,15 @@ function isUnauthenticated(err: unknown): boolean {
   return err instanceof ApiError && err.status === 401 && err.code === 'unauthenticated';
 }
 
+/** A 403 may mean your role changed meanwhile (an admin made you a member): reload who you are. */
+function refreshRoleOnForbidden(err: unknown): void {
+  if (err instanceof ApiError && err.status === 403 && err.code === 'forbidden') void queryClient.invalidateQueries({ queryKey: qk.me });
+}
+
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (err, query) => {
+      refreshRoleOnForbidden(err);
       if (isUnauthenticated(err) || query.meta?.errorToast === false) return;
       // First-load failures are shown inline by the page; only background refetch failures toast.
       if (query.state.data !== undefined) toast(errorMessage(err), { kind: 'error' });
@@ -32,6 +38,7 @@ export const queryClient = new QueryClient({
   }),
   mutationCache: new MutationCache({
     onError: (err, _vars, _ctx, mutation) => {
+      refreshRoleOnForbidden(err);
       if (isUnauthenticated(err) || mutation.meta?.errorToast === false) return;
       toast(errorMessage(err), { kind: 'error' });
     },

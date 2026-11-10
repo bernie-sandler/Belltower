@@ -39,6 +39,8 @@ function useRefreshPeople() {
     // Token lists show each owner's name and whether they're deactivated; your own entry may have changed.
     void qc.invalidateQueries({ queryKey: qk.tokens });
     void qc.invalidateQueries({ queryKey: qk.me });
+    // Card histories show people by display name.
+    void qc.invalidateQueries({ queryKey: qk.activities });
   };
 }
 

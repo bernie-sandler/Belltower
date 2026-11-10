@@ -35,6 +35,9 @@ export function useUpdateMe() {
     onSuccess: (me) => {
       qc.setQueryData(qk.me, me);
       void qc.invalidateQueries({ queryKey: qk.users });
+      // Your display name shows in card histories and on tokens.
+      void qc.invalidateQueries({ queryKey: qk.activities });
+      void qc.invalidateQueries({ queryKey: qk.tokens });
     },
   });
 }
