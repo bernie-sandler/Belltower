@@ -7,7 +7,7 @@ import { listActivity } from '../src/services/activity';
 import { createCard, getBoard, getCard, updateCard } from '../src/services/cards';
 import { withActor, type AppEvent } from '../src/services/context';
 import { Notifier } from '../src/services/notify';
-import { updateDiscordSettings } from '../src/services/settings';
+import { getChannelSettings, updateChannelSettings, updateDiscordSettings } from '../src/services/settings';
 import { createUser } from '../src/services/users';
 import { addPerson, client, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
 
@@ -54,6 +54,16 @@ describe('assigning cards (service)', () => {
     ]);
   });
 
+  it('edits that leave assigneeId out keep the assignee', () => {
+    const card = createCard(t.ctx, { title: 'Fans loud', assigneeId: alice });
+    events = [];
+    const edited = updateCard(t.ctx, card.id, { title: 'Fans very loud', priority: 'high', expectedVersion: card.version });
+    expect(edited).toMatchObject({ assigneeId: alice, title: 'Fans very loud' });
+    expect(getCard(t.ctx, card.id).assigneeId).toBe(alice);
+    expect(assignedEntries(card.id)).toHaveLength(1); // only the one from creating it
+    expect(events.filter((e) => e.type === 'card_assigned')).toEqual([]);
+  });
+
   it('assigning the same person again changes nothing', () => {
     const card = createCard(t.ctx, { title: 'Fans loud' });
     const v = updateCard(t.ctx, card.id, { assigneeId: alice }).version;
@@ -92,6 +102,17 @@ describe('assigning cards (API)', () => {
   afterEach(async () => {
     await t?.shutdown();
     t = undefined;
+  });
+
+  it('a PATCH without assigneeId (a title only) keeps the assignee', async () => {
+    t = await makeApp();
+    const admin = await setupAndLogin(t);
+    const sam = await addPerson(t, admin, 'sam');
+    const c = client(t.app, admin);
+    const card = (await c('POST', '/api/cards', { title: 'Fans loud', assigneeId: sam.id })).json();
+    const res = await c('PATCH', `/api/cards/${card.id}`, { title: 'Fans very loud', expectedVersion: card.version });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ title: 'Fans very loud', assigneeId: sam.id });
   });
 
   it('PATCH sets the assignee; unknown and deactivated people get a clear 400', async () => {
@@ -156,7 +177,7 @@ describe('the install’s notification channels ignore assignments', () => {
   let t: ReturnType<typeof makeCtx>;
   afterEach(() => t.close());
 
-  it('sends nothing for card_assigned or a type it doesn’t know, and doesn’t throw', async () => {
+  it('sends nothing for card_assigned or a type it doesn’t know (Discord and the webhook), and doesn’t throw', async () => {
     t = makeCtx();
     const sent: unknown[] = [];
     const notifier = new Notifier(async (_url, init) => {
@@ -168,9 +189,18 @@ describe('the install’s notification channels ignore assignments', () => {
       events: { external: true, critical: true, digest: true, blocked: true },
       digestTime: '08:00',
     });
+    updateChannelSettings(t.ctx, 'webhook', {
+      url: 'https://hooks.example/in/abc123',
+      secret: 'whsec',
+      events: { external: true, critical: true, digest: true, blocked: true },
+    });
+    expect(getChannelSettings(t.ctx, 'webhook').url).toBe('https://hooks.example/in/abc123');
     const card = createCard(t.ctx, { title: 'Array offline', priority: 'critical', severity: 'blocker' });
     await notifier.handle(t.ctx, { type: 'card_assigned', cardId: card.id, from: null, to: 1 });
     await notifier.handle(t.ctx, { type: 'card_watched', cardId: card.id } as unknown as AppEvent);
     expect(sent).toEqual([]);
+    // Both channels are live: an urgent new card reaches both.
+    await notifier.handle(t.ctx, { type: 'card_created', cardId: card.id, external: false });
+    expect(sent).toHaveLength(2);
   });
 });

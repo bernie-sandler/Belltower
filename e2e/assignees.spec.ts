@@ -1,7 +1,7 @@
 // Assignees (1.5): Unassigned → Take it → Mine, the tile badge, the card's picker, the board
 // filter, and losing a race for the same card.
 
-import { expect, test, tileByTitle, unique, type Api } from './helpers';
+import { expect, login, test, tileByTitle, unique, type Api } from './helpers';
 
 const queueRow = (page: import('@playwright/test').Page, title: string) => page.locator('.queue-row', { hasText: title });
 
@@ -84,17 +84,56 @@ test('Take it loses a race: someone else took it first', async ({ page, api }) =
   const card = await newCard(api, { title: unique('Router reboot loop') });
   const username = `r${Math.random().toString(36).slice(2, 8)}`;
   const rival = await api.call<{ id: number }>('POST', '/api/users', { username, displayName: 'Robin Rival', role: 'member', password: 'rival password 123' });
+  try {
+    await page.goto('/triage');
+    const row = queueRow(page, card.title);
+    await expect(row).toBeVisible();
+    // Meanwhile, on another device, the card goes to Robin.
+    const current = await api.call<{ version: number }>('GET', `/api/cards/${card.id}`);
+    await api.call('PATCH', `/api/cards/${card.id}`, { assigneeId: rival.id, expectedVersion: current.version });
 
-  await page.goto('/triage');
-  const row = queueRow(page, card.title);
-  await expect(row).toBeVisible();
-  // Meanwhile, on another device, the card goes to Robin.
-  const current = await api.call<{ version: number }>('GET', `/api/cards/${card.id}`);
-  await api.call('PATCH', `/api/cards/${card.id}`, { assigneeId: rival.id, expectedVersion: current.version });
+    await row.getByRole('button', { name: /Take it/ }).click();
+    await expect(page.getByText('Someone else took it: Robin Rival')).toBeVisible();
+    await expect(row).toHaveCount(0);
+    const after = await api.call<{ assigneeId: number | null }>('GET', `/api/cards/${card.id}`);
+    expect(after.assigneeId).toBe(rival.id);
+  } finally {
+    // People are never deleted; don't leave an active member behind in the shared database.
+    await api.call('PATCH', `/api/users/${rival.id}`, { disabled: true });
+  }
+});
 
-  await row.getByRole('button', { name: /Take it/ }).click();
-  await expect(page.getByText('Someone else took it: Robin Rival')).toBeVisible();
-  await expect(row).toHaveCount(0);
-  const after = await api.call<{ assigneeId: number | null }>('GET', `/api/cards/${card.id}`);
-  expect(after.assigneeId).toBe(rival.id);
+test('the top nav fits; on a phone Calendar and Recurring are in the menu @mobile', async ({ page }) => {
+  await login(page);
+  const phone = (page.viewportSize()?.width ?? 1280) < 768;
+  const nav = page.getByRole('navigation', { name: 'Main' });
+
+  // Every link shows, on the board and on the page with the longest name.
+  for (const path of ['/', '/triage']) {
+    await page.goto(path);
+    const links = nav.getByRole('link');
+    await expect(links.first()).toBeVisible();
+    expect(await links.count()).toBe(phone ? 4 : 6);
+    for (const link of await links.all()) await expect(link).toBeInViewport({ ratio: 1 });
+  }
+  const names = await nav.getByRole('link').evaluateAll((els) => els.map((e) => e.textContent?.trim()));
+  expect(names).toEqual(phone ? ['Board', 'Mine', 'Unassigned', 'Search'] : ['Board', 'Mine', 'Unassigned', 'Calendar', 'Search', 'Recurring']);
+
+  if (!phone) {
+    await page.getByRole('button', { name: 'Main menu' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Calendar' })).toHaveCount(0);
+    return;
+  }
+  for (const [label, url] of [
+    ['Calendar', /\/calendar$/],
+    ['Recurring', /\/templates$/],
+  ] as const) {
+    await page.getByRole('button', { name: 'Main menu' }).click();
+    await page.getByRole('menu', { name: 'Main menu' }).getByRole('menuitem', { name: label }).click();
+    await expect(page).toHaveURL(url);
+    // While open, the page's name shows in the nav, and everything still fits.
+    const current = nav.getByRole('link', { name: label });
+    await expect(current).toHaveAttribute('aria-current', 'page');
+    for (const link of await nav.getByRole('link').all()) await expect(link).toBeInViewport({ ratio: 1 });
+  }
 });
