@@ -229,6 +229,8 @@ export interface ActivityRevision {
   revisedAt: IsoTimestamp;
   /** Who replaced it (null before 1.5, or when no person did). */
   userId: number | null;
+  /** That person's display name, for showing who made the edit. */
+  userName?: string | null;
 }
 
 export interface BoardResponse {
@@ -305,6 +307,12 @@ export interface ActivityEntry {
    */
   userId: number | null;
   tokenId: number | null;
+  /**
+   * Display names for `userId` and `tokenId`, filled in by the server so everyone can read who did
+   * what without listing people or tokens. Null when there is no person or token.
+   */
+  userName?: string | null;
+  tokenName?: string | null;
 }
 
 // ---- Phase 3: search, calendar, recurring templates ----
