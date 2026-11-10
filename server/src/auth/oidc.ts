@@ -75,6 +75,8 @@ export function describeOidcError(err: unknown, issuer: string): string {
       return `No answer from the provider within ${TIMEOUT_SEC} seconds.`;
     case 'OAUTH_JWT_TIMESTAMP_CHECK_FAILED':
       return 'The provider’s token is outside its valid time. Check that this server and the provider keep the right time (NTP).';
+    case 'OAUTH_UNSUPPORTED_OPERATION':
+      return 'The provider signs its ID tokens in a way Belltower doesn’t accept (HS256 with the client secret). In Authentik, choose a signing key for the provider.';
   }
   if (err instanceof TypeError) {
     const reason = (err.cause as { code?: unknown; message?: unknown } | undefined) ?? {};
