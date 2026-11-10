@@ -12,7 +12,7 @@ export interface Ctx {
   /** IANA time zone used for local dates (due dates, calendar days, recurrence). */
   tz: string;
   /**
-   * Things other parts of the app may want to react to (Discord notifications). Called inside the
+   * Things other parts of the app may want to react to (notifications). Called inside the
    * change's transaction, so listeners must defer their work and re-check that the card exists.
    */
   emit?: (event: AppEvent) => void;
@@ -33,6 +33,8 @@ export type AppEvent = (
     }
   /** The assignee changed (user ids, null = nobody). Also sent for a card created with an assignee. */
   | { type: 'card_assigned'; cardId: number; from: number | null; to: number | null }
+  /** Personal notifications were written (their ids), for the person's Discord and ntfy (notifications.ts). */
+  | { type: 'people_notified'; ids: number[] }
 ) & {
   /** Who caused it. Listeners run after the commit on the base context, so the event carries it. */
   actor?: Actor;

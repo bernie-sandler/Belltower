@@ -1,6 +1,5 @@
-// Account (/account): your own profile, password and API tokens. Every person has one, admins and
-// members alike. Each part is its own section component, so new ones (sign-in methods, personal
-// notifications) slot in as further sections.
+// Account (/account): your own profile, sign-in, password, notifications and API tokens. Every
+// person has one, admins and members alike. Each part is its own section component.
 
 import type { MeResponse } from '@tt/shared';
 import { IdCard, Lock, UserRound } from 'lucide-react';
@@ -11,6 +10,7 @@ import { toast } from '../../lib/toast';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { Section } from '../settings/SettingsPage';
 import { TokensSection } from '../settings/TokensSection';
+import { NotificationPrefsSection } from './NotificationPrefsSection';
 import { PasswordForm } from './PasswordForm';
 import { SignInSection } from './SignInSection';
 
@@ -26,6 +26,7 @@ export function AccountPage() {
       <ProfileSection me={me.data} />
       <SignInSection me={me.data} />
       <PasswordSection me={me.data} />
+      <NotificationPrefsSection />
       <TokensSection mine />
     </div>
   );

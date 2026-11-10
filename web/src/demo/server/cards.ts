@@ -29,6 +29,7 @@ import { byPosition, nextId, nowIso, type CardRow, type ColumnRow, type Ctx, typ
 import { badRequest, conflict, notFound } from './errors';
 import { labelIdsOf, listLabels, resolveLabels } from './labels';
 import { localDateOf } from './lib';
+import { isWatching, notifyAssigned, notifyMoved, notifyNewUnassigned, watchOwnNewCard } from './notifications';
 import { getResolutionReasons } from './settings';
 
 const visible = (c: CardRow) => !c.deletedAt && !c.archivedAt;
@@ -87,6 +88,7 @@ function toDetail(ctx: Ctx, c: CardRow): CardDetail {
     parent: parent && !parent.deletedAt ? parent : null,
     children: c.kind === 'work' ? listChildren(ctx, c.id) : [],
     resolutionNote: c.resolutionMd,
+    watching: isWatching(ctx, c.id),
   };
 }
 
@@ -220,6 +222,8 @@ export interface CreateCardOptions {
   templateId?: number | null;
   templateTitle?: string;
   via?: string;
+  /** From the submit page: may notify people who asked about new unassigned tickets. */
+  external?: boolean;
 }
 
 /** Someone a card can be given to: an existing, active person (400 invalid_assignee / assignee_disabled). */
@@ -232,7 +236,8 @@ function checkAssignee(ctx: Ctx, userId: number): UserRow {
 
 function recordAssigned(ctx: Ctx, cardId: number, from: number | null, to: UserRow | null): void {
   const fromName = from !== null ? (ctx.s.users.find((u) => u.id === from)?.displayName ?? null) : null;
-  recordEvent(ctx, cardId, 'assigned', { from, to: to?.id ?? null, fromName, toName: to?.displayName ?? null });
+  const activityId = recordEvent(ctx, cardId, 'assigned', { from, to: to?.id ?? null, fromName, toName: to?.displayName ?? null });
+  notifyAssigned(ctx, cardId, activityId, { to: to ? { id: to.id, name: to.displayName } : null, fromName });
 }
 
 /** The ticket number up to the counter, e.g. "{YY}{MM}{DD}-{N}" on 2026-10-24 → "261024-". */
@@ -322,7 +327,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     );
   });
 
-  recordEvent(ctx, id, 'created', {
+  const createdId = recordEvent(ctx, id, 'created', {
     column: columnRef(column),
     title,
     ticketNo,
@@ -336,7 +341,9 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     recordEvent(ctx, parent.id, 'child_added', { child: { id, ticketNo, title } });
     touchCard(ctx, parent.id);
   }
+  if ((opts.source ?? 'manual') === 'manual' && !opts.external) watchOwnNewCard(ctx, id);
   if (assignee) recordAssigned(ctx, id, null, assignee);
+  else if (opts.external) notifyNewUnassigned(ctx, id, createdId, opts.via);
   return getCard(ctx, id);
 }
 
@@ -538,7 +545,12 @@ export function moveCard(
     const sourceIds = visibleIdsInColumn(ctx, from.id);
     writePositions(ctx, sourceIds);
     orders[String(from.id)] = sourceIds;
-    recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target) });
+    const movedId = recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target) });
+    notifyMoved(ctx, id, movedId, {
+      to: target.name,
+      done: target.role === 'done' && from.role !== 'done',
+      reopened: from.role === 'done' && target.role !== 'done',
+    });
     if (from.role === 'done' && target.role !== 'done') parkCardsBlockedBy(ctx, id);
   }
   writePositions(ctx, targetIds);
@@ -625,7 +637,8 @@ export function parkIfBlocked(ctx: Ctx, id: number): boolean {
   card.updatedAt = nowIso(ctx);
   writePositions(ctx, visibleIdsInColumn(ctx, from.id));
   writePositions(ctx, [...visibleIdsInColumn(ctx, target.id).filter((cid) => cid !== id), id]);
-  recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target), reason: 'blocked', blockedBy: blockers });
+  const movedId = recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target), reason: 'blocked', blockedBy: blockers });
+  notifyMoved(ctx, id, movedId, { to: target.name, blocked: true });
   return true;
 }
 

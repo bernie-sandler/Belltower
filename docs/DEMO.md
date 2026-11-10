@@ -70,7 +70,10 @@ message that starts "Not available in the demo":
 - attachments (upload; there are none to view or delete), and screenshots on the submit page
 - backup export and restore (there are no snapshots either)
 - notifications: saving an address or token (Discord, ntfy, Gotify, webhook), sending a test or a summary. The
-  alert levels, summary time and each channel's checkboxes can still be changed.
+  alert levels, summary time and each channel's checkboxes can still be changed. Under Account → Notifications, a
+  personal Discord user ID or ntfy topic and **Send me a test** need the server too; what goes where is saved. The
+  bell, watching, @mentions and the sound work in the demo (it starts with two unread notifications from the other
+  demo people).
 - Claude drafting (it shows as off, as on an install without `ANTHROPIC_API_KEY`)
 - API tokens and the automation API (`/api/v1`)
 - changing the password (there are none)

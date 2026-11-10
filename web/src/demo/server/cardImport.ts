@@ -384,7 +384,7 @@ export function createImported(ctx: Ctx, items: ImportItem[], opts: { via: strin
       },
       { source: 'api', via: opts.via },
     );
-    for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) });
+    for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) }, { quiet: true });
     if (c.resolution) resolveCard(ctx, detail.id, c.resolution);
     createdIds.set(item.index, detail.id);
   }

@@ -107,6 +107,7 @@ test('the top nav fits; on a phone Calendar and Recurring are in the menu @mobil
   await login(page);
   const phone = (page.viewportSize()?.width ?? 1280) < 768;
   const nav = page.getByRole('navigation', { name: 'Main' });
+  const bell = page.getByRole('button', { name: /^Notifications/ });
 
   // Every link shows, on the board and on the page with the longest name.
   for (const path of ['/', '/triage']) {
@@ -115,6 +116,7 @@ test('the top nav fits; on a phone Calendar and Recurring are in the menu @mobil
     await expect(links.first()).toBeVisible();
     expect(await links.count()).toBe(phone ? 4 : 6);
     for (const link of await links.all()) await expect(link).toBeInViewport({ ratio: 1 });
+    await expect(bell).toBeInViewport({ ratio: 1 });
   }
   const names = await nav.getByRole('link').evaluateAll((els) => els.map((e) => e.textContent?.trim()));
   expect(names).toEqual(phone ? ['Board', 'Mine', 'Unassigned', 'Search'] : ['Board', 'Mine', 'Unassigned', 'Calendar', 'Search', 'Recurring']);
@@ -135,5 +137,6 @@ test('the top nav fits; on a phone Calendar and Recurring are in the menu @mobil
     const current = nav.getByRole('link', { name: label });
     await expect(current).toHaveAttribute('aria-current', 'page');
     for (const link of await nav.getByRole('link').all()) await expect(link).toBeInViewport({ ratio: 1 });
+    await expect(bell).toBeInViewport({ ratio: 1 });
   }
 });

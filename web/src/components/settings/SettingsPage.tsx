@@ -4,7 +4,7 @@
 // under Account.
 
 import { DEFAULT_TICKET_FORMAT, type SettingsResponse } from '@tt/shared';
-import { Bot, Copy, Globe, Info, Palette, RefreshCw, Settings as SettingsIcon, UserRound } from 'lucide-react';
+import { Bot, Copy, Globe, Info, Palette, RefreshCw, Settings as SettingsIcon, UserRound, Volume2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
@@ -16,6 +16,7 @@ import { qk } from '../../api/keys';
 import { useIsAdmin } from '../../api/me';
 import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
+import { playSound, setSound, useSound, type SoundChoice } from '../../lib/sound';
 import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
 import { todayLocal } from '../../lib/time';
 import { toast } from '../../lib/toast';
@@ -63,9 +64,18 @@ export function SettingsPage() {
   );
 }
 
-/** Per device (this browser), so a phone can follow the system while the desktop stays dark. */
+/**
+ * Per device (this browser), so a phone can follow the system while the desktop stays dark, and
+ * the work laptop can stay quiet while the desktop at home chimes.
+ */
 function AppearanceSection() {
   const theme = useTheme();
+  const sound = useSound();
+  const sounds: [SoundChoice, string][] = [
+    ['off', 'Off'],
+    ['chime', 'Chime'],
+    ['ping', 'Ping'],
+  ];
   const options: [ThemeChoice, string][] = [
     ['system', 'System'],
     ['light', 'Light'],
@@ -81,6 +91,33 @@ function AppearanceSection() {
         ))}
       </div>
       <p className="field-help">Saved on this device only. System follows your phone or computer’s light/dark setting.</p>
+      <span className="field-label sound-label">Sound for new notifications</span>
+      <div className="sound-row">
+        <div className="segmented" role="radiogroup" aria-label="Sound for new notifications">
+          {sounds.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={sound === value}
+              className="segmented-item"
+              onClick={() => {
+                setSound(value);
+                playSound(value, true);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="btn btn-sm" disabled={sound === 'off'} onClick={() => playSound(sound, true)}>
+          <Volume2 size={14} aria-hidden /> Test
+        </button>
+      </div>
+      <p className="field-help">
+        Saved on this device only. It plays when the bell gets something new, in one open tab, once you’ve clicked or typed
+        on the page (browsers don’t allow sound before that).
+      </p>
     </Section>
   );
 }

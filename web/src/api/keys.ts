@@ -4,6 +4,8 @@ export const qk = {
   config: ['config'] as const,
   me: ['me'] as const,
   users: ['users'] as const,
+  notifications: ['notifications'] as const,
+  personalNotify: ['personalNotify'] as const,
   board: ['board'] as const,
   cards: ['card'] as const,
   card: (id: number) => ['card', id] as const,

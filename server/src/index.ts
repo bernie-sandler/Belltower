@@ -13,6 +13,7 @@ import { createLogger } from './logger';
 import type { Ctx } from './services/context';
 import { createClaudeDrafter } from './services/aiDraft';
 import { backupBeforeMigrate, dailySnapshot } from './services/backup';
+import { pruneNotifications } from './services/notifications';
 import { Notifier } from './services/notify';
 import { runDueTemplates } from './services/recurring';
 import { getGeneralSettings } from './services/settings';
@@ -62,7 +63,7 @@ async function main(): Promise<void> {
 
   const ctx: Ctx = { db, clock: systemClock, tz: config.timeZone };
   // Notifications: events are handled after the change commits (and never break the request).
-  const notifier = new Notifier();
+  const notifier = new Notifier(undefined, undefined, { warn: (message) => log.warn(message) });
   ctx.emit = (event) => {
     setImmediate(() => {
       notifier.handle(ctx, event).catch((err) => log.warn(`Notification failed: ${(err as Error).message}`));
@@ -82,6 +83,7 @@ async function main(): Promise<void> {
   const app = await buildApp({ baseCtx: ctx, config, auth, limiter, ai, notifier }, log);
 
   purgeExpiredSessions(ctx);
+  pruneNotifications(ctx);
 
   // Recurring maintenance: at startup, then every 10 minutes (cards appear shortly after local
   // midnight on their day). Each run is idempotent per occurrence.
@@ -110,6 +112,12 @@ async function main(): Promise<void> {
   const housekeeping = setInterval(() => {
     purgeExpiredSessions(ctx);
     limiter.prune();
+    // Personal notifications: read ones after 30 days, any after 90.
+    try {
+      pruneNotifications(ctx);
+    } catch (err) {
+      log.warn(`Pruning old notifications failed: ${(err as Error).message}`);
+    }
   }, 60 * 60 * 1000);
   housekeeping.unref();
 
@@ -125,6 +133,12 @@ async function main(): Promise<void> {
       await app.close();
     } catch (err) {
       log.error(err as Error, 'Error while closing HTTP server');
+    }
+    // Personal notifications still waiting to be combined go out now (for a few seconds at most).
+    try {
+      await Promise.race([notifier.flushPersonal(ctx), new Promise((r) => setTimeout(r, 3000))]);
+    } catch (err) {
+      log.warn(`Sending waiting notifications failed: ${(err as Error).message}`);
     }
     try {
       // Fold the WAL back into the main file so a copy of /data is self-contained.

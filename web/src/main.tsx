@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { installGlobalKeyboard } from './lib/keyboard';
+import { installSound } from './lib/sound';
 import { installStaleBundleReload } from './lib/staleBundle';
 import { installTheme } from './lib/theme';
 import './styles/tokens.css';
@@ -15,10 +16,12 @@ import './styles/phase3.css';
 import './styles/assignees.css';
 import './styles/tickets.css';
 import './styles/intake.css';
+import './styles/notifications.css';
 
 installTheme();
 installStaleBundleReload();
 installGlobalKeyboard();
+installSound();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root element missing from index.html');

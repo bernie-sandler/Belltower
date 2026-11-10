@@ -645,6 +645,17 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
   step([7, '09:45'], () => done('parity', { reason: 'Fixed' }));
   step([2, '07:00'], () => runTemplateNow(ctx, template('Weekly container & plugin update check').id));
 
+  // The others at work, so the visitor's bell has something on the first visit: Alex asks them
+  // about disk 3 (a mention), and Jordan starts on the patch panel (a card the visitor made, so watches).
+  const asPerson = (username: string): Ctx => ({ ...ctx, userId: s.users.find((u) => u.username === username)!.id });
+  step([0, '-3h'], () =>
+    addWorklog(asPerson('alex'), ids.get('disk3')!, {
+      bodyMd: 'The warranty replacement shipped; tracking says Thursday. @admin can you preclear it when it lands?',
+      occurredAt: clock.toISOString(),
+    }),
+  );
+  step([0, '-1h'], () => moveCard(asPerson('jordan'), ids.get('patch')!, { toColumnId: column('In Progress').id, afterCardId: null }));
+
   // The parity card is created by a step, so links to it have to wait until it exists.
   steps
     .sort((a, b) => a.t.getTime() - b.t.getTime() || a.order - b.order)

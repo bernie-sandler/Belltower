@@ -6,6 +6,9 @@ to any **webhook** (Home Assistant, n8n, your own script). Use one or all of the
 
 Everything is under **Settings → Notifications**. Nothing goes out through a channel until it's set up.
 
+Since 1.5 each person also gets their own notifications, about their own cards: a bell in the app, and if they want,
+a Discord mention or a push to their own ntfy topic. See [Personal notifications](#personal-notifications) below.
+
 ## What it can announce
 
 Each channel has its own checkboxes, so you might send everything to Discord and only urgent cards to your phone.
@@ -141,6 +144,68 @@ General**. Descriptions, work logs and attachments are never sent.
 
 In ntfy and Gotify, which show messages as Markdown, text that comes from other people (a submitter's name, ticket
 titles) has Markdown characters escaped, so it can't add images or disguised links.
+
+## Personal notifications
+
+Each person decides what reaches them under **Account → Notifications**. These are separate from the install's
+channels above: the events, the webhook's payload and its `event` names don't change, and nothing personal is ever
+sent to the webhook, Gotify or the install's own ntfy topic.
+
+**What notifies you**
+
+- **Assigned:** a card is assigned to you.
+- **Mentioned:** someone writes `@yourusername` in a work-log note. Mentions in code (`` `like this` `` or a fenced
+  block, or an indented code block), email addresses and an escaped `\@name` don't count. Editing a note only tells
+  people it didn't mention before, and a retracted note tells nobody (its notifications leave the bell until it's
+  restored). Notes that come with imported cards ([card import](CARD-IMPORT.md), a new ticket from
+  [automation](AUTOMATION.md)) are history and tell nobody.
+- **Cards you watch:** a new note, a move (done and reopened included) or a new assignee. You watch a card when you
+  create it in the app, are assigned it, are mentioned on it or write a note on it; **Watch** in the card's header
+  turns it on or off.
+- **New tickets nobody has:** a ticket arrives from the submit page or an API token with nobody assigned. Off unless
+  you turn it on.
+
+You're never told about what you did yourself, but something an API token of yours did does reach you. Deactivated
+people get nothing.
+
+**Where it goes.** Each event has three boxes: **In the app** (the bell), **Discord** and **ntfy**. The bell is on by
+default for the first three events; everything else is opt-in.
+
+- **The bell** in the top bar shows how many you haven't read. Opening one opens its card and marks it read (so does
+  opening the card any other way), and **Mark all read** clears the count. Screen readers announce what's new. It checks every 30 seconds, also in a background tab, and when you come back to
+  the tab. It can play a sound (chime, ping or off), chosen per device under **Settings → Appearance**; only one open
+  tab plays it, and only for something new, not for what was there when the page loaded. Browsers allow sound only
+  after you've clicked or typed on the page.
+- **Discord** posts in the install's Discord channel and mentions you there, and only you (a webhook can't send direct
+  messages, so others in the channel see it too). Fill in your **Discord user ID**: in Discord, turn on **Settings →
+  Advanced → Developer Mode**, then right-click your name and choose **Copy User ID** (17 to 20 digits). Belltower
+  can't check that the ID is yours, so anyone could enter someone else's; the mention still only ever appears in the
+  install's own channel, so it can only ping people who are in that channel anyway.
+- **ntfy** publishes to your own topic, on the server of the install's ntfy channel and with its access token. Fill in
+  a **topic** that starts with `belltower-` (or press **Random topic**) and subscribe to it in the ntfy app on that
+  server. The install's own topic isn't accepted.
+
+Discord and ntfy need the install's channel to be set up first (above); until then the Account page says so and their
+boxes stay off. **Send me a test** sends one message to each channel you've filled in, so you can check before
+waiting for something real.
+
+**Several at once.** Changes for one person within about 5 seconds go out together, as one Discord message and one
+ntfy message ("3 updates in Belltower"), so moving a whole folder of tickets doesn't flood you or hit Discord's limit
+of 30 messages a minute per webhook.
+
+**ntfy topics work like passwords.** On ntfy.sh, and on any server that doesn't require access tokens, anyone who
+knows a topic's name can read it and post to it. Use a long random name (that's what **Random topic** makes), don't
+reuse it elsewhere, and pick a new one if it leaks.
+
+**On an ntfy server with access control,** the install's token sends everyone's personal messages. Personal topics
+always start with `belltower-`, so give that token write access to `belltower-*` (as well as the install's own topic)
+and nothing more, for example `ntfy access <token's user> 'belltower-*' write-only`. That way nobody can make
+Belltower post to any other topic on your server. Without the access, ntfy answers 403, and **Send me a test** says
+so.
+
+**What's sent:** what happened ("Alex Chen mentioned you: …", with the start of the note for notes and mentions), the
+card's ticket number and title, and a link to the card if the app's address is set under **Settings → General**.
+Text from other people is escaped, so it can't add formatting, links or extra Discord mentions.
 
 ## Not working?
 

@@ -1,0 +1,308 @@
+/* ---------- 1.5 personal notifications: the bell, Watch, @mentions, Account → Notifications ---------- */
+
+/* The bell in the top bar, with the unread count on its corner. */
+.topbar-bell {
+  position: relative;
+  color: var(--text-strong);
+}
+
+.bell-count {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: var(--on-color);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/*
+ * Phones: room for the bell. The nav, Add ticket, the bell and ☰ all fit at 375px wide, with the
+ * longest page name (Unassigned) showing: tighter gaps and padding, and Add ticket pushed right by
+ * its own margin instead of a spacer (which cost two gaps).
+ */
+@media (max-width: 767px) {
+  .topbar {
+    gap: 4px;
+    padding-left: calc(10px + env(safe-area-inset-left));
+  }
+
+  .topbar-spacer {
+    display: none;
+  }
+
+  .topbar-add-btn {
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .topnav .topnav-item {
+    padding: 4px 6px;
+  }
+}
+
+/* The list */
+.popover.bell-panel {
+  width: min(380px, calc(100vw - 16px));
+  max-width: none;
+  padding: 0 0 6px;
+}
+
+.bell-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--raised);
+}
+
+.bell-title {
+  color: var(--text-strong);
+  font-size: var(--fs);
+  font-weight: 600;
+}
+
+.bell-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bell-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 8px 12px 8px 20px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  position: relative;
+}
+
+.bell-item.is-unread {
+  color: var(--text);
+}
+
+/* Unread: a dot (the text also says so to screen readers). */
+.bell-item.is-unread::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+@media (hover: hover) {
+  .bell-item:hover {
+    background: var(--raised-hover);
+  }
+}
+
+.bell-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.bell-item-text {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.bell-item.is-unread .bell-item-text {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.bell-item-card {
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bell-item-time {
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+/* Watch / Unwatch in the card header */
+.card-watch-btn {
+  flex: none;
+  gap: 6px;
+  margin-top: -2px;
+}
+
+/* Watching: the eye lights up (on phones the button is the eye alone). */
+.card-watch-btn.is-watching {
+  background: rgba(87, 157, 255, 0.16);
+  color: var(--accent-text);
+}
+
+@media (max-width: 767px) {
+  .card-watch-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .card-watch-btn {
+    min-width: var(--tap);
+    justify-content: center;
+  }
+}
+
+/* @mentions in notes */
+.mention {
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  background: rgba(87, 157, 255, 0.16);
+  color: var(--accent-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mention.is-me {
+  background: rgba(245, 205, 71, 0.2);
+  color: var(--warning-text);
+}
+
+/* @ autocomplete under the work-log field */
+.mention-field {
+  position: relative;
+}
+
+.mention-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  width: min(320px, 100%);
+  max-height: 240px;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  background: var(--raised);
+  box-shadow: var(--shadow-pop);
+  list-style: none;
+}
+
+.mention-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: var(--tap-menu);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mention-option.is-active {
+  background: var(--raised-hover);
+}
+
+.mention-option-name {
+  color: var(--text-strong);
+}
+
+.mention-option-user {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* Account → Notifications */
+.notify-matrix-wrap {
+  overflow-x: auto;
+}
+
+.notify-matrix {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.notify-matrix th,
+.notify-matrix td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.notify-matrix thead th {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.notify-matrix tbody th,
+.notify-matrix thead th:first-child {
+  font-weight: 400;
+  text-align: left;
+}
+
+.notify-matrix td input {
+  width: 18px;
+  height: 18px;
+}
+
+.notify-matrix-off,
+.notify-matrix-hint {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.notify-matrix tbody th {
+  color: var(--text);
+}
+
+.topic-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topic-row .input {
+  flex: 1 1 220px;
+  width: auto;
+}
+
+.notify-test-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Settings → Appearance: the sound */
+.sound-label {
+  margin-top: 12px;
+}
+
+.sound-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

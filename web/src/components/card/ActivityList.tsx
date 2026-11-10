@@ -1,6 +1,7 @@
 // The card's history (newest first by effective time) plus the work log: a "Log work" composer
-// with quick backdating, and per-entry edit (old versions kept and viewable) and retract. Each
-// entry says who did it; only a work-log entry's author or an admin can edit or retract it.
+// with quick backdating and @ autocomplete, and per-entry edit (old versions kept and viewable)
+// and retract. Each entry says who did it; only a work-log entry's author or an admin can edit or
+// retract it. @mentions of people are highlighted, and notify them (the server decides who).
 
 import type { ActivityEntry } from '@tt/shared';
 import { History, NotebookPen, Pencil, RotateCcw, Undo2 } from 'lucide-react';
@@ -8,15 +9,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useCardActivity } from '../../api/cards';
 import { useRevisions, useWorklogActions } from '../../api/cardParts';
 import { errorMessage } from '../../api/errors';
-import { useMe } from '../../api/me';
+import { useMe, useMentionPeople, useUsers } from '../../api/me';
+import type { MentionPeople } from '../../lib/markdown';
 import { cls } from '../../lib/cls';
 import { clearDraft, loadDraft, saveDraft } from '../../lib/drafts';
 import { formatDateTime, fromLocalInput, todayLocal, toLocalInput, useNow } from '../../lib/time';
 import { toast } from '../../lib/toast';
-import { AutoGrowTextarea } from '../common/AutoGrowTextarea';
 import { Markdown } from '../common/Markdown';
 import { Spinner } from '../common/Status';
 import { activityActor, activityText } from './activityText';
+import { MentionTextarea } from './MentionTextarea';
 
 type Filter = 'all' | 'worklog';
 
@@ -32,6 +34,7 @@ export function ActivityList({
 }) {
   const { data, error, isPending, refetch } = useCardActivity(cardId);
   const { data: me } = useMe();
+  const people = useMentionPeople();
   const now = useNow();
   const [filter, setFilter] = useState<Filter>('all');
   const entries = (data ?? []).filter((e) => filter === 'all' || e.kind === 'worklog');
@@ -86,6 +89,7 @@ export function ActivityList({
                 entry={entry}
                 cardId={cardId}
                 now={now}
+                people={people}
                 readOnly={readOnly || !mayChangeWorklog(entry, me)}
               />
             ) : (
@@ -158,6 +162,7 @@ function whenToIso(when: When, custom: string, now: number): string | undefined 
 function WorklogComposer({ cardId, focusRequest }: { cardId: number; focusRequest: number }) {
   const draftKey = `card:${cardId}:worklog`;
   const { add } = useWorklogActions(cardId);
+  const { data: users } = useUsers();
   const now = useNow();
   const [body, setBody] = useState(() => loadDraft(draftKey, true) ?? '');
   const [when, setWhen] = useState<When>('now');
@@ -202,16 +207,17 @@ function WorklogComposer({ cardId, focusRequest }: { cardId: number; focusReques
 
   return (
     <div className="worklog-composer">
-      <AutoGrowTextarea
+      <MentionTextarea
         ref={ref}
         className="input"
         aria-label="Log work"
-        placeholder="Log work… e.g. Swapped SATA power cable to drive 3 (Markdown OK)"
+        placeholder="Log work… e.g. Swapped SATA power cable to drive 3 (Markdown OK, @name to mention someone)"
         rows={2}
         value={body}
-        onChange={(e) => {
-          setBody(e.target.value);
-          saveDraft(draftKey, e.target.value, true);
+        people={users ?? []}
+        onValueChange={(v) => {
+          setBody(v);
+          saveDraft(draftKey, v, true);
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -275,14 +281,17 @@ function WorklogEntry({
   entry,
   cardId,
   now,
+  people,
   readOnly,
 }: {
   entry: ActivityEntry;
   cardId: number;
   now: number;
+  people: MentionPeople | undefined;
   readOnly: boolean;
 }) {
   const { update } = useWorklogActions(cardId);
+  const { data: users } = useUsers();
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState('');
   const [time, setTime] = useState('');
@@ -322,12 +331,13 @@ function WorklogEntry({
 
       {editing ? (
         <div className="worklog-edit">
-          <AutoGrowTextarea
+          <MentionTextarea
             className="input"
             aria-label="Edit work-log entry"
             value={body}
             rows={2}
-            onChange={(e) => setBody(e.target.value)}
+            people={users ?? []}
+            onValueChange={setBody}
             autoFocus
           />
           <label className="field-inline">
@@ -345,7 +355,7 @@ function WorklogEntry({
           </div>
         </div>
       ) : (
-        entry.bodyMd && <Markdown text={entry.bodyMd} className="activity-body" />
+        entry.bodyMd && <Markdown text={entry.bodyMd} className="activity-body" people={people} />
       )}
 
       {retracted && <p className="activity-note">Retracted {formatDateTime(entry.retractedAt!, now)}: hidden from the calendar and search.</p>}
@@ -383,12 +393,12 @@ function WorklogEntry({
         </div>
       )}
 
-      {showHistory && <RevisionList activityId={entry.id} now={now} />}
+      {showHistory && <RevisionList activityId={entry.id} now={now} people={people} />}
     </li>
   );
 }
 
-function RevisionList({ activityId, now }: { activityId: number; now: number }) {
+function RevisionList({ activityId, now, people }: { activityId: number; now: number; people: MentionPeople | undefined }) {
   const { data, isPending } = useRevisions(activityId, true);
   if (isPending) return <Spinner label="Loading history…" size={16} />;
   if (!data?.length) return null;
@@ -406,7 +416,7 @@ function RevisionList({ activityId, now }: { activityId: number; now: number }) 
               </>
             )}
           </p>
-          <Markdown text={r.bodyMd} className="activity-body" />
+          <Markdown text={r.bodyMd} className="activity-body" people={people} />
         </li>
       ))}
     </ol>

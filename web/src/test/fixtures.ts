@@ -65,6 +65,7 @@ export function cardDetail(items: ChecklistItem[], over: Partial<CardDetail> = {
     parent: null,
     children: [],
     resolutionNote: '',
+    watching: false,
     ...over,
   };
 }
