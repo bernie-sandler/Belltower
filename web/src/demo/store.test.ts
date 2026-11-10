@@ -327,6 +327,33 @@ describe('people', () => {
     const users = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
     expect(users.find((u) => u.username === 'alex')!.email).toBeNull(); // only admins see others' email
   });
+
+  it('names who did what, and lets only the author or an admin change a work-log entry', () => {
+    const store = makeStore();
+    const card = board(store).cards[0]!;
+    const note = ok<ActivityEntry>(call(store, 'POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Owner’s note' }));
+    expect(note).toMatchObject({ userName: 'Admin', tokenName: null });
+    const history = ok<ActivityEntry[]>(call(store, 'GET', `/api/cards/${card.id}/activity`));
+    expect(history.every((e) => (e.userId === null ? e.userName === null : typeof e.userName === 'string'))).toBe(true);
+
+    const jordan = store.snapshot().users.find((u) => u.username === 'jordan')!;
+    store.transaction((ctx) => {
+      ctx.s.session.userId = jordan.id;
+    }, true);
+    const refused = call(store, 'PATCH', `/api/activity/${note.id}`, { bodyMd: 'Not mine to change' });
+    expect(refused.status).toBe(403);
+    expect((refused.body as { error: string }).error).toBe('forbidden');
+    const own = ok<ActivityEntry>(call(store, 'POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Jordan’s note' }));
+    expect(ok<ActivityEntry>(call(store, 'PATCH', `/api/activity/${own.id}`, { bodyMd: 'Jordan’s note, edited' })).userName).toBe('Jordan Lee');
+
+    // Back as the owner (an admin): anyone's entry, and the revision says who edited it.
+    store.transaction((ctx) => {
+      ctx.s.session.userId = ctx.s.users.find((u) => u.isOwner)!.id;
+    }, true);
+    expect(call(store, 'PATCH', `/api/activity/${own.id}`, { retracted: true }).status).toBe(200);
+    const revisions = ok<{ userName: string | null }[]>(call(store, 'GET', `/api/activity/${own.id}/revisions`));
+    expect(revisions.map((r) => r.userName)).toEqual(['Jordan Lee']);
+  });
 });
 
 describe('persistence and reset', () => {
