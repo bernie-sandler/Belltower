@@ -1,7 +1,7 @@
 // Mirrors server/src/services/activity.ts.
 
 import type { ActivityEntry, ActivityEventType, ColumnRef, LabelRef } from '@tt/shared';
-import { nextId, nowIso, type ActivityRow, type Ctx } from './db';
+import { actorId, nextId, nowIso, type ActivityRow, type Ctx } from './db';
 
 export function recordEvent(ctx: Ctx, cardId: number, type: ActivityEventType, data: object = {}): number {
   const now = nowIso(ctx);
@@ -18,6 +18,8 @@ export function recordEvent(ctx: Ctx, cardId: number, type: ActivityEventType, d
     createdAt: now,
     editedAt: null,
     retractedAt: null,
+    userId: actorId(ctx),
+    tokenId: null,
   });
   return id;
 }
@@ -35,6 +37,8 @@ export function toActivityEntry(ctx: Ctx, row: ActivityRow): ActivityEntry {
     editedAt: row.editedAt,
     retractedAt: row.retractedAt,
     revisionCount: ctx.s.revisions.filter((r) => r.activityId === row.id).length,
+    userId: row.userId,
+    tokenId: row.tokenId,
   };
 }
 

@@ -4,7 +4,7 @@
 import type { ActivityEntry, ActivityRevision } from '@tt/shared';
 import { toActivityEntry } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
-import { nextId, nowIso, type Ctx } from './db';
+import { actorId, nextId, nowIso, type Ctx } from './db';
 import { badRequest, conflict, notFound } from './errors';
 
 function assertNotFuture(ctx: Ctx, iso: string): void {
@@ -35,6 +35,8 @@ export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; oc
     createdAt: now,
     editedAt: null,
     retractedAt: null,
+    userId: actorId(ctx),
+    tokenId: null,
   });
   touchCard(ctx, cardId);
   return getActivityEntry(ctx, id);
@@ -56,7 +58,14 @@ export function updateWorklog(
   const occurred = patch.occurredAt ?? row.occurredAt;
   if (patch.occurredAt) assertNotFuture(ctx, patch.occurredAt);
   if (body !== row.bodyMd || occurred !== row.occurredAt) {
-    ctx.s.revisions.push({ id: nextId(ctx, 'revisions'), activityId: id, bodyMd: row.bodyMd ?? '', occurredAt: row.occurredAt, revisedAt: now });
+    ctx.s.revisions.push({
+      id: nextId(ctx, 'revisions'),
+      activityId: id,
+      bodyMd: row.bodyMd ?? '',
+      occurredAt: row.occurredAt,
+      revisedAt: now,
+      userId: actorId(ctx),
+    });
     row.bodyMd = body;
     row.occurredAt = occurred;
     row.editedAt = now;
@@ -74,5 +83,5 @@ export function listRevisions(ctx: Ctx, id: number): ActivityRevision[] {
   return ctx.s.revisions
     .filter((r) => r.activityId === id)
     .sort((a, b) => a.revisedAt.localeCompare(b.revisedAt) || a.id - b.id)
-    .map((r) => ({ id: r.id, bodyMd: r.bodyMd, occurredAt: r.occurredAt, revisedAt: r.revisedAt }));
+    .map((r) => ({ id: r.id, bodyMd: r.bodyMd, occurredAt: r.occurredAt, revisedAt: r.revisedAt, userId: r.userId }));
 }

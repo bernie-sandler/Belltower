@@ -32,7 +32,7 @@ function viewAs(store: DemoStore, role: 'owner' | 'submitter'): void {
         ctx.s.settings.submit = { ...s, enabled: true, key: s.key ?? newSubmitKey() };
         toast('The submit page was turned off in Settings, so the demo turned it back on.', { kind: 'info' });
       }
-      ctx.s.session.signedIn = false;
+      ctx.s.session = { signedIn: false, userId: null };
       return ctx.s.settings.submit.key!;
     }, true);
     window.location.hash = `#/submit/${encodeURIComponent(key)}`;

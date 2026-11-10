@@ -7,7 +7,9 @@ import {
   type ActivityEntry,
   type BoardResponse,
   type CardDetail,
+  type MeResponse,
   type SettingsResponse,
+  type UserInfo,
 } from '@tt/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { seedDemo } from './seed';
@@ -278,6 +280,52 @@ describe('checklist item marks', () => {
     ]);
     expect(marks(cardId).at(-1)!.data).toMatchObject({ text: 'Restore three files', state: 'unverified' });
     expect(call(store, 'PATCH', `/api/checklist-items/${itemId}`, { state: 'maybe' }).status).toBe(400);
+  });
+});
+
+describe('people', () => {
+  it('seeds the owner (the visitor) and two more people; any login signs in as the owner', () => {
+    const store = makeStore();
+    expect(ok<MeResponse>(call(store, 'GET', '/api/me'))).toMatchObject({ username: 'admin', isOwner: true, role: 'admin', passwordManagedByEnv: false });
+    const users = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
+    expect(users.map((u) => [u.username, u.role])).toEqual([
+      ['admin', 'admin'],
+      ['alex', 'admin'],
+      ['jordan', 'member'],
+    ]);
+    call(store, 'POST', '/api/auth/logout');
+    expect(call(store, 'GET', '/api/me').status).toBe(401);
+    expect(call(store, 'POST', '/api/auth/login', { username: 'jordan', password: 'anything' }).status).toBe(204);
+    expect(ok<MeResponse>(call(store, 'GET', '/api/me')).username).toBe('admin');
+    // The owner's own history says who did it; the submit page's tickets don't.
+    const s = store.snapshot();
+    const owner = s.users.find((u) => u.isOwner)!.id;
+    expect(s.activity.filter((a) => a.type === 'worklog').every((a) => a.userId === owner)).toBe(true);
+    const submitted = s.cards.find((c) => c.sourceRef === 'submit')!;
+    expect(s.activity.find((a) => a.cardId === submitted.id && a.type === 'created')!.userId).toBeNull();
+    expect(s.cards.every((c) => c.assigneeId === null)).toBe(true);
+  });
+
+  it('applies the server’s rules to people, and refuses admin routes to members', () => {
+    const store = makeStore();
+    const created = call(store, 'POST', '/api/users', { username: 'Casey', displayName: 'Casey', password: 'long enough password' });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ username: 'casey', role: 'member', hasPassword: true });
+    expect((call(store, 'POST', '/api/users', { username: 'casey', displayName: 'x', password: 'long enough password' }).body as { error: string }).error).toBe('username_taken');
+    const owner = store.snapshot().users.find((u) => u.isOwner)!;
+    expect((call(store, 'PATCH', `/api/users/${owner.id}`, { role: 'member' }).body as { error: string }).error).toBe('owner_protected');
+    expect(ok<MeResponse>(call(store, 'PATCH', '/api/me', { displayName: 'Demo Owner' })).displayName).toBe('Demo Owner');
+
+    // As a member (the demo itself always signs in the owner).
+    const jordan = store.snapshot().users.find((u) => u.username === 'jordan')!;
+    store.transaction((ctx) => {
+      ctx.s.session.userId = jordan.id;
+    }, true);
+    expect(call(store, 'PUT', '/api/settings/general', { ticketFormat: '{N}', appUrl: '', claudeModel: '' }).status).toBe(403);
+    expect(call(store, 'POST', '/api/users', { username: 'eve', displayName: 'Eve', password: 'long enough password' }).status).toBe(403);
+    expect(call(store, 'POST', '/api/cards', { title: 'Member card' }).status).toBe(201);
+    const users = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
+    expect(users.find((u) => u.username === 'alex')!.email).toBeNull(); // only admins see others' email
   });
 });
 

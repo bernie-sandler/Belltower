@@ -13,6 +13,7 @@ const token = (over: Partial<ApiTokenInfo>): ApiTokenInfo => ({
   createdAt: '2026-10-01T15:00:00.000Z',
   lastUsedAt: null,
   revokedAt: null,
+  owner: null,
   ...over,
 });
 
