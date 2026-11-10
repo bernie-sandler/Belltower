@@ -58,6 +58,29 @@ describe('work-log permissions', () => {
     expect(revisions).toMatchObject([{ bodyMd: 'Dusted', userName: 'admin' }]);
   });
 
+  it('records who retracted or restored an entry, since the entry stays its author’s', async () => {
+    const { t, admin, sam, card } = await setup();
+    const note = (await client(t.app, sam.cookie)('POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Dusted\nthe   fans' })).json();
+    expect((await client(t.app, admin)('PATCH', `/api/activity/${note.id}`, { retracted: true })).statusCode).toBe(200);
+    expect((await client(t.app, sam.cookie)('PATCH', `/api/activity/${note.id}`, { retracted: true })).statusCode).toBe(200); // no change, no event
+    expect((await client(t.app, sam.cookie)('PATCH', `/api/activity/${note.id}`, { retracted: false })).statusCode).toBe(200);
+    // An edit alone isn't a retraction.
+    expect((await client(t.app, sam.cookie)('PATCH', `/api/activity/${note.id}`, { bodyMd: 'Dusted the fans' })).statusCode).toBe(200);
+
+    const history = (await client(t.app, sam.cookie)('GET', `/api/cards/${card.id}/activity`)).json() as {
+      type: string;
+      data: Record<string, unknown>;
+      userId: number | null;
+      userName: string | null;
+    }[];
+    const events = history.filter((e) => e.type.startsWith('worklog_')).reverse();
+    expect(events).toMatchObject([
+      { type: 'worklog_retracted', data: { entryId: note.id, text: 'Dusted the fans' }, userName: 'admin' },
+      { type: 'worklog_restored', data: { entryId: note.id, text: 'Dusted the fans' }, userId: sam.id, userName: 'sam' },
+    ]);
+    expect(history.find((e) => e.type === 'worklog')).toMatchObject({ userId: sam.id }); // still Sam's
+  });
+
   it('an entry without an author (from before 1.5) is admin-only', async () => {
     const { t, admin, sam, card } = await setup();
     const legacy = addWorklog(t.ctx, card.id, { bodyMd: 'Old note' }); // the base context acts as nobody

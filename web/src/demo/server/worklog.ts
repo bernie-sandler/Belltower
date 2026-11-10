@@ -2,7 +2,7 @@
 // previous version, and a wrong entry is retracted. Only the author or an admin may change one.
 
 import type { ActivityEntry, ActivityRevision } from '@tt/shared';
-import { toActivityEntry, userNameOf } from './activity';
+import { recordEvent, toActivityEntry, userNameOf } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorId, nextId, nowIso, type Ctx } from './db';
 import { DemoError, badRequest, conflict, notFound } from './errors';
@@ -12,6 +12,11 @@ function assertNotFuture(ctx: Ctx, iso: string): void {
   if (Date.parse(iso) > ctx.now().getTime() + FUTURE_SLACK_MS) {
     throw badRequest('validation', "A work-log time can't be in the future");
   }
+}
+
+function excerpt(body: string): string {
+  const t = body.replace(/\s+/g, ' ').trim();
+  return t.length > 80 ? `${t.slice(0, 79)}…` : t;
 }
 
 export function getActivityEntry(ctx: Ctx, id: number): ActivityEntry {
@@ -90,6 +95,7 @@ export function updateWorklog(
   }
   if (patch.retracted !== undefined && patch.retracted !== (row.retractedAt !== null)) {
     row.retractedAt = patch.retracted ? now : null;
+    recordEvent(ctx, row.cardId, patch.retracted ? 'worklog_retracted' : 'worklog_restored', { entryId: id, text: excerpt(body) });
   }
   touchCard(ctx, row.cardId);
   return getActivityEntry(ctx, id);

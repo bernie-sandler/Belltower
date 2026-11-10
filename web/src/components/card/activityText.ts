@@ -194,6 +194,12 @@ export function activityText(entry: ActivityEntry): string {
       return 'Restored from Trash';
     case 'recurrence_skipped':
       return 'Recurring run skipped: this card was still open';
+    case 'worklog_retracted':
+    case 'worklog_restored': {
+      const verb = entry.type === 'worklog_retracted' ? 'Retracted' : 'Restored';
+      const text = str(d.text);
+      return text ? `${verb} the work-log note ${quoted(text)}` : `${verb} a work-log note`;
+    }
     case 'worklog':
       return 'Logged work';
     default:

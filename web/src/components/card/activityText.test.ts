@@ -59,6 +59,12 @@ describe('activityText', () => {
     expect(activityText(entry('checklist_item_marked', { ...item, state: 'later' }))).toBe('Marked ‘Order battery’');
   });
 
+  it('describes retracting and restoring a work-log note', () => {
+    expect(activityText(entry('worklog_retracted', { entryId: 3, text: 'Dusted the fans' }))).toBe('Retracted the work-log note ‘Dusted the fans’');
+    expect(activityText(entry('worklog_restored', { entryId: 3, text: 'Dusted the fans' }))).toBe('Restored the work-log note ‘Dusted the fans’');
+    expect(activityText(entry('worklog_restored', { entryId: 3 }))).toBe('Restored a work-log note');
+  });
+
   it('never throws on unknown or malformed data', () => {
     expect(() => activityText(entry('moved', {}))).not.toThrow();
     expect(() => activityText(entry('child_removed', { child: 'nope' }))).not.toThrow();

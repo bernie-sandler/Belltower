@@ -351,6 +351,8 @@ describe('people', () => {
       ctx.s.session.userId = ctx.s.users.find((u) => u.isOwner)!.id;
     }, true);
     expect(call(store, 'PATCH', `/api/activity/${own.id}`, { retracted: true }).status).toBe(200);
+    const retracted = ok<ActivityEntry[]>(call(store, 'GET', `/api/cards/${card.id}/activity`)).find((e) => e.type === 'worklog_retracted');
+    expect(retracted).toMatchObject({ data: { entryId: own.id, text: 'Jordan’s note, edited' }, userName: 'Admin' });
     const revisions = ok<{ userName: string | null }[]>(call(store, 'GET', `/api/activity/${own.id}/revisions`));
     expect(revisions.map((r) => r.userName)).toEqual(['Jordan Lee']);
   });

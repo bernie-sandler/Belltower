@@ -287,6 +287,7 @@ export interface LabelRef {
  * - attachment_added/removed: { attachmentId, name, sizeBytes }
  * - linked/unlinked:     { linkId, direction: LinkDirection, otherId, otherTitle }
  * - worklog:             {} (the text is bodyMd; occurredAt may be backdated)
+ * - worklog_retracted/worklog_restored: { entryId, text } (who retracted or restored a work-log entry)
  */
 export interface ActivityEntry {
   id: number;

@@ -8,7 +8,7 @@
 import type { ActivityEntry, ActivityRevision } from '@tt/shared';
 import { stmt } from '../db/connection';
 import { AppError, badRequest, conflict, notFound } from '../errors';
-import { ACTIVITY_SELECT, toActivityEntry, type ActivityRow } from './activity';
+import { ACTIVITY_SELECT, recordEvent, toActivityEntry, type ActivityRow } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorTokenId, actorUserId, nowIso, tx, type Ctx } from './context';
 import { reindexCard } from './search';
@@ -18,6 +18,12 @@ function assertNotFuture(ctx: Ctx, iso: string): void {
   if (Date.parse(iso) > ctx.clock.now().getTime() + FUTURE_SLACK_MS) {
     throw badRequest('validation', "A work-log time can't be in the future");
   }
+}
+
+/** The start of an entry's text, for the history line about it. */
+function excerpt(body: string): string {
+  const t = body.replace(/\s+/g, ' ').trim();
+  return t.length > 80 ? `${t.slice(0, 79)}…` : t;
 }
 
 export function getActivityEntry(ctx: Ctx, id: number): ActivityEntry {
@@ -98,6 +104,8 @@ export function updateWorklog(
     }
     if (patch.retracted !== undefined && patch.retracted !== (row.retracted_at !== null)) {
       stmt(ctx.db, 'UPDATE activity SET retracted_at = ? WHERE id = ?').run(patch.retracted ? now : null, id);
+      // Retracting doesn't change the entry's author, so the history records who did it.
+      recordEvent(ctx, row.card_id, patch.retracted ? 'worklog_retracted' : 'worklog_restored', { entryId: id, text: excerpt(body) });
     }
     touchCard(ctx, row.card_id);
     reindexCard(ctx, row.card_id);
