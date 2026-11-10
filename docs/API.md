@@ -20,7 +20,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
   | 401 | `unauthenticated` (no or expired session → show the login page), `invalid_password` |
   | 403 | `csrf`, `invalid_setup_code`, `forbidden` (an admin-only route called by a member) |
   | 404 | `not_found`, `setup_not_available` |
-  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `open_instance`, `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed`, `username_taken`, `owner_protected`, `last_admin`, `cannot_disable_self` |
+  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `open_instance`, `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed`, `username_taken`, `owner_protected`, `last_admin`, `cannot_disable_self`, `use_account_password`, `user_changed` |
   | 413 | `too_large` |
   | 429 | `rate_limited` (body also has `retryAfterSec`), `busy` |
   | 500 | `internal` |
@@ -31,8 +31,11 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 - **Roles** (1.5): every session belongs to a person, an `admin` or a `member`. Routes marked **Admin** below answer
   `403 forbidden` to members: managing people, changing the install's settings (general, submit page and request
   types, resolution reasons, notification channels), backups and restores. Everything else (all board work, card
-  import, your own profile, password and API tokens, reading settings) is open to everyone signed in. What a request
-  changes is recorded as done by that person (`ActivityEntry.userId`).
+  import, your own profile, password and API tokens, reading settings) is open to everyone signed in. That includes
+  two board actions with install-wide effects, on purpose: choosing where blocked cards go
+  (`PUT /api/board/blocked-column`) and deleting a column (`DELETE /api/columns/:id`, which also resets the submit
+  page's target column if it was that one). What a request changes is recorded as done by that person
+  (`ActivityEntry.userId`).
 
 ## Auth
 
@@ -52,7 +55,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 | `PATCH /api/me` | `UpdateMeBody {displayName?, email?}` | `MeResponse` | Your profile. `email: null` removes it. |
 | `GET /api/users` | — | `UserInfo[]` | The directory, for pickers and names in history: `{id, username, displayName, role, disabled, isOwner, email, hasPassword, createdAt, disabledAt}`, active people first. `email` is null except for admins and your own entry. |
 | `POST /api/users` | `CreateUserBody {username, displayName, role?, email?, password}` | `201 UserInfo` | **Admin.** `role` is `admin` or `member` (default). `password` is a temporary one to hand over (12+ characters). `409 username_taken`. |
-| `PATCH /api/users/:id` | `UpdateUserBody {displayName?, email?, role?, disabled?, password?}` | `UserInfo` | **Admin.** `disabled: true` deactivates (signs them out everywhere, their API tokens stop working until re-enabled); people are never deleted. `password` resets it and signs them out. `409 owner_protected` (the owner stays an active admin, and only the owner changes the owner's password), `409 last_admin` (one active admin must remain), `409 cannot_disable_self`, `409 managed_by_env`. |
+| `PATCH /api/users/:id` | `UpdateUserBody {displayName?, email?, role?, disabled?, password?}` | `UserInfo` | **Admin.** `disabled: true` deactivates (signs them out everywhere, their API tokens stop working until re-enabled); people are never deleted. `password` resets someone else's and signs them out; your own needs your current one, so it's `409 use_account_password` here (use `POST /api/auth/password`). `409 owner_protected` (the owner stays an active admin, and only the owner changes the owner's password), `409 last_admin` (one active admin must remain), `409 cannot_disable_self`, `409 managed_by_env`, `409 user_changed` (the id means someone else by now, e.g. after a restore: reload). |
 
 ## Config
 

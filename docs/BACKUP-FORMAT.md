@@ -73,7 +73,7 @@ definitions, with every constraint, are the migrations in
 | Table | What it holds | Notable columns |
 |---|---|---|
 | `settings` | App settings, one JSON or text value per key | `key`, `value` |
-| `users` | People: admins and members (deactivated, never deleted). **No passwords** | `username`, `display_name`, `email`, `role` (`admin`, `member`), `is_owner`, `oidc_issuer`, `oidc_subject` (a single sign-on link), `discord_user_id`, `ntfy_topic`, `notify_prefs` (JSON), `disabled_at` |
+| `users` | People: admins and members (deactivated, never deleted). **No passwords** | `username`, `display_name`, `email`, `role` (`admin`, `member`), `is_owner`, `oidc_issuer`, `oidc_subject` (a single sign-on link; exported, but restore takes links from the server you restore into), `discord_user_id`, `ntfy_topic`, `notify_prefs` (JSON), `disabled_at` |
 | `columns` | Board columns | `name`, `position`, `role` (`triage`, `done` or null) |
 | `labels` | Labels | `name`, `color` (`#rrggbb`), `position` |
 | `recurring_templates` | Recurring maintenance | `title`, `interval_unit`, `interval_count`, `next_run_date`, `checklist_template` (JSON), `enabled` |
@@ -109,7 +109,8 @@ templates and the app itself did.
   devices** (`sessions`). On restore, the server you restore into decides who can sign in: each of its people is
   matched to the backup's by username and keeps their own password, role, deactivation and single sign-on link, its
   people the backup doesn't have are added, and everyone stays signed in. People only in the backup come back without a
-  password until an admin gives them a new one. A hand-edited `password_hash` or `is_owner` in a backup is ignored.
+  password or single sign-on link until an admin gives them a new password. A `password_hash`, `is_owner`,
+  `oidc_issuer` or `oidc_subject` in a backup (say, a hand-edited one) is ignored on restore.
 - **Personal notifications** (`notifications`). They're each person's inbox, pruned as they age, not data worth
   restoring.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.
