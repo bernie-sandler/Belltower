@@ -43,25 +43,24 @@ export function LoginPage() {
     setError(null);
     const name = username.trim();
     // No username signs in the owner (how 1.4 signed in), as does the old saved name "tower-tracker".
-    login.mutate(
-      { ...(name ? { username: name } : {}), password, remember },
-      {
-        onSuccess: () => rememberUsername(name, remember),
-        onError: (err) => {
-          const wait = retryAfterSec(err);
-          if (wait !== null) {
-            lockout.lock(wait);
-          } else if (isApiError(err, 'invalid_password')) {
-            setError('Incorrect username or password.');
-          } else if (isApiError(err, 'setup_required')) {
-            // No account exists any more (e.g. a fresh data folder): the gate shows setup.
-            void qc.invalidateQueries({ queryKey: qk.auth });
-          } else {
-            setError(errorMessage(err));
-          }
-          setPassword('');
-          inputRef.current?.focus();
-        },
+    // mutateAsync rather than mutate's callbacks: success swaps this page for the app, and a
+    // callback given to mutate() doesn't run once its component has unmounted.
+    login.mutateAsync({ ...(name ? { username: name } : {}), password, remember }).then(
+      () => rememberUsername(name, remember),
+      (err: unknown) => {
+        const wait = retryAfterSec(err);
+        if (wait !== null) {
+          lockout.lock(wait);
+        } else if (isApiError(err, 'invalid_password')) {
+          setError('Incorrect username or password.');
+        } else if (isApiError(err, 'setup_required')) {
+          // No account exists any more (e.g. a fresh data folder): the gate shows setup.
+          void qc.invalidateQueries({ queryKey: qk.auth });
+        } else {
+          setError(errorMessage(err));
+        }
+        setPassword('');
+        inputRef.current?.focus();
       },
     );
   }
