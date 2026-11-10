@@ -12,8 +12,11 @@ usual. A broken provider can't lock anyone out, and `APP_PASSWORD` still recover
 
 - The login page shows **Sign in with &lt;label&gt;** above the password form. It's a plain link: Belltower sends you
   to the provider and the provider sends you back.
-- It uses the authorization code flow with PKCE (S256), `state` and `nonce`. Your browser has 10 minutes to get
-  through the provider's login page.
+- It uses the authorization code flow with PKCE (S256), `state` and `nonce`. The sign-in in progress travels in an
+  encrypted `tt_oidc` cookie, so the server keeps nothing for it. Your browser has 10 minutes to get through the
+  provider's login page, and restarting Belltower cancels sign-ins that are under way (start again).
+- The ID token's signature is checked against the provider's published keys, along with its issuer, audience, nonce
+  and times. Tokens signed with the client secret (HS256) are refused.
 - Who you're signed in as, in this order:
   1. the Belltower account **linked** to your provider account;
   2. with **Link existing accounts by verified email** on, the one active account with the same email, when the
@@ -23,11 +26,22 @@ usual. A broken provider can't lock anyone out, and `APP_PASSWORD` still recover
      claim (`preferred_username` by default), lowercased, with anything outside `a-z 0-9 . _ -` replaced and `-2`,
      `-3`… added if it's taken. Its display name comes from `name`;
   4. otherwise you're sent back to the login page with a message.
-- **Required group** (optional): only members of that group get in. It's checked at every sign-in and link, so
-  removing someone from the group at the provider locks them out of single sign-on. The group must match exactly
-  (it's case-sensitive).
-- **Deactivated** people are refused, as with passwords.
+- **Required group** (optional): only members of that group get in. It's checked at every sign-in and link, and
+  the group must match exactly (it's case-sensitive). Removing someone from the group takes effect **at their next
+  sign-in**: a device they're already signed in on stays signed in. To end their sessions now, deactivate them in
+  Belltower too.
+- **Deactivated** people are refused, as with passwords. That includes coming back with a new provider account whose
+  verified email is the deactivated person's: they get "deactivated", not a fresh account.
 - Signing in with single sign-on remembers the device, like "Remember this device" on the password form.
+
+**With "Create accounts on first sign-in" on, the provider decides who gets in.** Deactivating someone in Belltower
+blocks their account, but a different provider account with a different email would get a new one. The real off
+switch is at the provider: remove the person from the required group (or the application), then deactivate them in
+Belltower to end the sessions they already have.
+
+**Only turn on "Link existing accounts by verified email" if people can't change their own email at the provider.**
+Belltower trusts the provider's `email_verified` claim (it must be the boolean `true`). If someone could set their
+address to a colleague's and have it count as verified, their first sign-in would open the colleague's account.
 - Accounts created by single sign-on have no password, so they can only sign in with single sign-on. An admin can
   give them a temporary password if they need one.
 
@@ -47,9 +61,14 @@ usual. A broken provider can't lock anyone out, and `APP_PASSWORD` still recover
 5. **Use HTTPS for the provider.** A plain-HTTP issuer works only after turning on **Allow a plain-HTTP issuer (LAN
    only)**. The client secret and tokens then cross your network unencrypted.
 
-The client secret is write-only: once saved it's never shown again. To keep it out of the database, set
-`OIDC_CLIENT_SECRET` (or `OIDC_CLIENT_SECRET_FILE` with a Docker secret) in the container's environment. It then wins
-over a saved one ([INSTALL.md](INSTALL.md#settings-env)).
+The client secret is write-only: once saved it's never shown again, and it's never in an export. A saved secret
+is still in the database file, so it's also in the nightly snapshots and the copies made before upgrades and
+restores. To keep it out of all of them, set `OIDC_CLIENT_SECRET` (or `OIDC_CLIENT_SECRET_FILE` with a Docker secret)
+in the container's environment. It then wins over a saved one ([INSTALL.md](INSTALL.md#settings-env)).
+
+Changing the issuer to another host forgets a saved secret, so it isn't sent to the new host by mistake. A secret
+from `OIDC_CLIENT_SECRET` can't be forgotten that way: it's sent to whatever issuer is configured. Update the
+environment variable when you move to another provider.
 
 ## Authentik
 
@@ -133,8 +152,13 @@ The login page says what went wrong. The container log has the details (`docker 
 - **The provider says the redirect URI is invalid.** Check **This app’s address** (scheme, host and port) and register
   the redirect URI exactly as Belltower shows it.
 
-**"That sign-in expired or was started in another browser or tab."** The 10 minutes ran out, the sign-in was opened
-twice, or the browser blocked the `tt_oidc` cookie. Start again from the login page, at the app's address.
+**"That sign-in expired or was started in another browser or tab."** The 10 minutes ran out, a second sign-in was
+started in another tab, Belltower restarted in the meantime, or the browser blocked the `tt_oidc` cookie. Start again
+from the login page, at the app's address.
+
+**"Couldn't finish signing in" right after the provider's page.** Look in the log: "signature doesn't match" means
+the ID token wasn't signed with any of the provider's published keys (if the provider just rotated its key, try
+again); "HS256" means Authentik needs a signing key.
 
 **"…outside its valid time."** The clocks on the Docker host and the provider differ by more than 30 seconds. Fix
 NTP on both.
