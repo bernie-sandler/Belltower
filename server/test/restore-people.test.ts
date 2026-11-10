@@ -50,7 +50,8 @@ async function source() {
   const alex = await addPerson(src, admin, 'alex', 'admin');
   await client(src.app, sam.cookie)('PATCH', '/api/me', { displayName: 'Sam Rivera', email: 'sam@example.com' });
   const card = (await client(src.app, sam.cookie)('POST', '/api/cards', { title: 'Garage door sensor' })).json();
-  src.ctx.db.prepare(`INSERT INTO card_watchers (card_id, user_id, created_at) VALUES (?, ?, ?), (?, ?, ?)`).run(card.id, sam.id, '2026-10-10T15:00:00.000Z', card.id, alex.id, '2026-10-10T15:00:00.000Z');
+  // Sam already watches it (made it in the app); OR IGNORE keeps that row.
+  src.ctx.db.prepare(`INSERT OR IGNORE INTO card_watchers (card_id, user_id, created_at) VALUES (?, ?, ?), (?, ?, ?)`).run(card.id, sam.id, '2026-10-10T15:00:00.000Z', card.id, alex.id, '2026-10-10T15:00:00.000Z');
   await client(src.app, admin)('POST', '/api/tokens', { name: 'Kuma' });
   const data = (await client(src.app, admin)('GET', '/api/backup/export.json')).json();
   return { data, card, ids: { sam: sam.id, alex: alex.id } };

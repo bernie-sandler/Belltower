@@ -17,6 +17,7 @@ import { assertNotBlocked, cardSummary, listAttachments, listChecklists, listChi
 import { getBlockedColumnId, getColumnRow, getRoleColumn, listColumns, type ColumnRow } from './columns';
 import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
+import { isWatching, notifyAssigned, notifyMoved, notifyNewUnassigned, watchOwnNewCard } from './notifications';
 import { reindexCard } from './search';
 import { findUser, type UserRow } from './users';
 import { localDateOf } from '../lib/localdate';
@@ -134,6 +135,7 @@ function toDetail(ctx: Ctx, r: TileRow): CardDetail {
     parent: r.parent_id !== null ? visibleSummary(ctx, r.parent_id) : null,
     children: r.kind === 'work' ? listChildren(ctx, r.id) : [],
     resolutionNote: r.resolution_md,
+    watching: isWatching(ctx, r.id),
   };
 }
 
@@ -179,11 +181,12 @@ function checkAssignee(ctx: Ctx, userId: number): UserRow {
   return user;
 }
 
-/** Logs and announces an assignee change (inside the change's transaction). */
+/** Logs and announces an assignee change, and tells the people concerned (inside the change's transaction). */
 function recordAssigned(ctx: Ctx, cardId: number, from: number | null, to: UserRow | null): void {
   const fromName = from !== null ? (findUser(ctx, from)?.display_name ?? null) : null;
-  recordEvent(ctx, cardId, 'assigned', { from, to: to?.id ?? null, fromName, toName: to?.display_name ?? null });
+  const activityId = recordEvent(ctx, cardId, 'assigned', { from, to: to?.id ?? null, fromName, toName: to?.display_name ?? null });
   ctx.emit?.({ type: 'card_assigned', cardId, from, to: to?.id ?? null, actor: ctx.actor });
+  notifyAssigned(ctx, cardId, activityId, { to: to ? { id: to.id, name: to.display_name } : null, fromName });
 }
 
 /** Checks a card's type and the work card it would be filed under (400 invalid_parent). */
@@ -428,7 +431,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       cl.items.forEach((text, j) => addItem.run(listId, text, j, now));
     });
 
-    recordEvent(ctx, id, 'created', {
+    const createdId = recordEvent(ctx, id, 'created', {
       column: columnRef(column),
       title,
       ticketNo,
@@ -444,7 +447,10 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     }
     reindexCard(ctx, id);
     ctx.emit?.({ type: 'card_created', cardId: id, external: opts.external ?? false, ...(opts.via ? { via: opts.via } : {}), actor: ctx.actor });
+    // Made in the app by a person: they watch it. (Imports, templates and outside tickets: nobody.)
+    if ((opts.source ?? 'manual') === 'manual' && !opts.external) watchOwnNewCard(ctx, id);
     if (assignee) recordAssigned(ctx, id, null, assignee);
+    else if (opts.external) notifyNewUnassigned(ctx, id, createdId, opts.via);
     return getCard(ctx, id);
   });
 }
@@ -692,7 +698,12 @@ export function moveCard(
       const sourceIds = visibleIdsInColumn(ctx, from.id);
       writePositions(ctx, sourceIds);
       orders[String(from.id)] = sourceIds;
-      recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target) });
+      const movedId = recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target) });
+      notifyMoved(ctx, id, movedId, {
+        to: target.name,
+        done: target.role === 'done' && from.role !== 'done',
+        reopened: from.role === 'done' && target.role !== 'done',
+      });
       // Reopening a finished card makes the cards it blocks blocked again.
       if (from.role === 'done' && target.role !== 'done') parkCardsBlockedBy(ctx, id);
     }
@@ -805,7 +816,8 @@ export function parkIfBlocked(ctx: Ctx, id: number): boolean {
   stmt(ctx.db, 'UPDATE cards SET column_id = ?, updated_at = ? WHERE id = ?').run(target.id, nowIso(ctx), id);
   writePositions(ctx, visibleIdsInColumn(ctx, from.id));
   writePositions(ctx, [...visibleIdsInColumn(ctx, target.id).filter((cid) => cid !== id), id]);
-  recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target), reason: 'blocked', blockedBy: blockers });
+  const movedId = recordEvent(ctx, id, 'moved', { from: columnRef(from), to: columnRef(target), reason: 'blocked', blockedBy: blockers });
+  notifyMoved(ctx, id, movedId, { to: target.name, blocked: true });
   return true;
 }
 

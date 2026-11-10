@@ -87,6 +87,7 @@ function toDetail(ctx: Ctx, c: CardRow): CardDetail {
     parent: parent && !parent.deletedAt ? parent : null,
     children: c.kind === 'work' ? listChildren(ctx, c.id) : [],
     resolutionNote: c.resolutionMd,
+    watching: false,
   };
 }
 

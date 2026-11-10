@@ -7,6 +7,12 @@
 // token to another host). For channels other than Discord a failure reports the status code only,
 // never the response body, so Send test can't be used to read pages on the network. The last
 // result per channel shows in Settings.
+//
+// Personal notifications (1.5, notifications.ts) ride on the install's Discord and ntfy channels: a
+// Discord message that mentions the person, or a message to their own ntfy topic on the install's
+// ntfy server with the install's token. Several changes for one person within COALESCE_MS go out as
+// one message per channel, so a bulk move doesn't hit Discord's 30-a-minute webhook limit. They
+// don't touch the install channels' "last delivery" shown in Settings.
 
 import {
   PRIORITIES,
@@ -23,6 +29,8 @@ import { getSetting, setSetting, stmt } from '../db/connection';
 import { localDateOf } from '../lib/localdate';
 import { localTimeOf } from '../lib/tz';
 import type { AppEvent, Ctx } from './context';
+import { notificationsById, prefsOf } from './notifications';
+import { findUser } from './users';
 import {
   channelReady,
   digestKey,
@@ -77,6 +85,11 @@ const START: Record<AnyChannel, string> = { ...NAME, webhook: 'The webhook' };
 export const DIGEST_RETRY_MS = 30 * 60 * 1000;
 /** ntfy treats longer messages as attachments. */
 const NTFY_MAX_BYTES = 4000;
+/** Personal notifications for one person within this window go out together. */
+export const COALESCE_MS = 5000;
+/** A combined personal message lists at most this many changes ("…and 3 more"). */
+const PERSONAL_MAX_LINES = 10;
+const DISCORD_MAX_CHARS = 2000;
 
 export interface CardInfo {
   id: number;
@@ -168,14 +181,44 @@ const firstChars = (s: string, n: number) => Array.from(s).slice(0, n).join('');
  */
 const escapeMd = (s: string) => s.replace(/[\\`*_[\]<>|~]/g, '\\$&'); // with [ ] escaped, ( ) and ! can't form links or images
 
+/** A personal notification on its way out: what happened, on which card. */
+interface PersonalItem {
+  type: string;
+  text: string;
+  cardId: number;
+  ticketNo: string | null;
+  cardTitle: string;
+}
+
+type SendResult = { ok: boolean; message: string };
+
+export interface NotifierOptions {
+  /** How long personal notifications for one person wait to be combined (COALESCE_MS). */
+  coalesceMs?: number;
+  /** Where failed personal deliveries are reported (the install channels show theirs in Settings). */
+  warn?: (message: string) => void;
+}
+
+/** Why a personal channel can't be used yet. */
+export const NO_INSTALL_CHANNEL = {
+  discord: 'This install has no Discord channel yet; an admin sets one up under Settings → Notifications',
+  ntfy: 'This install has no ntfy channel yet; an admin sets one up under Settings → Notifications',
+} as const;
+
 export class Notifier {
   /** When each channel's daily summary last failed (in memory: a restart simply tries again). */
   private readonly digestFailedAt = new Map<AnyChannel, number>();
+  /** Personal notifications waiting to be combined, per person. */
+  private readonly pending = new Map<number, { ids: number[]; timer: ReturnType<typeof setTimeout> }>();
+  private readonly coalesceMs: number;
 
   constructor(
     private readonly fetchImpl: FetchLike = fetch as unknown as FetchLike,
     private readonly retryDelaysMs: number[] = [1000, 3000],
-  ) {}
+    private readonly opts: NotifierOptions = {},
+  ) {
+    this.coalesceMs = opts.coalesceMs ?? COALESCE_MS;
+  }
 
   /** Channels with an address (Discord first). */
   private targets(ctx: Ctx): Target[] {
@@ -190,6 +233,10 @@ export class Notifier {
 
   /** Reacts to an app event (call it deferred, after the change has committed). */
   async handle(ctx: Ctx, event: AppEvent): Promise<void> {
+    if (event.type === 'people_notified') {
+      this.queuePersonal(ctx, event.ids);
+      return;
+    }
     const targets = this.targets(ctx);
     if (!targets.length) return;
     const card = cardInfo(ctx, event.cardId);
@@ -223,8 +270,8 @@ export class Notifier {
       const blocked = message('blocked', `Blocked by ${blockers || 'an open card'}`, COLOR.blocked);
       pick = (e) => (e.blocked ? blocked : null);
     } else {
-      // Not for the install's channels (card_assigned is for personal notifications), or a type
-      // this version doesn't know.
+      // Not for the install's channels (card_assigned is for personal notifications, which
+      // arrive as people_notified), or a type this version doesn't know.
       return;
     }
     await Promise.all(
@@ -289,6 +336,96 @@ export class Notifier {
     return this.deliver(ctx, target, { event: 'test', heading: 'Notifications are working.', urgent: false, color: COLOR.test, card: null });
   }
 
+  // ---- personal notifications ----
+
+  /** Holds new personal notifications per person for coalesceMs, then sends them together. */
+  private queuePersonal(ctx: Ctx, ids: number[]): void {
+    // Rows that don't exist (the change was rolled back) are simply not found.
+    const rows = stmt(ctx.db, 'SELECT id, user_id FROM notifications WHERE id IN (SELECT value FROM json_each(?))').all(JSON.stringify(ids)) as {
+      id: number;
+      user_id: number;
+    }[];
+    for (const r of rows) {
+      const waiting = this.pending.get(r.user_id);
+      if (waiting) {
+        waiting.ids.push(r.id);
+        continue;
+      }
+      const timer = setTimeout(() => {
+        this.flushPerson(ctx, r.user_id).catch((err) => this.opts.warn?.(`Personal notification failed: ${(err as Error).message}`));
+      }, this.coalesceMs);
+      timer.unref?.();
+      this.pending.set(r.user_id, { ids: [r.id], timer });
+    }
+  }
+
+  /** Sends every personal notification still waiting, now (tests use it instead of waiting). */
+  async flushPersonal(ctx: Ctx): Promise<void> {
+    await Promise.all([...this.pending.keys()].map((userId) => this.flushPerson(ctx, userId)));
+  }
+
+  /** One Discord message and one ntfy message for everything waiting for this person. */
+  private async flushPerson(ctx: Ctx, userId: number): Promise<void> {
+    const waiting = this.pending.get(userId);
+    if (!waiting) return;
+    this.pending.delete(userId);
+    clearTimeout(waiting.timer);
+
+    const user = findUser(ctx, userId);
+    if (!user || user.disabled_at) return;
+    const prefs = prefsOf(user.notify_prefs);
+    const items = notificationsById(ctx, waiting.ids).filter((n) => n.userId === userId);
+    const pick = (channel: 'discord' | 'ntfy') => items.filter((n) => prefs[n.type]?.[channel]);
+    const link = this.cardLink(ctx);
+    const sends: Promise<void>[] = [];
+
+    const discordItems = pick('discord');
+    const webhook = getDiscordSettings(ctx).webhookUrl;
+    if (discordItems.length && user.discord_user_id && webhook) {
+      sends.push(this.sendPersonal(ctx, 'discord', personalDiscord(webhook, user.discord_user_id, discordItems, link), user.username));
+    }
+    const ntfyItems = pick('ntfy');
+    const ntfy = getChannelSettings(ctx, 'ntfy');
+    if (ntfyItems.length && user.ntfy_topic && channelReady('ntfy', ntfy)) {
+      sends.push(this.sendPersonal(ctx, 'ntfy', personalNtfy(ntfy, user.ntfy_topic, ntfyItems, link), user.username));
+    }
+    await Promise.all(sends);
+  }
+
+  private async sendPersonal(ctx: Ctx, channel: 'discord' | 'ntfy', req: Outgoing, username: string): Promise<void> {
+    const result = await this.send(ctx, channel, req, false);
+    if (!result.ok) this.opts.warn?.(`Personal ${NAME[channel]} notification for ${username} failed: ${result.message}`);
+  }
+
+  /**
+   * Account → Notifications → Send me a test: one message on each personal channel the person has
+   * filled in (null for the others). Explains, rather than sends, when the install's channel isn't set up.
+   */
+  async sendPersonalTest(ctx: Ctx, userId: number): Promise<{ discord: SendResult | null; ntfy: SendResult | null }> {
+    const user = findUser(ctx, userId);
+    if (!user) return { discord: null, ntfy: null };
+    const none = () => null;
+    const discord = async (): Promise<SendResult | null> => {
+      if (!user.discord_user_id) return null;
+      const webhook = getDiscordSettings(ctx).webhookUrl;
+      if (!webhook) return { ok: false, message: NO_INSTALL_CHANNEL.discord };
+      return this.send(ctx, 'discord', personalDiscord(webhook, user.discord_user_id, [], none), false);
+    };
+    const ntfy = async (): Promise<SendResult | null> => {
+      if (!user.ntfy_topic) return null;
+      const channel = getChannelSettings(ctx, 'ntfy');
+      if (!channelReady('ntfy', channel)) return { ok: false, message: NO_INSTALL_CHANNEL.ntfy };
+      return this.send(ctx, 'ntfy', personalNtfy(channel, user.ntfy_topic, [], none), false);
+    };
+    const [d, n] = await Promise.all([discord(), ntfy()]);
+    return { discord: d, ntfy: n };
+  }
+
+  private cardLink(ctx: Ctx): (cardId: number) => string | null {
+    const appUrl = getGeneralSettings(ctx).appUrl;
+    return (cardId) => (appUrl ? `${appUrl}/cards/${cardId}` : null);
+  }
+
   private deliver(ctx: Ctx, t: Target, m: Message): Promise<{ ok: boolean; message: string }> {
     const appUrl = getGeneralSettings(ctx).appUrl;
     const link = (c: CardInfo) => (appUrl ? `${appUrl}/cards/${c.id}` : null);
@@ -305,7 +442,8 @@ export class Notifier {
     return this.send(ctx, t.channel, req);
   }
 
-  private async send(ctx: Ctx, channel: AnyChannel, req: Outgoing): Promise<{ ok: boolean; message: string }> {
+  /** Sends with retries. `record`: keep the result as the channel's last delivery (Settings shows it). */
+  private async send(ctx: Ctx, channel: AnyChannel, req: Outgoing, record = true): Promise<SendResult> {
     const name = NAME[channel];
     let last = 'Not sent';
     for (let attempt = 0; attempt <= this.retryDelaysMs.length; attempt++) {
@@ -318,7 +456,7 @@ export class Notifier {
           redirect: 'error',
         });
         if (res.ok) {
-          recordDelivery(ctx, channel, true, 'Delivered');
+          if (record) recordDelivery(ctx, channel, true, 'Delivered');
           return { ok: true, message: 'Delivered' };
         }
         last = `${START[channel]} answered ${res.status}`;
@@ -335,7 +473,7 @@ export class Notifier {
         if (attempt < this.retryDelaysMs.length) await sleep(this.retryDelaysMs[attempt]!);
       }
     }
-    recordDelivery(ctx, channel, false, last);
+    if (record) recordDelivery(ctx, channel, false, last);
     return { ok: false, message: last };
   }
 }
@@ -444,15 +582,20 @@ const toDiscord: Format = (t, m, link) => {
  * with the topic in the body, so the pasted topic address is split: https://host/sub/topic?auth=…
  * → POST https://host/sub/?auth=… with {"topic": "topic"} (ntfy accepts ?auth= instead of a token).
  */
-const toNtfy: Format = (t, m, link) => {
-  const u = new URL(t.url);
+/** A pasted topic address split into the server's root (query kept, for ?auth=) and the topic. */
+function ntfyServer(topicUrl: string): { base: string; topic: string } {
+  const u = new URL(topicUrl);
   const segments = u.pathname.split('/').filter(Boolean);
   const topic = segments.pop()!;
-  const base = new URL(`${segments.length ? `/${segments.join('/')}` : ''}/${u.search}`, u.origin);
+  return { base: new URL(`${segments.length ? `/${segments.join('/')}` : ''}/${u.search}`, u.origin).toString(), topic };
+}
+
+const toNtfy: Format = (t, m, link) => {
+  const { base, topic } = ntfyServer(t.url);
   const url = m.card ? link(m.card) : null;
   const text = markdownText(m, link);
   return {
-    url: base.toString(),
+    url: base,
     headers: { 'Content-Type': 'application/json', ...(t.secret ? { Authorization: `Bearer ${t.secret}` } : {}) },
     body: JSON.stringify({
       topic,
@@ -530,3 +673,82 @@ const toWebhook: Format = (t, m, link, now) => {
     body,
   };
 };
+
+// ---------------------------------------------------------------------------------------------
+// Personal notifications, per channel
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Discord Markdown in text from other people (titles, notes), so it shows as typed: no masked
+ * links, no formatting, no <…> mention or link syntax. Lines start with our own text, so line-start
+ * syntax (headings, lists) can't come from it.
+ */
+const escapeDiscord = (s: string) => s.replace(/[\\`*_~|<>[\]]/g, '\\$&');
+
+const itemCard = (n: PersonalItem) => cardTitle({ ticket_no: n.ticketNo, title: n.cardTitle });
+
+/** "…and 3 more" after the first PERSONAL_MAX_LINES. */
+function capLines(lines: string[]): string[] {
+  return lines.length > PERSONAL_MAX_LINES ? [...lines.slice(0, PERSONAL_MAX_LINES), `…and ${lines.length - PERSONAL_MAX_LINES} more`] : lines;
+}
+
+/**
+ * Discord: a message in the install's channel that mentions the person, and only them
+ * (allowed_mentions), so a title like "@everyone" or "<@123>" can't ping anybody. Links are in
+ * <…>, so Discord doesn't add a preview for each. No items: the test message.
+ */
+function personalDiscord(webhook: string, discordUserId: string, items: PersonalItem[], link: (cardId: number) => string | null): Outgoing {
+  const at = `<@${discordUserId}>`;
+  const line = (n: PersonalItem) => {
+    const url = link(n.cardId);
+    return `${escapeDiscord(n.text)} · **${escapeDiscord(firstChars(itemCard(n), 150))}**${url ? ` <${url}>` : ''}`;
+  };
+  let content: string;
+  if (!items.length) content = `${at} This is a test from Belltower. Your notifications will show up here like this.`;
+  else if (items.length === 1) content = `${at} ${line(items[0]!)}`;
+  else content = [`${at} ${items.length} updates in Belltower:`, ...capLines(items.map((n) => `• ${line(n)}`))].join('\n');
+  return {
+    url: webhook,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: 'Belltower',
+      content: firstChars(content, DISCORD_MAX_CHARS),
+      allowed_mentions: { parse: [], users: [discordUserId] },
+    }),
+  };
+}
+
+/** ntfy: the person's own topic on the install's ntfy server, with the install's token. No items: the test message. */
+function personalNtfy(
+  install: { url: string | null; secret: string | null },
+  topic: string,
+  items: PersonalItem[],
+  link: (cardId: number) => string | null,
+): Outgoing {
+  const { base } = ntfyServer(install.url!);
+  const line = (n: PersonalItem) => {
+    const url = link(n.cardId);
+    const card = escapeMd(firstChars(itemCard(n), 120));
+    return `${escapeMd(n.text)} · ${url ? `[${card}](${url})` : card}`;
+  };
+  const single = items.length === 1 ? items[0]! : null;
+  const title = !items.length ? 'Belltower test message' : single ? itemCard(single) : `${items.length} updates in Belltower`;
+  const message = !items.length
+    ? 'Personal notifications are working.'
+    : single
+      ? escapeMd(single.text)
+      : capLines(items.map((n) => `- ${line(n)}`)).join('\n');
+  const click = single ? link(single.cardId) : null;
+  return {
+    url: base,
+    headers: { 'Content-Type': 'application/json', ...(install.secret ? { Authorization: `Bearer ${install.secret}` } : {}) },
+    body: JSON.stringify({
+      topic,
+      title: firstChars(title, 250),
+      message: cutBytes(message, NTFY_MAX_BYTES),
+      priority: 3,
+      markdown: true,
+      ...(click ? { click } : {}),
+    }),
+  };
+}

@@ -11,6 +11,7 @@ import { AppError, badRequest, conflict, notFound } from '../errors';
 import { ACTIVITY_SELECT, recordEvent, toActivityEntry, type ActivityRow } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorTokenId, actorUserId, nowIso, tx, type Ctx } from './context';
+import { notifyNoteAdded, notifyNoteEdited } from './notifications';
 import { reindexCard } from './search';
 import { actorIsAdmin } from './users';
 
@@ -59,6 +60,7 @@ export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; oc
     );
     touchCard(ctx, cardId);
     reindexCard(ctx, cardId);
+    notifyNoteAdded(ctx, cardId, id, input.bodyMd);
     return getActivityEntry(ctx, id);
   });
 }
@@ -107,6 +109,9 @@ export function updateWorklog(
       // Retracting doesn't change the entry's author, so the history records who did it.
       recordEvent(ctx, row.card_id, patch.retracted ? 'worklog_retracted' : 'worklog_restored', { entryId: id, text: excerpt(body) });
     }
+    // People newly @mentioned by the edit. A retracted note notifies nobody.
+    const retracted = patch.retracted ?? row.retracted_at !== null;
+    if (body !== row.body_md && !retracted) notifyNoteEdited(ctx, row.card_id, id, row.body_md ?? '', body);
     touchCard(ctx, row.card_id);
     reindexCard(ctx, row.card_id);
     return getActivityEntry(ctx, id);

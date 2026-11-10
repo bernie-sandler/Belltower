@@ -77,7 +77,8 @@ describe('assigning cards (service)', () => {
     const card = createCard(withActor(t.ctx, { kind: 'user', userId: alice }), { title: 'Replace UPS battery', assigneeId: bob });
     expect(getCard(t.ctx, card.id).assigneeId).toBe(bob);
     expect(assignedEntries(card.id)).toMatchObject([{ data: { from: null, to: bob, toName: 'Bob' }, userId: alice }]);
-    expect(events.map((e) => e.type)).toEqual(['card_created', 'card_assigned']);
+    // Bob hears about it (people_notified carries his notification to his personal channels).
+    expect(events.map((e) => e.type)).toEqual(['card_created', 'card_assigned', 'people_notified']);
   });
 
   it('refuses unknown and deactivated people, but a deactivated assignee can still be taken off', () => {

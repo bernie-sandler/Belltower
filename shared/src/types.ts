@@ -11,6 +11,7 @@ import type {
   UserRole,
 } from './constants';
 import type { NotifyChannel, OidcPreset, TokenScope } from './schemas';
+import type { NotificationType, NotifyPrefs } from './notifications';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
 export type IsoTimestamp = string;
@@ -198,6 +199,8 @@ export interface CardDetail extends CardTile {
   children: CardSummary[];
   /** Markdown note on how it was resolved ('' when none). */
   resolutionNote: string;
+  /** You watch this card: new notes, moves and assignee changes notify you. */
+  watching: boolean;
 }
 
 export interface ChecklistItem {
@@ -672,4 +675,45 @@ export interface NotifyChannelInfo {
   secretSet: boolean;
   events: { external: boolean; critical: boolean; digest: boolean; blocked: boolean };
   lastDelivery: { at: IsoTimestamp; ok: boolean; message: string } | null;
+}
+
+// ---- personal notifications (1.5) ----
+
+/** One item in your bell (GET /api/notifications). */
+export interface NotificationItem {
+  id: number;
+  type: NotificationType;
+  cardId: number;
+  ticketNo: string | null;
+  cardTitle: string;
+  /** Who did it, as it read at the time ("Alex Chen", "API token “Kuma”"); null for the system. */
+  actorName: string | null;
+  /** What happened, one sentence ("Alex Chen mentioned you: “…”"). */
+  text: string;
+  createdAt: IsoTimestamp;
+  readAt: IsoTimestamp | null;
+}
+
+export interface NotificationsResponse {
+  /** Newest first. */
+  items: NotificationItem[];
+  /** Unread in total (not only among `items`). */
+  unread: number;
+  /** The newest notification's id (0 when there are none), for `?after=`. */
+  latestId: number;
+}
+
+/** GET/PUT /api/me/notifications: your personal channels and what goes where. */
+export interface PersonalNotifySettings {
+  discordUserId: string | null;
+  ntfyTopic: string | null;
+  prefs: NotifyPrefs;
+  /** Whether the install can carry each personal channel (an admin sets these up in Settings). */
+  install: { discord: boolean; ntfy: boolean };
+}
+
+/** POST /api/me/notifications/test: what happened on each personal channel you've set up. */
+export interface PersonalTestResult {
+  discord: { ok: boolean; message: string } | null;
+  ntfy: { ok: boolean; message: string } | null;
 }

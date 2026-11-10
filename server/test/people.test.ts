@@ -302,6 +302,7 @@ describe('roles', () => {
     'DELETE /api/auth/oidc/link',
     'DELETE /api/cards/:id',
     'DELETE /api/cards/:id/links/:linkId',
+    'DELETE /api/cards/:id/watch',
     'DELETE /api/checklist-items/:id',
     'DELETE /api/checklists/:id',
     'DELETE /api/columns/:id',
@@ -324,6 +325,8 @@ describe('roles', () => {
     'GET /api/cards/:id/status-link',
     'GET /api/config',
     'GET /api/me',
+    'GET /api/me/notifications',
+    'GET /api/notifications',
     'GET /api/public/status/:id/:sig',
     'GET /api/public/submit/:key',
     'GET /api/request-types',
@@ -367,6 +370,8 @@ describe('roles', () => {
     'POST /api/columns/:id/sort-by-priority',
     'POST /api/import/cards',
     'POST /api/labels',
+    'POST /api/me/notifications/test',
+    'POST /api/notifications/read',
     'POST /api/public/submit/:key',
     'POST /api/templates',
     'POST /api/templates/:id/run',
@@ -376,9 +381,11 @@ describe('roles', () => {
     'POST /api/v1/hooks/uptime-kuma',
     'PUT /api/board/blocked-column',
     'PUT /api/cards/:id/checklists/order',
+    'PUT /api/cards/:id/watch',
     'PUT /api/checklists/:id/items/order',
     'PUT /api/columns/order',
     'PUT /api/labels/order',
+    'PUT /api/me/notifications',
   ];
 
   it('every /api route has decided whether it is admin-only', async () => {

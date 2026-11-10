@@ -11,6 +11,7 @@ import { installGuard, isApiRequest } from './http/guard';
 import { registerAuthRoutes } from './http/routes/auth';
 import { registerBoardRoutes } from './http/routes/board';
 import { registerCardPartRoutes } from './http/routes/cardParts';
+import { registerNotificationRoutes } from './http/routes/notifications';
 import { registerOidcRoutes } from './http/routes/oidc';
 import { registerPhase3Routes } from './http/routes/phase3';
 import { registerPhase4Routes } from './http/routes/phase4';
@@ -35,7 +36,7 @@ export interface AppDeps {
   limiter: LoginRateLimiter;
   /** Claude ticket drafting; null when ANTHROPIC_API_KEY isn't set. */
   ai: TicketDrafter | null;
-  /** Discord notifications (Settings → Send test uses it). Optional in tests. */
+  /** Notifications (Settings → Send test, Account → Send me a test). Optional in tests. */
   notifier?: Notifier;
 }
 
@@ -131,6 +132,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
   registerTicketRoutes(app, deps);
   registerSettingsRoutes(app, deps);
   registerUserRoutes(app, deps);
+  registerNotificationRoutes(app, deps);
   registerSubmitRoutes(app, deps);
   registerV1Routes(app, deps);
 
