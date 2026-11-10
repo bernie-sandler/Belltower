@@ -44,6 +44,9 @@ function tempDir(): string {
 
 const at = (day: number, hour = 15) => `2026-10-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00.000Z`;
 
+/** 1.4's password, as its settings row held it (any scrypt string will do for the migration). */
+const OLD_HASH = 'scrypt$10$8$1$c2FsdHNhbHRzYWx0c2FsdA==$a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2V5a2U=';
+
 /**
  * What a homelab board looked like under schema `v`, written with plain SQL as that version's code
  * would have: columns, labels, cards in every state, a blocking link, a checklist, an attachment,
@@ -56,6 +59,26 @@ function oldDatabase(v: number): DB {
   const run = (sql: string, ...args: unknown[]) => Number(db.prepare(sql).run(...args).lastInsertRowid);
 
   run(`INSERT INTO settings (key, value) VALUES ('seeded', '1')`);
+  // Signed in on one device. Before 1.5 the one password was a setting; from 1.5 it's the owner's.
+  let owner: number | null = null;
+  let sam: number | null = null;
+  if (v < 9) {
+    run(`INSERT INTO settings (key, value) VALUES ('password_hash', ?), ('password_source', 'ui')`, OLD_HASH);
+  } else {
+    // 1.5: the owner, a member, and someone deactivated.
+    run(`INSERT INTO settings (key, value) VALUES ('password_source', 'ui')`);
+    owner = run(`INSERT INTO users (username, display_name, role, is_owner, password_hash, created_at) VALUES ('admin', 'Admin', 'admin', 1, ?, ?)`, OLD_HASH, at(1));
+    sam = run(`INSERT INTO users (username, display_name, email, role, password_hash, created_at) VALUES ('sam', 'Sam Rivera', 'sam@example.com', 'member', ?, ?)`, OLD_HASH, at(2));
+    run(`INSERT INTO users (username, display_name, role, created_at, disabled_at) VALUES ('old.timer', 'Old Timer', 'member', ?, ?)`, at(2), at(3));
+  }
+  run(
+    `INSERT INTO sessions (token_hash, created_at, last_seen_at, expires_at, remember, ${v >= 9 ? 'user_id' : 'ip'}) VALUES (?, ?, ?, ?, 1, ?)`,
+    'd'.repeat(64),
+    at(19),
+    at(19),
+    '2027-01-01T00:00:00.000Z',
+    v >= 9 ? owner : '192.168.1.20',
+  );
   const cols = ['Triage', 'Backlog', 'In Progress', 'Blocked/Waiting', 'Done'].map((name, i) =>
     run('INSERT INTO columns (name, position, role, created_at) VALUES (?, ?, ?, ?)', name, i, i === 0 ? 'triage' : i === 4 ? 'done' : null, at(1)),
   );
@@ -90,14 +113,17 @@ function oldDatabase(v: number): DB {
     'a'.repeat(64),
     at(2),
   );
+  // From 1.5 the entry and its edit say who wrote them (here: the member).
+  const by = v >= 9 ? ', user_id' : '';
   const log = run(
-    `INSERT INTO activity (card_id, kind, type, data, body_md, occurred_at, created_at, edited_at) VALUES (?, 'worklog', 'worklog', '{}', 'Reseated the SATA cable on drive 3', ?, ?, ?)`,
+    `INSERT INTO activity (card_id, kind, type, data, body_md, occurred_at, created_at, edited_at${by}) VALUES (?, 'worklog', 'worklog', '{}', 'Reseated the SATA cable on drive 3', ?, ?, ?${v >= 9 ? ', ?' : ''})`,
     disk,
     at(3),
     at(3),
     at(4),
+    ...(v >= 9 ? [sam] : []),
   );
-  run(`INSERT INTO activity_revisions (activity_id, body_md, occurred_at, revised_at) VALUES (?, 'Reseated the cable', ?, ?)`, log, at(3), at(4));
+  run(`INSERT INTO activity_revisions (activity_id, body_md, occurred_at, revised_at${by}) VALUES (?, 'Reseated the cable', ?, ?${v >= 9 ? ', ?' : ''})`, log, at(3), at(4), ...(v >= 9 ? [sam] : []));
   const tpl = run(
     `INSERT INTO recurring_templates (title, interval_unit, interval_count, start_date, next_run_date, enabled, created_at, updated_at)
      VALUES ('Monthly parity check', 'month', 1, '2026-10-01', '2026-11-01', 1, ?, ?)`,
@@ -117,6 +143,7 @@ function oldDatabase(v: number): DB {
     const ids = db.prepare('SELECT id FROM cards ORDER BY id').pluck().all() as number[];
     ids.forEach((id, i) => db.prepare('UPDATE cards SET ticket_no = ? WHERE id = ?').run(`261001-${i + 1}`, id));
   }
+  let kuma: number | null = null;
   if (v >= 5) {
     run(`INSERT INTO settings (key, value) VALUES ('request_types_seeded', '1')`);
     run(
@@ -124,10 +151,35 @@ function oldDatabase(v: number): DB {
       at(1),
       at(1),
     );
-    run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, created_at) VALUES ('Uptime Kuma', ?, 'tt_abcd', 1, ?)`, 'b'.repeat(64), at(1));
+    kuma = run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, created_at) VALUES ('Uptime Kuma', ?, 'tt_abcd', 1, ?)`, 'b'.repeat(64), at(1));
   }
   if (v >= 7) {
     run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, scope, created_at) VALUES ('Homepage', ?, 'tt_efgh', 0, 'read', ?)`, 'c'.repeat(64), at(1));
+  }
+  if (v >= 9) {
+    // 1.5: tokens belong to the owner; the member is assigned the drive card and watches it (so does
+    // the owner); the owner's assignment and the token's note say who did them; the member got a
+    // notification.
+    db.prepare('UPDATE api_tokens SET user_id = ?').run(owner);
+    db.prepare('UPDATE cards SET assignee_id = ? WHERE id = ?').run(sam, disk);
+    run('INSERT INTO card_watchers (card_id, user_id, created_at) VALUES (?, ?, ?), (?, ?, ?)', disk, sam, at(3), disk, owner, at(3));
+    const assigned = run(
+      `INSERT INTO activity (card_id, kind, type, data, occurred_at, created_at, user_id) VALUES (?, 'event', 'assigned', ?, ?, ?, ?)`,
+      disk,
+      JSON.stringify({ from: null, to: { id: sam, username: 'sam', displayName: 'Sam Rivera' } }),
+      at(3),
+      at(3),
+      owner,
+    );
+    run(
+      `INSERT INTO activity (card_id, kind, type, data, body_md, occurred_at, created_at, user_id, token_id) VALUES (?, 'worklog', 'worklog', '{}', 'Seen again (reported by API token “Uptime Kuma”).', ?, ?, ?, ?)`,
+      disk,
+      at(2, 10),
+      at(2, 10),
+      owner,
+      kuma,
+    );
+    run(`INSERT INTO notifications (user_id, card_id, activity_id, type, actor_user_id, created_at) VALUES (?, ?, ?, 'assigned', ?, ?)`, sam, disk, assigned, owner, at(3));
   }
   return db;
 }
@@ -171,9 +223,14 @@ function checkWorks(ctx: Ctx, marks: Record<string, ChecklistItemState>) {
   expect(searchCards(ctx, SearchQuery.parse({ q: 'reseated cable' })).map((r) => r.id)).toEqual([disk.id]);
   expect(searchCards(ctx, SearchQuery.parse({ q: 'SMART' })).map((r) => r.id)).toContain(disk.id);
 
-  // History stays append-only.
+  // History stays append-only, and from schema 9 who wrote a work-log entry is part of it.
   expect(() => db.prepare('DELETE FROM activity WHERE card_id = ?').run(disk.id)).toThrow(/append-only/);
-  expect(listActivity(ctx, disk.id).find((e) => e.kind === 'worklog')!.bodyMd).toBe('Reseated the SATA cable on drive 3');
+  const entry = listActivity(ctx, disk.id).find((e) => e.kind === 'worklog')!;
+  expect(entry.bodyMd).toBe('Reseated the SATA cable on drive 3');
+  for (const col of ['user_id', 'token_id']) {
+    expect(() => db.prepare(`UPDATE activity SET ${col} = coalesce(${col}, 0) + 1000 WHERE id = ?`).run(entry.id), col).toThrow(/append-only/);
+  }
+  db.prepare('UPDATE activity SET body_md = body_md WHERE id = ?').run(entry.id); // the body may still change
 
   // Newer features on old cards: severity, checklist marks, completing a blocker then the blocked card, resolutions.
   updateCard(ctx, disk.id, { severity: 'blocker' });
@@ -195,6 +252,9 @@ function checkWorks(ctx: Ctx, marks: Record<string, ChecklistItemState>) {
 
   // And it can be backed up and restored again, read-only tokens and checklist marks included.
   const data = exportData(ctx, 'test');
+  // People come along, never their passwords.
+  expect(data.tables.users!.length).toBe(count(db, 'users'));
+  for (const u of data.tables.users!) expect(u).not.toHaveProperty('password_hash');
   const file = path.join(tempDir(), 'restored.db');
   const counts = buildRestoreDb(data, file, ctx.tz, ctx.clock);
   expect(counts.cards).toBe(count(db, 'cards'));
@@ -204,7 +264,24 @@ function checkWorks(ctx: Ctx, marks: Record<string, ChecklistItemState>) {
   expect(scopes(again)).toEqual(scopes(db));
   const itemMarks = (d: DB) => d.prepare('SELECT id, state, checked, checked_at FROM checklist_items ORDER BY id').all();
   expect(itemMarks(again)).toEqual(itemMarks(db));
+  // Who did what, assignees, watchers and token owners survive; passwords and the owner flag don't
+  // (the restoring install supplies those).
+  const people = (d: DB) => ({
+    users: d.prepare('SELECT id, username, display_name, email, role, created_at, disabled_at FROM users ORDER BY id').all(),
+    assignees: d.prepare('SELECT id, assignee_id FROM cards ORDER BY id').all(),
+    watchers: d.prepare('SELECT card_id, user_id FROM card_watchers ORDER BY card_id, user_id').all(),
+    activity: d.prepare('SELECT id, user_id, token_id FROM activity ORDER BY id').all(),
+    revisions: d.prepare('SELECT id, user_id FROM activity_revisions ORDER BY id').all(),
+    tokens: d.prepare('SELECT id, user_id FROM api_tokens ORDER BY id').all(),
+  });
+  expect(people(again)).toEqual(people(db));
+  expect(again.prepare('SELECT count(*) FROM users WHERE password_hash IS NOT NULL OR is_owner = 1').pluck().get()).toBe(0);
+  expect(count(again, 'notifications')).toBe(0); // a personal inbox, not part of backups
 }
+
+/** The drive card's checklist as schema `v` left it: a failed mark exists from 1.4 (schema 8). */
+const marksAt = (v: number): Record<string, ChecklistItemState> =>
+  v >= 8 ? { 'Run a SMART long test': 'done', 'Swap the backplane': 'failed' } : { 'Run a SMART long test': 'done' };
 
 describe('upgrading a database left by an older version', () => {
   it.each(OLD_VERSIONS)('from schema %i', async (v) => {
@@ -222,7 +299,37 @@ describe('upgrading a database left by an older version', () => {
     expect(prepared.numbered).toBe(v >= 3 ? 0 : before.cards);
     for (const t of COUNTED) expect(count(db, t), t).toBe(before[t]);
     expect(count(db, 'request_types')).toBe(v >= 5 ? 1 : 3); // older installs get the default types
-    checkWorks(ctx, { 'Run a SMART long test': 'done' });
+
+    // 1.4's password became the owner account `admin` (dated by the oldest column); the signed-in
+    // device and the API tokens are the owner's, so nobody is signed out and automations keep working.
+    const owner = db.prepare('SELECT * FROM users WHERE is_owner = 1').get() as Record<string, unknown>;
+    expect(owner).toMatchObject({ username: 'admin', display_name: 'Admin', role: 'admin', password_hash: OLD_HASH, created_at: at(1), disabled_at: null });
+    expect(db.prepare(`SELECT key FROM settings WHERE key = 'password_hash'`).get()).toBeUndefined();
+    expect(db.prepare(`SELECT value FROM settings WHERE key = 'password_source'`).pluck().get()).toBe('ui');
+    expect(db.prepare('SELECT user_id FROM sessions').pluck().all()).toEqual([owner.id]);
+    expect(db.prepare('SELECT count(*) FROM api_tokens WHERE user_id IS NOT ?').pluck().get(owner.id)).toBe(0);
+    expect(count(db, 'users')).toBe(1);
+    // Nothing from before says who did what.
+    expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(0);
+    expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(0);
+    checkWorks(ctx, marksAt(v));
+  });
+});
+
+describe('a database at the current schema', () => {
+  it('keeps people, assignees, watchers and attribution across a restart', () => {
+    const db = oldDatabase(LATEST_SCHEMA_VERSION);
+    expect(migrate(db)).toEqual([]);
+    const ctx: Ctx = { db, clock, tz: TZ };
+    prepareData(ctx);
+    expect(count(db, 'users')).toBe(3);
+    const sam = db.prepare(`SELECT id FROM users WHERE username = 'sam'`).pluck().get();
+    const disk = db.prepare(`SELECT id, assignee_id FROM cards WHERE title = 'Drive 3 CRC errors'`).get() as { id: number; assignee_id: number };
+    expect(disk.assignee_id).toBe(sam);
+    const types = listActivity(ctx, disk.id).map((e) => [e.type, e.userId !== null, e.tokenId !== null]);
+    expect(types).toContainEqual(['assigned', true, false]);
+    expect(types).toContainEqual(['worklog', true, true]); // the token's note names its owner too
+    checkWorks(ctx, marksAt(LATEST_SCHEMA_VERSION));
   });
 });
 
@@ -237,6 +344,10 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     [6, 'cards', ['resolution', 'resolution_md']],
     [7, 'api_tokens', ['scope']],
     [8, 'checklist_items', ['state']],
+    [9, 'cards', ['assignee_id']],
+    [9, 'activity', ['user_id', 'token_id']],
+    [9, 'activity_revisions', ['user_id']],
+    [9, 'api_tokens', ['user_id']],
   ];
   for (const [added, table, columns] of dropColumns) {
     if (v >= added) continue;
@@ -249,6 +360,12 @@ function asExportFrom(data: BackupData, v: number): BackupData {
   if (v < 8) {
     // Before 1.4 only checked items had a time.
     for (const row of out.tables.checklist_items ?? []) if (row.checked === 0) row.checked_at = null;
+  }
+  if (v < 9) {
+    // Before 1.5 there were no people, so nothing was assigned, watched or attributed.
+    delete out.tables.users;
+    delete out.tables.card_watchers;
+    out.tables.activity = (out.tables.activity ?? []).filter((row) => row.type !== 'assigned');
   }
   return out;
 }
@@ -265,14 +382,17 @@ describe('restoring a backup exported by an older version', () => {
     expect(counts.cards).toBe(count(db, 'cards'));
     const restored = openDatabase(file);
     dbs.push(restored);
-    for (const tbl of COUNTED) expect(count(restored, tbl), tbl).toBe(count(db, tbl));
+    const dropped = v < 9 ? 1 : 0; // the 1.5 'assigned' event
+    for (const tbl of COUNTED) expect(count(restored, tbl), tbl).toBe(count(db, tbl) - (tbl === 'activity' ? dropped : 0));
+    // A backup from before 1.5 has no people (confirmRestore adds the live install's accounts).
+    expect(count(restored, 'users')).toBe(v >= 9 ? 3 : 0);
     // Before 1.4 the failed item was just not checked.
-    checkWorks({ db: restored, clock, tz: TZ }, { 'Run a SMART long test': 'done', 'Swap the backplane': 'open' });
+    checkWorks({ db: restored, clock, tz: TZ }, v >= 8 ? marksAt(v) : { 'Run a SMART long test': 'done', 'Swap the backplane': 'open' });
   });
 });
 
 describe('restoring a backup exported by this version', () => {
-  it('keeps every checklist mark, failed included', () => {
+  it('keeps every checklist mark (failed included), people and who did what', () => {
     const db = oldDatabase(LATEST_SCHEMA_VERSION);
     const src: Ctx = { db, clock, tz: TZ };
     prepareData(src);
