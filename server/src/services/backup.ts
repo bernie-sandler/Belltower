@@ -64,8 +64,9 @@ export const BACKUP_TABLES = [
 /**
  * Settings that belong to this installation, not to the data: never exported, never imported, and
  * carried over from the live install on restore. (password_hash is 1.4's password, gone since schema 9.)
+ * oidc_settings is single sign-on, client secret included.
  */
-const PRIVATE_SETTINGS = new Set(['password_hash', 'password_source']);
+const PRIVATE_SETTINGS = new Set(['password_hash', 'password_source', 'oidc_settings']);
 
 /** Sort order per table for a stable export. */
 const EXPORT_ORDER: Partial<Record<(typeof BACKUP_TABLES)[number], string>> = {
@@ -366,7 +367,7 @@ type LiveUser = Omit<UserRow, 'is_owner'> & { is_owner: number };
  *  - the live owner's match becomes the owner;
  *  - live sessions move over to the matching people (any that can't be matched end);
  *  - API tokens nobody owns (backups from before 1.5) go to the owner;
- *  - the install's private settings (where the owner's password comes from) are kept.
+ *  - the install's private settings (where the owner's password comes from, single sign-on) are kept.
  */
 function carryOverAccess(live: DB, next: DB): void {
   const users = live.prepare('SELECT * FROM users ORDER BY id').all() as LiveUser[];

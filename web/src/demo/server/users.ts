@@ -57,7 +57,7 @@ export function listUsers(ctx: Ctx): UserInfo[] {
 export const userInfo = (ctx: Ctx, id: number): UserInfo => toUserInfo(getUser(ctx, id), true);
 
 export function meResponse(ctx: Ctx, id: number): MeResponse {
-  return { ...toUserInfo(getUser(ctx, id), true), passwordManagedByEnv: false };
+  return { ...toUserInfo(getUser(ctx, id), true), passwordManagedByEnv: false, ssoLinked: false };
 }
 
 /** Seeding: adds someone as is (the owner flag included). */

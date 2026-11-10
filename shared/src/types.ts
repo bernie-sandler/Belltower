@@ -10,7 +10,7 @@ import type {
   Severity,
   UserRole,
 } from './constants';
-import type { NotifyChannel, TokenScope } from './schemas';
+import type { NotifyChannel, OidcPreset, TokenScope } from './schemas';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
 export type IsoTimestamp = string;
@@ -39,6 +39,44 @@ export interface AuthStatus {
   setupRequired: boolean;
   /** Password comes from APP_PASSWORD/APP_PASSWORD_FILE; the change-password form is disabled. */
   passwordManagedByEnv: boolean;
+  /** Single sign-on is set up: the login page offers "Sign in with <label>". Null when it's off. */
+  sso: { label: string } | null;
+}
+
+// ---- single sign-on (OIDC) ----
+
+/** GET /api/settings/oidc (admins). The client secret itself is never sent back. */
+export interface OidcSettingsInfo {
+  enabled: boolean;
+  preset: OidcPreset;
+  /** '' = the preset's name ("Sign in with Authentik"). */
+  buttonLabel: string;
+  issuer: string;
+  clientId: string;
+  /** A secret is saved here or comes from OIDC_CLIENT_SECRET / OIDC_CLIENT_SECRET_FILE. */
+  secretSet: boolean;
+  /** The environment's secret wins over a saved one; the field is read-only then. */
+  secretFromEnv: boolean;
+  scopes: string;
+  usernameClaim: string;
+  groupsClaim: string;
+  /** '' = anyone the provider lets through. */
+  requiredGroup: string;
+  autoCreate: boolean;
+  linkByEmail: boolean;
+  allowHttpIssuer: boolean;
+  /** `${appUrl}/api/auth/oidc/callback`, or null until General → This app’s address is set. */
+  redirectUri: string | null;
+  /** On, and everything it needs is filled in: the login page shows the button. */
+  ready: boolean;
+}
+
+/** POST /api/settings/oidc/test: discovery against the issuer. */
+export interface OidcTestResult {
+  ok: boolean;
+  message: string;
+  /** The issuer the provider reported (with its exact trailing slash), when it answered. */
+  issuer: string | null;
 }
 
 // ---- people ----
@@ -68,6 +106,8 @@ export interface UserInfo extends UserRef {
 export interface MeResponse extends UserInfo {
   /** Your password comes from APP_PASSWORD (owner only); it can't be changed in the app. */
   passwordManagedByEnv: boolean;
+  /** You can sign in with single sign-on (Account → Sign-in links and unlinks it). */
+  ssoLinked: boolean;
 }
 
 /**

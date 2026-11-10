@@ -11,6 +11,7 @@ import { installGuard, isApiRequest } from './http/guard';
 import { registerAuthRoutes } from './http/routes/auth';
 import { registerBoardRoutes } from './http/routes/board';
 import { registerCardPartRoutes } from './http/routes/cardParts';
+import { registerOidcRoutes } from './http/routes/oidc';
 import { registerPhase3Routes } from './http/routes/phase3';
 import { registerPhase4Routes } from './http/routes/phase4';
 import { registerSettingsRoutes } from './http/routes/settings';
@@ -122,6 +123,7 @@ export async function buildApp(deps: AppDeps, logger: FastifyBaseLogger): Promis
 
   installGuard(app, deps);
   registerAuthRoutes(app, deps);
+  registerOidcRoutes(app, deps);
   registerBoardRoutes(app, deps);
   registerCardPartRoutes(app, deps);
   registerPhase3Routes(app, deps);
