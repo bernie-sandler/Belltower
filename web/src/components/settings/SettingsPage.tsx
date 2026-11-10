@@ -1,11 +1,13 @@
-// Settings (/settings): general options, the submit page and its request types, automation
-// tokens, notifications, and password/version. Members see only what's theirs to change here
-// (appearance, their own tokens); the install's settings are for admins.
+// Settings (/settings): general options, people, the submit page and its request types,
+// automation tokens, notifications, and the version. Members see only what's theirs to change
+// here (appearance); the install's settings are for admins. Your own password and tokens are
+// under Account.
 
 import { DEFAULT_TICKET_FORMAT, type SettingsResponse } from '@tt/shared';
-import { Bot, Copy, Globe, KeyRound, Lock, Palette, RefreshCw, Settings as SettingsIcon } from 'lucide-react';
+import { Bot, Copy, Globe, Info, Palette, RefreshCw, Settings as SettingsIcon, UserRound } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { sortedColumns, useBoard } from '../../api/board';
 import { useSetBlockedColumn } from '../../api/columns';
 import { useConfig } from '../../api/config';
@@ -22,6 +24,7 @@ import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { useShell } from '../shell/ShellContext';
 import { RequestTypesEditor } from './RequestTypesEditor';
 import { NotificationsSection } from './NotificationsSection';
+import { PeopleSection } from './PeopleSection';
 import { ResolutionReasonsSection } from './ResolutionReasonsSection';
 import { TokensSection } from './TokensSection';
 
@@ -49,11 +52,12 @@ export function SettingsPage() {
       </h2>
       <AppearanceSection />
       {isAdmin && <GeneralSection s={s} />}
+      {isAdmin && <PeopleSection />}
       {isAdmin && <ResolutionReasonsSection s={s} />}
       {isAdmin && <SubmitSection s={s} />}
-      <TokensSection />
+      {isAdmin && <TokensSection />}
       {isAdmin && <NotificationsSection s={s} />}
-      <AccountSection />
+      <AboutSection />
     </div>
   );
 }
@@ -329,18 +333,20 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
   );
 }
 
-function AccountSection() {
+/** The version; your password and tokens moved to Account. */
+function AboutSection() {
   const shell = useShell();
   const { data: config } = useConfig();
   return (
-    <Section icon={<Lock size={16} aria-hidden />} title="Password and version">
-      <div className="editor-actions">
-        <button type="button" className="btn" onClick={shell.openSettings}>
-          <KeyRound size={14} aria-hidden /> Change password…
-        </button>
-      </div>
+    <Section icon={<Info size={16} aria-hidden />} title="About">
       <p className="muted small">
-        <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'}
+        <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'} ·{' '}
+        <button type="button" className="link-btn small" onClick={shell.openSettings}>
+          Details
+        </button>
+      </p>
+      <p className="muted small">
+        <UserRound size={12} aria-hidden /> Your password, profile and API tokens are under <Link to="/account">Account</Link>.
       </p>
     </Section>
   );

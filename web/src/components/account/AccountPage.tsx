@@ -1,16 +1,17 @@
-// Account (/account): your own profile and password. Every person has one, admins and members
-// alike. Each part is its own section component, so new ones (sign-in methods, personal
+// Account (/account): your own profile, password and API tokens. Every person has one, admins and
+// members alike. Each part is its own section component, so new ones (sign-in methods, personal
 // notifications) slot in as further sections.
 
 import type { MeResponse } from '@tt/shared';
-import { IdCard, KeyRound, Lock, UserRound } from 'lucide-react';
+import { IdCard, Lock, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { errorMessage } from '../../api/errors';
 import { useMe, useUpdateMe } from '../../api/me';
 import { toast } from '../../lib/toast';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { Section } from '../settings/SettingsPage';
-import { useShell } from '../shell/ShellContext';
+import { TokensSection } from '../settings/TokensSection';
+import { PasswordForm } from './PasswordForm';
 
 export function AccountPage() {
   const me = useMe();
@@ -23,6 +24,7 @@ export function AccountPage() {
       </h2>
       <ProfileSection me={me.data} />
       <PasswordSection me={me.data} />
+      <TokensSection mine />
     </div>
   );
 }
@@ -83,23 +85,11 @@ export function ProfileSection({ me }: { me: MeResponse }) {
   );
 }
 
-/** Your password (the change itself happens in the password dialog). */
+/** Your password: changing it asks for the current one. */
 export function PasswordSection({ me }: { me: MeResponse }) {
-  const shell = useShell();
   return (
     <Section icon={<Lock size={16} aria-hidden />} title="Password">
-      {me.passwordManagedByEnv ? (
-        <p className="muted">
-          Your password is set with <code>APP_PASSWORD</code> in the container&apos;s environment.
-        </p>
-      ) : (
-        <p className="muted">Changing it signs you out on your other devices.</p>
-      )}
-      <div className="editor-actions">
-        <button type="button" className="btn" onClick={shell.openSettings}>
-          <KeyRound size={14} aria-hidden /> Change password…
-        </button>
-      </div>
+      <PasswordForm me={me} />
     </Section>
   );
 }
