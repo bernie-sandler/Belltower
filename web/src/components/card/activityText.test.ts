@@ -1,6 +1,6 @@
 import type { ActivityEntry } from '@tt/shared';
 import { describe, expect, it } from 'vitest';
-import { activityText } from './activityText';
+import { activityActor, activityText } from './activityText';
 
 const entry = (type: ActivityEntry['type'], data: Record<string, unknown>): ActivityEntry => ({
   id: 1,
@@ -70,8 +70,50 @@ describe('activityText', () => {
     expect(activityText(entry('checklist_item_marked', { ...item, state: 'later' }))).toBe('Marked ‘Order battery’');
   });
 
+  it('describes retracting and restoring a work-log note', () => {
+    expect(activityText(entry('worklog_retracted', { entryId: 3, text: 'Dusted the fans' }))).toBe('Retracted the work-log note ‘Dusted the fans’');
+    expect(activityText(entry('worklog_restored', { entryId: 3, text: 'Dusted the fans' }))).toBe('Restored the work-log note ‘Dusted the fans’');
+    expect(activityText(entry('worklog_restored', { entryId: 3 }))).toBe('Restored a work-log note');
+  });
+
   it('never throws on unknown or malformed data', () => {
     expect(() => activityText(entry('moved', {}))).not.toThrow();
     expect(() => activityText(entry('child_removed', { child: 'nope' }))).not.toThrow();
+  });
+});
+
+describe('activityActor', () => {
+  const by = (fields: Partial<ActivityEntry>, type: ActivityEntry['type'] = 'moved', data: Record<string, unknown> = {}) =>
+    activityActor({ ...entry(type, data), ...fields });
+
+  it('names the person who did it', () => {
+    expect(by({ userId: 2, userName: 'Alice' })).toBe('Alice');
+    // Assignments get the same line: "Took this · Alice".
+    expect(by({ userId: 2, userName: 'Alice' }, 'assigned', { from: null, to: 2, toName: 'Alice' })).toBe('Alice');
+  });
+
+  it('names the token and the person it acts for', () => {
+    expect(by({ userId: 2, userName: 'Alice', tokenId: 5, tokenName: 'Kuma' })).toBe('via API token “Kuma” (Alice)');
+    expect(by({ userId: null, tokenId: 5, tokenName: 'Kuma' })).toBe('via API token “Kuma”');
+    // A card a token opened says so once, not twice.
+    expect(by({ userId: 2, userName: 'Alice', tokenId: 5, tokenName: 'Kuma' }, 'created', { via: 'API token “Kuma”' })).toBe(
+      'via API token “Kuma” (Alice)',
+    );
+  });
+
+  it('shows how a card came in: the submit page, card import, recurring templates', () => {
+    expect(by({}, 'created', { column: { name: 'Triage' }, via: 'submit page (Sam)' })).toBe('submit page (Sam)');
+    expect(by({ userId: 2, userName: 'Alice' }, 'created', { via: 'card import' })).toBe('Alice via card import');
+    expect(by({}, 'created', { source: 'recurring', templateTitle: 'Backups' })).toBe('recurring');
+    // "Create now" on a template is a person's.
+    expect(by({ userId: 2, userName: 'Alice' }, 'created', { source: 'recurring' })).toBe('Alice');
+    // `via` only describes how a card was created.
+    expect(by({}, 'moved', { via: 'submit page (Sam)' })).toBeNull();
+  });
+
+  it('shows no name for entries from before 1.5 and steps nobody took', () => {
+    expect(by({})).toBeNull();
+    expect(by({ userId: null, tokenId: null, userName: null, tokenName: null }, 'worklog')).toBeNull();
+    expect(by({}, 'created', { column: { name: 'Triage' }, source: 'manual' })).toBeNull();
   });
 });

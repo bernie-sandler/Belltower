@@ -16,7 +16,19 @@ export interface ActivityRow {
   user_id: number | null;
   token_id: number | null;
   revision_count?: number;
+  /** From ACTIVITY_SELECT's joins: who did it, by name. */
+  user_name?: string | null;
+  user_username?: string | null;
+  token_name?: string | null;
 }
+
+/**
+ * Activity rows with their revision count and who did it by name (the person's display name and
+ * the token's name). Resolved here, so members can read who did what without listing tokens.
+ */
+export const ACTIVITY_SELECT = `SELECT a.*, (SELECT count(*) FROM activity_revisions r WHERE r.activity_id = a.id) AS revision_count,
+         u.display_name AS user_name, u.username AS user_username, t.name AS token_name
+    FROM activity a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN api_tokens t ON t.id = a.token_id`;
 
 /**
  * Appends an automatic event to a card's log. Callers run inside the same transaction as the change
@@ -47,16 +59,15 @@ export function toActivityEntry(row: ActivityRow): ActivityEntry {
     revisionCount: row.revision_count ?? 0,
     userId: row.user_id ?? null,
     tokenId: row.token_id ?? null,
+    userName: row.user_name ?? null,
+    userUsername: row.user_username ?? null,
+    tokenName: row.token_name ?? null,
   };
 }
 
 /** Newest first, by effective time. */
 export function listActivity(ctx: Ctx, cardId: number): ActivityEntry[] {
-  const rows = stmt(
-    ctx.db,
-    `SELECT a.*, (SELECT count(*) FROM activity_revisions r WHERE r.activity_id = a.id) AS revision_count
-       FROM activity a WHERE a.card_id = ? ORDER BY a.occurred_at DESC, a.id DESC`,
-  ).all(cardId) as ActivityRow[];
+  const rows = stmt(ctx.db, `${ACTIVITY_SELECT} WHERE a.card_id = ? ORDER BY a.occurred_at DESC, a.id DESC`).all(cardId) as ActivityRow[];
   return rows.map(toActivityEntry);
 }
 

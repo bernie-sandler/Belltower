@@ -28,7 +28,6 @@ const LabelsManager = lazy(() => import('../labels/LabelsManager').then((m) => (
 const BulkTicketsDialog = lazy(() => import('../tickets/BulkTicketsDialog').then((m) => ({ default: m.BulkTicketsDialog })));
 const NewTicketDialog = lazy(() => import('../tickets/NewTicketDialog').then((m) => ({ default: m.NewTicketDialog })));
 const SettingsPage = lazy(() => import('../settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
-const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
 const AccountPage = lazy(() => import('../account/AccountPage').then((m) => ({ default: m.AccountPage })));
 
 /**
@@ -39,7 +38,6 @@ export function AppShell() {
   const config = useConfig();
   const me = useMe();
   const [labelsOpen, setLabelsOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [newTicket, setNewTicket] = useState<{ mode: NewTicketMode; preset?: NewTicketPreset } | null>(null);
   const ai = useAiStatus();
   const [addColumnRequest, setAddColumnRequest] = useState(0);
@@ -48,7 +46,6 @@ export function AppShell() {
   const actions = useMemo<ShellActions>(
     () => ({
       openLabels: () => setLabelsOpen(true),
-      openSettings: () => setSettingsOpen(true),
       openNewTicket: (mode, preset) => setNewTicket({ mode, preset }),
       openResolution: (cardId) => setResolving(cardId),
       requestAddColumn: () => setAddColumnRequest((n) => n + 1),
@@ -87,7 +84,6 @@ export function AppShell() {
       </div>
       <Suspense fallback={null}>
         {labelsOpen && <LabelsManager onClose={() => setLabelsOpen(false)} />}
-        {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
         {resolving !== null && <ResolveDialog cardId={resolving} mode="edit" onClose={() => setResolving(null)} />}
         {newTicket &&
           (newTicket.mode === 'many' ? (

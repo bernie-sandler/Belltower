@@ -1,6 +1,7 @@
 // Human-readable lines for activity entries. `data` shapes are documented in shared/src/types.ts;
 // names are copied into each entry, so history reads correctly after renames and deletes.
 // Everything is read defensively: unknown or future shapes fall back to a generic line.
+// Who did it is a separate line (activityActor), so every event type gets it without its own wording.
 
 import { PRIORITY_LABELS, SEVERITY_LABELS, type ActivityEntry, type Priority, type Severity } from '@tt/shared';
 import { formatClock, formatDateTime, formatLocalDate } from '../../lib/time';
@@ -49,6 +50,27 @@ function list(items: string[]): string {
 function humanize(type: string): string {
   const s = type.replace(/_/g, ' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Who did it, shown beside the entry: "Alice", "via API token “Kuma” (Alice)", and for a new card
+ * how it came in: "submit page (Sam)", "card import", "recurring", "Alice via Add ticket". Null
+ * when nobody is known: entries from before 1.5, and startup or timer steps.
+ */
+export function activityActor(entry: ActivityEntry): string | null {
+  const person = entry.userId !== null ? str(entry.userName) : null;
+  const token = entry.tokenId !== null ? `API token “${str(entry.tokenName) ?? '…'}”${person ? ` (${person})` : ''}` : null;
+  // How a card arrived. A token's own name is already in `token`; a recurring run says so only
+  // when no person started it ("Create now" is a person's).
+  let how: string | null = null;
+  if (entry.type === 'created') {
+    const via = str(entry.data?.via)?.trim() || null;
+    if (via) how = token && via.startsWith('API token') ? null : via;
+    else if (entry.data?.source === 'recurring' && !person && !token) how = 'recurring';
+  }
+  if (token) return how ? `via ${token}, ${how}` : `via ${token}`;
+  if (person) return how ? `${person} via ${how}` : person;
+  return how;
 }
 
 export function activityText(entry: ActivityEntry): string {
@@ -179,6 +201,12 @@ export function activityText(entry: ActivityEntry): string {
       return 'Restored from Trash';
     case 'recurrence_skipped':
       return 'Recurring run skipped: this card was still open';
+    case 'worklog_retracted':
+    case 'worklog_restored': {
+      const verb = entry.type === 'worklog_retracted' ? 'Retracted' : 'Restored';
+      const text = str(d.text);
+      return text ? `${verb} the work-log note ${quoted(text)}` : `${verb} a work-log note`;
+    }
     case 'worklog':
       return 'Logged work';
     default:

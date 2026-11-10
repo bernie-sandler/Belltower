@@ -1,15 +1,18 @@
 // Manual work-log entries ("Swapped SATA power cable to drive 3"). They live in the append-only
 // activity table: an edit first copies the previous body and time into activity_revisions, so the
 // original text and every edit time are kept. Entries are never deleted; a wrong one is retracted
-// (kept and shown struck through, but left out of the calendar and search).
+// (kept and shown struck through, but left out of the calendar and search). Only the person who
+// wrote an entry, or an admin, may edit or retract it; entries from before 1.5 have no author, so
+// only admins can change those.
 
 import type { ActivityEntry, ActivityRevision } from '@tt/shared';
 import { stmt } from '../db/connection';
-import { badRequest, conflict, notFound } from '../errors';
-import { toActivityEntry, type ActivityRow } from './activity';
+import { AppError, badRequest, conflict, notFound } from '../errors';
+import { ACTIVITY_SELECT, recordEvent, toActivityEntry, type ActivityRow } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorTokenId, actorUserId, nowIso, tx, type Ctx } from './context';
 import { reindexCard } from './search';
+import { actorIsAdmin } from './users';
 
 function assertNotFuture(ctx: Ctx, iso: string): void {
   if (Date.parse(iso) > ctx.clock.now().getTime() + FUTURE_SLACK_MS) {
@@ -17,14 +20,29 @@ function assertNotFuture(ctx: Ctx, iso: string): void {
   }
 }
 
+/** The start of an entry's text, for the history line about it. */
+function excerpt(body: string): string {
+  const t = body.replace(/\s+/g, ' ').trim();
+  return t.length > 80 ? `${t.slice(0, 79)}…` : t;
+}
+
 export function getActivityEntry(ctx: Ctx, id: number): ActivityEntry {
-  const row = stmt(
-    ctx.db,
-    `SELECT a.*, (SELECT count(*) FROM activity_revisions r WHERE r.activity_id = a.id) AS revision_count
-       FROM activity a WHERE a.id = ?`,
-  ).get(id) as ActivityRow | undefined;
+  const row = stmt(ctx.db, `${ACTIVITY_SELECT} WHERE a.id = ?`).get(id) as ActivityRow | undefined;
   if (!row) throw notFound('Log entry not found');
   return toActivityEntry(row);
+}
+
+/**
+ * Whether the acting person may edit or retract an entry written by `authorId`: its author or an
+ * admin. Entries without an author (from before 1.5) are admin-only. The system (no actor:
+ * startup, timers, tests) may.
+ */
+export function mayChangeWorklog(ctx: Ctx, authorId: number | null): boolean {
+  const a = ctx.actor;
+  if (!a || a.kind === 'system') return true;
+  if (actorIsAdmin(ctx)) return true;
+  const me = actorUserId(ctx);
+  return me !== null && authorId === me;
 }
 
 export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; occurredAt?: string }): ActivityEntry {
@@ -54,6 +72,15 @@ export function updateWorklog(
     const row = stmt(ctx.db, 'SELECT * FROM activity WHERE id = ?').get(id) as ActivityRow | undefined;
     if (!row) throw notFound('Log entry not found');
     if (row.kind !== 'worklog') throw conflict('not_worklog', 'Only work-log entries can be edited');
+    if (!mayChangeWorklog(ctx, row.user_id)) {
+      throw new AppError(
+        403,
+        'forbidden',
+        row.user_id === null
+          ? 'Only an admin can change entries from before people were added'
+          : 'Only the person who wrote this entry, or an admin, can change it',
+      );
+    }
     if (getCardRow(ctx, row.card_id).deleted_at) {
       throw conflict('card_deleted', 'This card is in the Trash; restore it before editing');
     }
@@ -77,6 +104,8 @@ export function updateWorklog(
     }
     if (patch.retracted !== undefined && patch.retracted !== (row.retracted_at !== null)) {
       stmt(ctx.db, 'UPDATE activity SET retracted_at = ? WHERE id = ?').run(patch.retracted ? now : null, id);
+      // Retracting doesn't change the entry's author, so the history records who did it.
+      recordEvent(ctx, row.card_id, patch.retracted ? 'worklog_retracted' : 'worklog_restored', { entryId: id, text: excerpt(body) });
     }
     touchCard(ctx, row.card_id);
     reindexCard(ctx, row.card_id);
@@ -89,7 +118,24 @@ export function listRevisions(ctx: Ctx, id: number): ActivityRevision[] {
   getActivityEntry(ctx, id);
   const rows = stmt(
     ctx.db,
-    'SELECT * FROM activity_revisions WHERE activity_id = ? ORDER BY revised_at, id',
-  ).all(id) as { id: number; body_md: string; occurred_at: string; revised_at: string; user_id: number | null }[];
-  return rows.map((r) => ({ id: r.id, bodyMd: r.body_md, occurredAt: r.occurred_at, revisedAt: r.revised_at, userId: r.user_id ?? null }));
+    `SELECT r.*, u.display_name AS user_name, u.username AS user_username FROM activity_revisions r LEFT JOIN users u ON u.id = r.user_id
+      WHERE r.activity_id = ? ORDER BY r.revised_at, r.id`,
+  ).all(id) as {
+    id: number;
+    body_md: string;
+    occurred_at: string;
+    revised_at: string;
+    user_id: number | null;
+    user_name: string | null;
+    user_username: string | null;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    bodyMd: r.body_md,
+    occurredAt: r.occurred_at,
+    revisedAt: r.revised_at,
+    userId: r.user_id ?? null,
+    userName: r.user_name ?? null,
+    userUsername: r.user_username ?? null,
+  }));
 }

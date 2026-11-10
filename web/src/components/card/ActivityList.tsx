@@ -1,5 +1,6 @@
 // The card's history (newest first by effective time) plus the work log: a "Log work" composer
-// with quick backdating, and per-entry edit (old versions kept and viewable) and retract.
+// with quick backdating, and per-entry edit (old versions kept and viewable) and retract. Each
+// entry says who did it; only a work-log entry's author or an admin can edit or retract it.
 
 import type { ActivityEntry } from '@tt/shared';
 import { History, NotebookPen, Pencil, RotateCcw, Undo2 } from 'lucide-react';
@@ -7,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCardActivity } from '../../api/cards';
 import { useRevisions, useWorklogActions } from '../../api/cardParts';
 import { errorMessage } from '../../api/errors';
+import { useMe } from '../../api/me';
 import { cls } from '../../lib/cls';
 import { clearDraft, loadDraft, saveDraft } from '../../lib/drafts';
 import { formatDateTime, fromLocalInput, todayLocal, toLocalInput, useNow } from '../../lib/time';
@@ -14,7 +16,7 @@ import { toast } from '../../lib/toast';
 import { AutoGrowTextarea } from '../common/AutoGrowTextarea';
 import { Markdown } from '../common/Markdown';
 import { Spinner } from '../common/Status';
-import { activityText } from './activityText';
+import { activityActor, activityText } from './activityText';
 
 type Filter = 'all' | 'worklog';
 
@@ -29,6 +31,7 @@ export function ActivityList({
   composeRequest: number;
 }) {
   const { data, error, isPending, refetch } = useCardActivity(cardId);
+  const { data: me } = useMe();
   const now = useNow();
   const [filter, setFilter] = useState<Filter>('all');
   const entries = (data ?? []).filter((e) => filter === 'all' || e.kind === 'worklog');
@@ -78,11 +81,18 @@ export function ActivityList({
         <ol className="activity-list">
           {entries.map((entry) =>
             entry.kind === 'worklog' ? (
-              <WorklogEntry key={entry.id} entry={entry} cardId={cardId} now={now} readOnly={readOnly} />
+              <WorklogEntry
+                key={entry.id}
+                entry={entry}
+                cardId={cardId}
+                now={now}
+                readOnly={readOnly || !mayChangeWorklog(entry, me)}
+              />
             ) : (
               <li key={entry.id} className="activity-item">
                 <div className="activity-line">
                   <span className="activity-text">{activityText(entry)}</span>
+                  <ActivityBy entry={entry} />
                   <time className="activity-time" dateTime={entry.occurredAt}>
                     {formatDateTime(entry.occurredAt, now)}
                   </time>
@@ -94,6 +104,23 @@ export function ActivityList({
       )}
     </section>
   );
+}
+
+/** Its author or an admin (entries without an author are admin-only); unknown until /api/me loads. */
+function mayChangeWorklog(entry: ActivityEntry, me: { id: number; role: string } | undefined): boolean {
+  if (!me) return false;
+  return me.role === 'admin' || (entry.userId !== null && entry.userId === me.id);
+}
+
+/** Who did it, beside the time ("Alice", "via API token “Kuma” (Alice)", "submit page (Sam)"). */
+function ActivityBy({ entry }: { entry: ActivityEntry }) {
+  const by = activityActor(entry);
+  // Display names aren't unique; the username tells two Alexes apart.
+  return by ? (
+    <span className="activity-by" title={entry.userUsername ? `@${entry.userUsername}` : undefined}>
+      {by}
+    </span>
+  ) : null;
 }
 
 // ---- composer ----
@@ -287,6 +314,7 @@ function WorklogEntry({
             </button>
           )}
         </span>
+        <ActivityBy entry={entry} />
         <time className="activity-time" dateTime={entry.occurredAt} title={entry.createdAt !== entry.occurredAt ? `Written ${formatDateTime(entry.createdAt, now)}` : undefined}>
           {formatDateTime(entry.occurredAt, now)}
         </time>
@@ -371,6 +399,12 @@ function RevisionList({ activityId, now }: { activityId: number; now: number }) 
           <p className="muted small">
             {i === 0 ? 'Original' : `Version ${i + 1}`} · for {formatDateTime(r.occurredAt, now)} · replaced{' '}
             {formatDateTime(r.revisedAt, now)}
+            {r.userName && (
+              <>
+                {' by '}
+                <span title={r.userUsername ? `@${r.userUsername}` : undefined}>{r.userName}</span>
+              </>
+            )}
           </p>
           <Markdown text={r.bodyMd} className="activity-body" />
         </li>

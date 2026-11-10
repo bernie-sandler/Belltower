@@ -140,6 +140,8 @@ export const ACTIVITY_EVENT_TYPES = [
   'restored',
   'deleted',
   'undeleted',
+  'worklog_retracted',
+  'worklog_restored',
   'completion_changed',
   'recurrence_skipped',
   'kind_changed',

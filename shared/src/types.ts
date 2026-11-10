@@ -271,6 +271,9 @@ export interface ActivityRevision {
   revisedAt: IsoTimestamp;
   /** Who replaced it (null before 1.5, or when no person did). */
   userId: number | null;
+  /** That person's display name and username, for showing who made the edit. */
+  userName?: string | null;
+  userUsername?: string | null;
 }
 
 export interface BoardResponse {
@@ -329,6 +332,7 @@ export interface LabelRef {
  * - assigned:            { from: userId|null, to: userId|null, fromName: string|null, toName: string|null }
  *                        (names as they were then; `to` equal to the entry's userId means they took it)
  * - worklog:             {} (the text is bodyMd; occurredAt may be backdated)
+ * - worklog_retracted/worklog_restored: { entryId, text } (who retracted or restored a work-log entry)
  */
 export interface ActivityEntry {
   id: number;
@@ -349,6 +353,14 @@ export interface ActivityEntry {
    */
   userId: number | null;
   tokenId: number | null;
+  /**
+   * Display names for `userId` and `tokenId`, filled in by the server so everyone can read who did
+   * what without listing people or tokens. Null when there is no person or token. Display names
+   * aren't unique, so `userUsername` (which is) comes along too.
+   */
+  userName?: string | null;
+  userUsername?: string | null;
+  tokenName?: string | null;
 }
 
 // ---- Phase 3: search, calendar, recurring templates ----

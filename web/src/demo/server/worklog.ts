@@ -1,11 +1,12 @@
 // Mirrors server/src/services/worklog.ts: work-log entries are never deleted; an edit keeps the
-// previous version, and a wrong entry is retracted.
+// previous version, and a wrong entry is retracted. Only the author or an admin may change one.
 
 import type { ActivityEntry, ActivityRevision } from '@tt/shared';
-import { toActivityEntry } from './activity';
+import { recordEvent, toActivityEntry, userNamesOf } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorId, nextId, nowIso, type Ctx } from './db';
-import { badRequest, conflict, notFound } from './errors';
+import { DemoError, badRequest, conflict, notFound } from './errors';
+import { actorIsAdmin } from './users';
 
 function assertNotFuture(ctx: Ctx, iso: string): void {
   if (Date.parse(iso) > ctx.now().getTime() + FUTURE_SLACK_MS) {
@@ -13,10 +14,23 @@ function assertNotFuture(ctx: Ctx, iso: string): void {
   }
 }
 
+function excerpt(body: string): string {
+  const t = body.replace(/\s+/g, ' ').trim();
+  return t.length > 80 ? `${t.slice(0, 79)}…` : t;
+}
+
 export function getActivityEntry(ctx: Ctx, id: number): ActivityEntry {
   const row = ctx.s.activity.find((a) => a.id === id);
   if (!row) throw notFound('Log entry not found');
   return toActivityEntry(ctx, row);
+}
+
+/** The author or an admin; entries without an author are admin-only. No actor (the seed) may. */
+export function mayChangeWorklog(ctx: Ctx, authorId: number | null): boolean {
+  if (ctx.userId === undefined) return true;
+  if (actorIsAdmin(ctx)) return true;
+  const me = actorId(ctx);
+  return me !== null && authorId === me;
 }
 
 export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; occurredAt?: string }): ActivityEntry {
@@ -50,6 +64,15 @@ export function updateWorklog(
   const row = ctx.s.activity.find((a) => a.id === id);
   if (!row) throw notFound('Log entry not found');
   if (row.kind !== 'worklog') throw conflict('not_worklog', 'Only work-log entries can be edited');
+  if (!mayChangeWorklog(ctx, row.userId)) {
+    throw new DemoError(
+      403,
+      'forbidden',
+      row.userId === null
+        ? 'Only an admin can change entries from before people were added'
+        : 'Only the person who wrote this entry, or an admin, can change it',
+    );
+  }
   if (getCardRow(ctx, row.cardId).deletedAt) {
     throw conflict('card_deleted', 'This card is in the Trash; restore it before editing');
   }
@@ -72,6 +95,7 @@ export function updateWorklog(
   }
   if (patch.retracted !== undefined && patch.retracted !== (row.retractedAt !== null)) {
     row.retractedAt = patch.retracted ? now : null;
+    recordEvent(ctx, row.cardId, patch.retracted ? 'worklog_retracted' : 'worklog_restored', { entryId: id, text: excerpt(body) });
   }
   touchCard(ctx, row.cardId);
   return getActivityEntry(ctx, id);
@@ -83,5 +107,12 @@ export function listRevisions(ctx: Ctx, id: number): ActivityRevision[] {
   return ctx.s.revisions
     .filter((r) => r.activityId === id)
     .sort((a, b) => a.revisedAt.localeCompare(b.revisedAt) || a.id - b.id)
-    .map((r) => ({ id: r.id, bodyMd: r.bodyMd, occurredAt: r.occurredAt, revisedAt: r.revisedAt, userId: r.userId }));
+    .map((r) => ({
+      id: r.id,
+      bodyMd: r.bodyMd,
+      occurredAt: r.occurredAt,
+      revisedAt: r.revisedAt,
+      userId: r.userId,
+      ...userNamesOf(ctx, r.userId),
+    }));
 }
