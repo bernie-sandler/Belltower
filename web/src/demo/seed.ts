@@ -200,6 +200,8 @@ interface SampleCard {
   relatedTo?: { ref: string; at: When }[];
   done?: { at: When; reason: string; note?: string };
   archived?: When;
+  /** Who has it (a seeded username); the owner is the visitor, so theirs show under Mine. */
+  assignee?: 'admin' | 'alex' | 'jordan';
 }
 
 const SAMPLE_CARDS: SampleCard[] = [
@@ -242,6 +244,7 @@ const SAMPLE_CARDS: SampleCard[] = [
     checklists: [
       { title: 'Plan', items: ['Pick a storage provider', 'Run a first backup with restic', 'Schedule it nightly', 'Practice restoring one container'] },
     ],
+    assignee: 'alex',
   },
   {
     ref: 'ups-order',
@@ -263,6 +266,7 @@ const SAMPLE_CARDS: SampleCard[] = [
     labels: ['Network'],
     priority: 'low',
     severity: 'trivial',
+    assignee: 'jordan',
   },
 
   // ---- In Progress ----
@@ -274,6 +278,7 @@ const SAMPLE_CARDS: SampleCard[] = [
     description: 'Moving to the new release with a safety net: back up first, test on a second container, then roll it out.',
     column: 'In Progress',
     labels: ['Plex'],
+    assignee: 'admin',
   },
   {
     ref: 'plex-backup',
@@ -294,6 +299,7 @@ const SAMPLE_CARDS: SampleCard[] = [
     labels: ['Plex'],
     priority: 'medium',
     due: 4,
+    assignee: 'admin',
     checklists: [
       {
         title: 'Test plan',
@@ -321,6 +327,7 @@ const SAMPLE_CARDS: SampleCard[] = [
     ref: 'disk3',
     created: [7, '10:05'],
     title: 'Disk 3 reallocated sectors climbing',
+    assignee: 'admin',
     description:
       'Unraid flagged **reallocated sectors** on disk 3 after the last parity check, and the count keeps going up.\n\n' +
       'The data is safe for now: parity is valid and the disk is still in the array. The goal is to replace it ' +
@@ -585,6 +592,7 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
         dueTime: c.dueTime ?? null,
         kind: c.kind ?? 'ticket',
         parentId: c.partOf ? ids.get(c.partOf)! : null,
+        assigneeId: c.assignee ? s.users.find((u) => u.username === c.assignee)!.id : null,
         checklists: c.checklists?.map((l) => ({ title: l.title, items: l.items.map((i) => (typeof i === 'string' ? i : i.text)) })),
       });
       ids.set(c.ref, card.id);

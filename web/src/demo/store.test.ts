@@ -303,7 +303,13 @@ describe('people', () => {
     expect(s.activity.filter((a) => a.type === 'worklog').every((a) => a.userId === owner)).toBe(true);
     const submitted = s.cards.find((c) => c.sourceRef === 'submit')!;
     expect(s.activity.find((a) => a.cardId === submitted.id && a.type === 'created')!.userId).toBeNull();
-    expect(s.cards.every((c) => c.assigneeId === null)).toBe(true);
+    // A few cards are assigned: three to the visitor (so Mine isn't empty), one each to the others.
+    const byUser = (name: string) => s.cards.filter((c) => c.assigneeId === s.users.find((u) => u.username === name)!.id).map((c) => c.title);
+    expect(byUser('admin').sort()).toEqual(['Disk 3 reallocated sectors climbing', 'Test HDR playback on the new version', 'Upgrade Plex']);
+    expect(byUser('alex')).toEqual(['Set up off-site backups for appdata']);
+    expect(byUser('jordan')).toEqual(['Label the patch panel']);
+    const patch = s.cards.find((c) => c.title === 'Label the patch panel')!;
+    expect(s.activity.filter((a) => a.cardId === patch.id && a.type === 'assigned').map((a) => [a.data.toName, a.userId])).toEqual([['Jordan Lee', owner]]);
   });
 
   it('applies the server’s rules to people, and refuses admin routes to members', () => {
