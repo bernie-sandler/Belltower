@@ -6,6 +6,7 @@ import { errorMessage, retryAfterSec } from '../../api/errors';
 import { qk } from '../../api/keys';
 import { AuthLayout } from './AuthLayout';
 import { LockoutMessage, useLockout } from './lockout';
+import { SsoButton, SsoError, useSsoError } from './SsoLogin';
 
 /** The last username signed in with on this device (only when "Remember this device" was on). */
 const LAST_USERNAME_KEY = 'tt:last-username';
@@ -36,6 +37,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const ssoError = useSsoError();
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -67,6 +69,8 @@ export function LoginPage() {
 
   return (
     <AuthLayout title="Log in">
+      <SsoError message={ssoError} />
+      <SsoButton />
       <form className="auth-form" onSubmit={onSubmit} noValidate>
         <label className="field">
           <span className="field-label">Username</span>

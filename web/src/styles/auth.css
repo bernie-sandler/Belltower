@@ -71,6 +71,28 @@
   margin-top: 4px;
 }
 
+/* Single sign-on: the provider's button above the password form. */
+.auth-sso {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-sso-or {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auth-sso-or::before,
+.auth-sso-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
 .code-block {
   margin: 0;
   padding: 8px 12px;
