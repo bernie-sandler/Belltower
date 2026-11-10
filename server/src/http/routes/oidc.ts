@@ -59,8 +59,9 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   const appHost = (appUrl: string) => new URL(appUrl).host;
 
-  function setFlowCookie(req: FastifyRequest, reply: FastifyReply, flowId: string): void {
-    reply.setCookie(FLOW_COOKIE, flowId, {
+  /** The sealed flow (state, nonce, PKCE verifier…), encrypted with a key that only this process has. */
+  function setFlowCookie(req: FastifyRequest, reply: FastifyReply, sealed: string): void {
+    reply.setCookie(FLOW_COOKIE, sealed, {
       path: FLOW_COOKIE_PATH,
       httpOnly: true,
       sameSite: 'lax',
@@ -90,8 +91,8 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
       return reply.redirect(`${r.appUrl}/api/auth/oidc/start?hop=1`);
     }
     try {
-      const { flowId, url } = await runtime.begin(r.settings, { mode: 'login', userId: null, redirectUri: r.redirectUri });
-      setFlowCookie(req, reply, flowId);
+      const { cookie, url } = await runtime.begin(r.settings, { mode: 'login', userId: null, redirectUri: r.redirectUri });
+      setFlowCookie(req, reply, cookie);
       return reply.redirect(url.href);
     } catch (err) {
       req.log.warn(`Single sign-on couldn't start: ${describeOidcError(err, r.settings.issuer)}`);
@@ -102,10 +103,10 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
   /** Where the provider sends people back. Every failure lands on the login (or Account) page. */
   app.get('/api/auth/oidc/callback', async (req, reply) => {
     const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    const flow = runtime.takeFlow(req.cookies[FLOW_COOKIE], new URLSearchParams(query).get('state'));
+    const flow = runtime.openFlow(req.cookies[FLOW_COOKIE], new URLSearchParams(query).get('state'));
     clearFlowCookie(req, reply);
     if (!flow) {
-      req.log.warn('Single sign-on callback without a matching sign-in (flow cookie missing, expired or used, or the state differs)');
+      req.log.warn('Single sign-on callback without a matching sign-in (flow cookie missing, expired, from before a restart, or the state differs)');
       return failed(reply, 'state');
     }
     const r = ready(req.ctx);
@@ -120,26 +121,33 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
     }
     const s = getOidcSettings(req.ctx);
 
-    if (flow.mode === 'link') {
-      // Still the same person signed in on this browser?
-      const session = resolveSession(req, reply, deps);
-      if (!session || session.user.id !== flow.userId) return failed(reply, 'link_session', 'link');
-      // The required group applies to linking too.
-      if (!hasRequiredGroup(s, identity.claims)) return failed(reply, 'group', 'link');
-      if (linkIdentity(req.ctx, session.user.id, identity) === 'taken') return failed(reply, 'taken', 'link');
-      req.log.info(`Single sign-on linked to "${session.user.username}"`);
-      return reply.redirect('/account?sso=linked');
-    }
+    // Anything unexpected from here on (a username that can't be made, a claim the database
+    // refuses) still ends on the login or Account page, never as a JSON error in the browser.
+    try {
+      if (flow.mode === 'link') {
+        // Still the same person signed in on this browser?
+        const session = resolveSession(req, reply, deps);
+        if (!session || session.user.id !== flow.userId) return failed(reply, 'link_session', 'link');
+        // The required group applies to linking too.
+        if (!hasRequiredGroup(s, identity.claims)) return failed(reply, 'group', 'link');
+        if (linkIdentity(req.ctx, session.user.id, identity) === 'taken') return failed(reply, 'taken', 'link');
+        req.log.info(`Single sign-on linked to "${session.user.username}"`);
+        return reply.redirect('/account?sso=linked');
+      }
 
-    const outcome = resolveSignIn(req.ctx, s, identity);
-    if (!outcome.ok) {
-      req.log.warn(`Single sign-on refused (${outcome.code}) for subject ${identity.subject}`);
-      return failed(reply, outcome.code);
+      const outcome = resolveSignIn(req.ctx, s, identity);
+      if (!outcome.ok) {
+        req.log.warn(`Single sign-on refused (${outcome.code}) for subject ${identity.subject}`);
+        return failed(reply, outcome.code);
+      }
+      startSession(req, reply, deps, outcome.user.id, true);
+      const how = { linked: '', email: ' (linked by email)', created: ' (new account)' }[outcome.how];
+      req.log.info(`"${outcome.user.username}" signed in with single sign-on${how}`);
+      return reply.redirect('/');
+    } catch (err) {
+      req.log.error({ err }, `Single sign-on couldn't finish for subject ${identity.subject}`);
+      return failed(reply, 'idp', flow.mode);
     }
-    startSession(req, reply, deps, outcome.user.id, true);
-    const how = { linked: '', email: ' (linked by email)', created: ' (new account)' }[outcome.how];
-    req.log.info(`"${outcome.user.username}" signed in with single sign-on${how}`);
-    return reply.redirect('/');
   });
 
   /** Starts linking the signed-in person; the page then goes to the returned address. */
@@ -153,8 +161,8 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
       throw conflict('already_linked', 'Your account is already linked; unlink it first');
     }
     try {
-      const { flowId, url } = await runtime.begin(r.settings, { mode: 'link', userId: req.user!.id, redirectUri: r.redirectUri });
-      setFlowCookie(req, reply, flowId);
+      const { cookie, url } = await runtime.begin(r.settings, { mode: 'link', userId: req.user!.id, redirectUri: r.redirectUri });
+      setFlowCookie(req, reply, cookie);
       return { url: url.href };
     } catch (err) {
       throw new AppError(502, 'sso_unreachable', describeOidcError(err, r.settings.issuer));

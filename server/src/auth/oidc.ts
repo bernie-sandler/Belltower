@@ -1,8 +1,9 @@
-// The network side of single sign-on, with openid-client: discovery (cached), the sign-ins waiting
-// for the provider to send someone back, and the code exchange. Authorization code flow with PKCE
-// (S256), state and nonce, response_mode=query. One instance per app (see routes/oidc.ts).
+// The network side of single sign-on, with openid-client: discovery (cached), the sealed flow
+// cookie that carries a sign-in through the provider, and the code exchange. Authorization code
+// flow with PKCE (S256), state and nonce, response_mode=query. One instance per app (see
+// routes/oidc.ts).
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import * as client from 'openid-client';
 import type { OidcPreset, SsoErrorCode } from '@tt/shared';
 import { safeEqual } from '../lib/safeEqual';
@@ -17,6 +18,7 @@ export interface OidcClientSettings {
   allowHttpIssuer: boolean;
 }
 
+/** A sign-in on its way through the provider. Sealed into the flow cookie; the server keeps nothing. */
 export interface PendingFlow {
   /** Signing in, or linking the signed-in person (`userId`). */
   mode: 'login' | 'link';
@@ -30,12 +32,12 @@ export interface PendingFlow {
 
 /** How long someone has to get through the provider's login page. Also the flow cookie's lifetime. */
 export const FLOW_TTL_MS = 10 * 60 * 1000;
-/** Started sign-ins kept at once; past this the oldest are dropped (a flood can't grow memory). */
-export const MAX_FLOWS = 500;
 /** A discovered provider is trusted this long before discovery runs again. */
 const DISCOVERY_TTL_MS = 60 * 60 * 1000;
 /** Seconds to wait for the provider on each request. */
 const TIMEOUT_SEC = 10;
+/** Binds sealed cookies to their purpose and format version. */
+const FLOW_AAD = Buffer.from('tt_oidc:v1');
 
 /** The slash at the end of the issuer, flipped: discovery's issuer check compares it exactly. */
 function flipSlash(issuer: string): string {
@@ -52,8 +54,38 @@ function slashMightHelp(err: unknown): boolean {
   return code === 'OAUTH_JSON_ATTRIBUTE_COMPARISON_FAILED' || code === 'OAUTH_RESPONSE_IS_NOT_CONFORM' || code === 'OAUTH_RESPONSE_IS_NOT_JSON';
 }
 
+/** The JWS `alg` a token was refused for, found in openid-client's chain of causes. */
+function refusedAlg(err: unknown): string | null {
+  let e: unknown = err;
+  for (let depth = 0; depth < 6 && e && typeof e === 'object'; depth++) {
+    const c = (e as { cause?: unknown }).cause as { alg?: unknown; header?: { alg?: unknown } } | undefined;
+    if (typeof c?.alg === 'string') return c.alg;
+    if (typeof c?.header?.alg === 'string') return c.header.alg;
+    e = c;
+  }
+  return null;
+}
+
+/** The messages down openid-client's chain of causes, outermost first. */
+function causeMessages(err: unknown): string[] {
+  const out: string[] = [];
+  let e: unknown = err;
+  for (let depth = 0; depth < 6 && e instanceof Error; depth++) {
+    if (e.message && !out.includes(e.message)) out.push(e.message);
+    e = e.cause;
+  }
+  return out;
+}
+
 /** A sentence for an admin about why discovery (or another provider request) failed. */
 export function describeOidcError(err: unknown, issuer: string): string {
+  if (refusedAlg(err)?.startsWith('HS')) {
+    return 'The provider signs its ID tokens with the client secret (HS256), which Belltower doesn’t accept. In Authentik, choose a signing key for the provider.';
+  }
+  const messages = causeMessages(err);
+  if (messages.some((m) => /signature verification failed/i.test(m))) {
+    return 'The ID token’s signature doesn’t match the provider’s published keys, so it was refused. If the provider just changed its signing key, try again.';
+  }
   const code = errorCode(err);
   const cause = (err as { cause?: unknown })?.cause as Record<string, unknown> | undefined;
   switch (code) {
@@ -75,8 +107,8 @@ export function describeOidcError(err: unknown, issuer: string): string {
       return `No answer from the provider within ${TIMEOUT_SEC} seconds.`;
     case 'OAUTH_JWT_TIMESTAMP_CHECK_FAILED':
       return 'The provider’s token is outside its valid time. Check that this server and the provider keep the right time (NTP).';
-    case 'OAUTH_UNSUPPORTED_OPERATION':
-      return 'The provider signs its ID tokens in a way Belltower doesn’t accept (HS256 with the client secret). In Authentik, choose a signing key for the provider.';
+    case 'OAUTH_KEY_SELECTION_FAILED':
+      return 'None of the provider’s published keys fits the ID token’s signature, so it was refused. If the provider just changed its signing key, try again.';
   }
   if (err instanceof TypeError) {
     const reason = (err.cause as { code?: unknown; message?: unknown } | undefined) ?? {};
@@ -86,7 +118,8 @@ export function describeOidcError(err: unknown, issuer: string): string {
     }
     return `Couldn’t reach ${hostOf(issuer)} (${detail}).`;
   }
-  return err instanceof Error ? err.message : 'Something went wrong talking to the provider.';
+  // openid-client's outer messages are generic ("invalid response encountered"): add the cause.
+  return messages.length ? messages.slice(0, 2).join(': ') : 'Something went wrong talking to the provider.';
 }
 
 function hostOf(url: string): string {
@@ -108,15 +141,34 @@ export function ssoErrorCode(err: unknown): SsoErrorCode {
   return 'idp';
 }
 
+/** Whether something read back from a cookie has the shape of a flow we sealed. */
+function isFlow(v: unknown): v is PendingFlow {
+  const f = v as Partial<PendingFlow> | null;
+  return (
+    !!f &&
+    (f.mode === 'login' || f.mode === 'link') &&
+    (f.userId === null || Number.isInteger(f.userId)) &&
+    [f.state, f.nonce, f.codeVerifier, f.redirectUri].every((s) => typeof s === 'string' && s.length > 0) &&
+    typeof f.createdAt === 'number'
+  );
+}
+
 export class OidcRuntime {
   private readonly cache = new Map<string, { config: client.Configuration; at: number }>();
-  private readonly flows = new Map<string, PendingFlow>();
+  /** Discoveries under way, so a burst of sign-ins on a cold cache makes one request. */
+  private readonly inflight = new Map<string, Promise<client.Configuration>>();
+  /** Bumped by clearCache(), so a discovery that started before a save doesn't refill the cache. */
+  private generation = 0;
+  /** Seals flow cookies. Made at startup and never stored: a restart only cancels sign-ins under way. */
+  private readonly flowKey = randomBytes(32);
 
   constructor(private readonly now: () => number = Date.now) {}
 
   /** Forget every discovered provider (the settings changed). */
   clearCache(): void {
     this.cache.clear();
+    this.inflight.clear();
+    this.generation++;
   }
 
   /**
@@ -152,6 +204,10 @@ export class OidcRuntime {
       config.timeout = TIMEOUT_SEC;
       if (s.allowHttpIssuer) client.allowInsecureRequests(config);
     }
+    // openid-client trusts an ID token from the token endpoint without checking its signature
+    // unless told otherwise (TLS is meant to vouch for it). Always check it against the provider's
+    // published keys: a plain-HTTP issuer has no TLS, and symmetric (HS*) tokens are refused.
+    client.enableNonRepudiationChecks(config);
     return config;
   }
 
@@ -160,16 +216,26 @@ export class OidcRuntime {
     const key = [s.issuer, s.clientId, createHash('sha256').update(s.clientSecret).digest('hex'), s.allowHttpIssuer ? 'http' : 'https'].join('\n');
     const hit = this.cache.get(key);
     if (hit && this.now() - hit.at < DISCOVERY_TTL_MS) return hit.config;
-    const config = await this.discover(s);
-    this.cache.set(key, { config, at: this.now() });
-    return config;
+    const pending = this.inflight.get(key);
+    if (pending) return pending;
+    const generation = this.generation;
+    const discovery = this.discover(s)
+      .then((config) => {
+        if (generation === this.generation) this.cache.set(key, { config, at: this.now() });
+        return config;
+      })
+      .finally(() => {
+        if (this.inflight.get(key) === discovery) this.inflight.delete(key);
+      });
+    this.inflight.set(key, discovery);
+    return discovery;
   }
 
-  /** Starts a sign-in: remembers the flow and returns its id (for the cookie) and the provider's address. */
+  /** Starts a sign-in: returns the sealed flow (the cookie's value) and the provider's address. */
   async begin(
     s: OidcClientSettings & { scopes: string },
     flow: { mode: PendingFlow['mode']; userId: number | null; redirectUri: string },
-  ): Promise<{ flowId: string; url: URL }> {
+  ): Promise<{ cookie: string; url: URL }> {
     const config = await this.configuration(s);
     const codeVerifier = client.randomPKCECodeVerifier();
     const state = client.randomState();
@@ -184,43 +250,48 @@ export class OidcRuntime {
       state,
       nonce,
     });
-    const flowId = randomBytes(32).toString('base64url');
-    this.remember(flowId, { ...flow, state, nonce, codeVerifier, createdAt: this.now() });
-    return { flowId, url };
+    return { cookie: this.seal({ ...flow, state, nonce, codeVerifier, createdAt: this.now() }), url };
   }
 
-  private remember(flowId: string, flow: PendingFlow): void {
-    const now = this.now();
-    for (const [id, f] of this.flows) {
-      if (now - f.createdAt >= FLOW_TTL_MS) this.flows.delete(id);
-    }
-    while (this.flows.size >= MAX_FLOWS) this.flows.delete(this.flows.keys().next().value!);
-    this.flows.set(flowId, flow);
+  /** AES-256-GCM with this instance's key: iv ‖ tag ‖ ciphertext, base64url. */
+  seal(flow: PendingFlow): string {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.flowKey, iv);
+    cipher.setAAD(FLOW_AAD);
+    const body = Buffer.concat([cipher.update(JSON.stringify(flow), 'utf8'), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64url');
   }
 
   /**
-   * The flow a callback belongs to: its cookie must name a live flow whose state matches the one
-   * the provider sent back. Each flow is used once.
+   * The flow a callback belongs to: the cookie must open with this instance's key (not forged,
+   * not from before a restart), be under 10 minutes old, and carry the state the provider sent back
+   * (compared in constant time).
    */
-  takeFlow(flowId: string | undefined, state: unknown): PendingFlow | null {
-    if (!flowId) return null;
-    const flow = this.flows.get(flowId);
-    if (!flow) return null;
-    this.flows.delete(flowId);
-    if (this.now() - flow.createdAt >= FLOW_TTL_MS) return null;
+  openFlow(cookie: string | undefined, state: unknown): PendingFlow | null {
+    if (!cookie || cookie.length > 4096) return null;
+    let flow: unknown;
+    try {
+      const raw = Buffer.from(cookie, 'base64url');
+      if (raw.length < 12 + 16 + 2) return null;
+      const decipher = createDecipheriv('aes-256-gcm', this.flowKey, raw.subarray(0, 12));
+      decipher.setAAD(FLOW_AAD);
+      decipher.setAuthTag(raw.subarray(12, 28));
+      flow = JSON.parse(Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8'));
+    } catch {
+      return null;
+    }
+    if (!isFlow(flow)) return null;
+    const age = this.now() - flow.createdAt;
+    if (age < 0 || age >= FLOW_TTL_MS) return null;
     if (typeof state !== 'string' || !safeEqual(state, flow.state)) return null;
     return flow;
   }
 
-  /** How many sign-ins are waiting (for tests). */
-  get pendingFlows(): number {
-    return this.flows.size;
-  }
-
   /**
    * Finishes a sign-in: exchanges the code (with the redirect URI the flow started with), checks
-   * the ID token, then merges in the userinfo claims (Authelia keeps email and groups out of the ID
-   * token). Throws openid-client's errors; ssoErrorCode() turns them into a code.
+   * the ID token (signature included), then merges in the userinfo claims (Authelia keeps email and
+   * groups out of the ID token). Throws openid-client's errors; ssoErrorCode() turns them into a
+   * code. The provider's codes work once, so a replayed callback fails there.
    */
   async complete(s: OidcClientSettings, flow: PendingFlow, query: string): Promise<OidcIdentity> {
     const config = await this.configuration(s);

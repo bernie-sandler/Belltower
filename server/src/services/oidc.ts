@@ -211,11 +211,16 @@ export function hasRequiredGroup(s: OidcSettings, claims: Record<string, unknown
   return !required || groupsOf(claims, s.groupsClaim).includes(required);
 }
 
-/** The email, only when the provider says it's verified (some send "true" as a string). */
+/** A plain address: something@something, without spaces or control characters. */
+const EMAIL_SHAPE = /^[^\s@\p{Cc}]+@[^\s@\p{Cc}]+$/u;
+
+/**
+ * The email, only when the provider marks it verified with a real boolean `true` (a string
+ * "true" doesn't count). 3–254 characters, the users table's limit.
+ */
 export function verifiedEmail(claims: Record<string, unknown>): string | null {
   const email = typeof claims.email === 'string' ? claims.email.trim() : '';
-  const verified = claims.email_verified === true || claims.email_verified === 'true';
-  return verified && email.includes('@') && email.length <= 254 && !email.includes('\u0000') ? email : null;
+  return claims.email_verified === true && email.length >= 3 && email.length <= 254 && EMAIL_SHAPE.test(email) ? email : null;
 }
 
 /** Username rules (shared/schemas Username): 2–32 of a-z 0-9 . _ - */
@@ -225,7 +230,7 @@ const USERNAME_MAX = 32;
 export function sanitizeUsername(raw: string): string {
   return raw
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/@.*$/, '')
     .replace(/[^a-z0-9._-]+/g, '-')
@@ -266,8 +271,9 @@ function findByIdentity(ctx: Ctx, id: OidcIdentity): UserRow | undefined {
  * Whose account this sign-in opens, in order: the account already linked to this identity; with
  * "link by email" on, the one active non-admin account whose email matches the verified email
  * (an admin, a tie, or an account linked elsewhere is never picked); with "create accounts" on, a
- * new member. Otherwise, or for a deactivated account, the sign-in is refused. The required group is
- * checked first, every time.
+ * new member. Otherwise, or for a deactivated account, the sign-in is refused, as is a new identity
+ * whose verified email belongs to a deactivated person (so they can't come back as "bob-2"). The
+ * required group is checked first, every time.
  */
 export function resolveSignIn(ctx: Ctx, s: OidcSettings, id: OidcIdentity): SignInOutcome {
   if (!hasRequiredGroup(s, id.claims)) return { ok: false, code: 'group' };
@@ -275,7 +281,8 @@ export function resolveSignIn(ctx: Ctx, s: OidcSettings, id: OidcIdentity): Sign
     const linked = findByIdentity(ctx, id);
     if (linked) return linked.disabled_at === null ? { ok: true, user: linked, how: 'linked' } : { ok: false, code: 'disabled' };
 
-    const email = s.linkByEmail ? verifiedEmail(id.claims) : null;
+    const verified = verifiedEmail(id.claims);
+    const email = s.linkByEmail ? verified : null;
     if (email) {
       const matches = stmt(ctx.db, 'SELECT * FROM users WHERE email = ? COLLATE NOCASE AND disabled_at IS NULL').all(email) as UserRow[];
       if (matches.length === 1 && matches[0]!.role !== 'admin' && matches[0]!.oidc_subject === null) {
@@ -287,13 +294,17 @@ export function resolveSignIn(ctx: Ctx, s: OidcSettings, id: OidcIdentity): Sign
       if (matches.length > 0) return { ok: false, code: 'link_required' };
     }
 
+    // Someone deactivated stays out, whatever new identity they come back with.
+    if (verified && stmt(ctx.db, 'SELECT 1 FROM users WHERE email = ? COLLATE NOCASE AND disabled_at IS NOT NULL').get(verified)) {
+      return { ok: false, code: 'disabled' };
+    }
     if (!s.autoCreate) return { ok: false, code: 'no_account' };
     const username = pickUsername(ctx, s, id.claims);
     const created = stmt(
       ctx.db,
       `INSERT INTO users (username, display_name, email, role, password_hash, oidc_issuer, oidc_subject, created_at)
        VALUES (?, ?, ?, 'member', NULL, ?, ?, ?)`,
-    ).run(username, displayNameOf(id.claims, username), verifiedEmail(id.claims), id.issuer, id.subject, nowIso(ctx));
+    ).run(username, displayNameOf(id.claims, username), verified, id.issuer, id.subject, nowIso(ctx));
     return { ok: true, user: getUser(ctx, Number(created.lastInsertRowid)), how: 'created' };
   });
 }

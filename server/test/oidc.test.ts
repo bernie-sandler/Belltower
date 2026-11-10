@@ -36,23 +36,32 @@ class MockIdp {
   /** Discovery answers 500 while set. */
   failDiscovery = false;
   clientSecret = CLIENT_SECRET;
+  /**
+   * How ID tokens are signed: with the published key; with another RSA key under the same kid (a
+   * forged or tampered token); or HS256 with the client secret (Authentik without a signing key).
+   */
+  signing: 'good' | 'wrong-key' | 'hs256' = 'good';
+  /** What discovery lists in id_token_signing_alg_values_supported. */
+  algs = ['RS256'];
 
   private constructor(
     private readonly server: Server,
     readonly origin: string,
     readonly issuer: string,
     private readonly key: CryptoKey,
+    private readonly otherKey: CryptoKey,
     private readonly jwk: Record<string, unknown>,
   ) {}
 
   /** `issuerPath` '/application/o/belltower/' is Authentik's shape; '' is Authelia's (just the origin). */
   static async start(issuerPath = '/application/o/belltower/'): Promise<MockIdp> {
     const { publicKey, privateKey } = await generateKeyPair('RS256');
+    const other = await generateKeyPair('RS256');
     const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
     const server = createServer();
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const idp = new MockIdp(server, origin, `${origin}${issuerPath}`, privateKey, jwk);
+    const idp = new MockIdp(server, origin, `${origin}${issuerPath}`, privateKey, other.privateKey, jwk);
     server.on('request', (req, res) => {
       idp.handle(req).then(
         ({ status, body }) => {
@@ -89,7 +98,7 @@ class MockIdp {
           response_types_supported: ['code'],
           response_modes_supported: ['query'],
           subject_types_supported: ['public'],
-          id_token_signing_alg_values_supported: ['RS256'],
+          id_token_signing_alg_values_supported: this.algs,
           code_challenge_methods_supported: ['S256'],
           token_endpoint_auth_methods_supported: ['client_secret_basic'],
         },
@@ -121,15 +130,18 @@ class MockIdp {
       return { status: 400, body: { error: 'invalid_grant', error_description: 'PKCE' } };
     }
     const now = Math.floor(Date.now() / 1000) + this.clockOffsetSec;
-    const idToken = await new SignJWT({ nonce: entry.nonce, ...entry.user.id })
-      .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+    const jwt = new SignJWT({ nonce: entry.nonce, ...entry.user.id })
+      .setProtectedHeader(this.signing === 'hs256' ? { alg: 'HS256' } : { alg: 'RS256', kid: 'k1' })
       .setIssuer(this.issuer)
       .setSubject(entry.user.sub)
       .setAudience(CLIENT_ID)
       .setIssuedAt(now)
       .setNotBefore(now)
-      .setExpirationTime(now + 60)
-      .sign(this.key);
+      .setExpirationTime(now + 60);
+    const idToken =
+      this.signing === 'hs256'
+        ? await jwt.sign(new TextEncoder().encode(this.clientSecret))
+        : await jwt.sign(this.signing === 'wrong-key' ? this.otherKey : this.key);
     const accessToken = b64url(randomBytes(16));
     this.tokens.set(accessToken, entry.user);
     return { status: 200, body: { access_token: accessToken, token_type: 'Bearer', expires_in: 60, id_token: idToken } };
@@ -430,7 +442,7 @@ describe('signing in with single sign-on', () => {
     expect(t.ctx.db.prepare('SELECT count(*) FROM users').pluck().get()).toBe(1);
   });
 
-  it('refuses a bad state, a missing flow cookie, a used flow and an expired one', async () => {
+  it('refuses a bad state, a missing, tampered or expired flow cookie, and a replay', async () => {
     const { t, admin } = await app();
     const i = await idp();
     await enableSso(t, admin, i, { autoCreate: true });
@@ -438,22 +450,79 @@ describe('signing in with single sign-on', () => {
     const a = await startLogin(t, i, alice);
     const forged = new URL(a.callback);
     forged.searchParams.set('state', 'not-the-state');
-    expect((await browser(t, forged.href, [a.flow])).headers.location).toBe('/login?sso_error=state');
-    // The flow is gone after one try, even with the right state now.
-    expect((await browser(t, a.callback, [a.flow])).headers.location).toBe('/login?sso_error=state');
+    const bad = await browser(t, forged.href, [a.flow]);
+    expect(bad.headers.location).toBe('/login?sso_error=state');
+    // The browser is told to drop the flow cookie after any callback.
+    expect(bad.cookies.find((c) => c.name === 'tt_oidc')).toMatchObject({ value: '' });
 
     const b = await startLogin(t, i, alice);
     const noCookie = await browser(t, b.callback);
     expect(noCookie.headers.location).toBe('/login?sso_error=state');
     expect(cookieOf(noCookie, 'tt_sid')).toBeNull();
 
+    const tampered = await startLogin(t, i, alice);
+    const [name, value] = tampered.flow.split('=') as [string, string];
+    const flipped = `${name}=${value.slice(0, 20)}${value[20] === 'A' ? 'B' : 'A'}${value.slice(21)}`;
+    expect((await browser(t, tampered.callback, [flipped])).headers.location).toBe('/login?sso_error=state');
+
+    // The provider's code works once, so replaying a finished callback fails there.
     const c = await startLogin(t, i, alice);
     expect((await browser(t, c.callback, [c.flow])).headers.location).toBe('/');
-    expect((await browser(t, c.callback, [c.flow])).headers.location).toBe('/login?sso_error=state'); // replayed
+    const replay = await browser(t, c.callback, [c.flow]);
+    expect(replay.headers.location).toBe('/login?sso_error=idp');
+    expect(cookieOf(replay, 'tt_sid')).toBeNull();
 
     const d = await startLogin(t, i, alice);
     t.clock.advance(11 * 60 * 1000);
     expect((await browser(t, d.callback, [d.flow])).headers.location).toBe('/login?sso_error=state');
+  });
+
+  it('keeps sign-ins in a sealed cookie: a flood of starts cancels nothing, a restart cancels what was under way', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { autoCreate: true });
+    const start = await browser(t, '/api/auth/oidc/start');
+    const sealed = start.cookies.find((c) => c.name === 'tt_oidc')!.value;
+    // Nothing readable in it: no state, nonce or PKCE verifier in the clear.
+    const state = new URL(start.headers.location as string).searchParams.get('state')!;
+    expect(sealed).not.toContain(state);
+    expect(Buffer.from(sealed, 'base64url').toString('latin1')).not.toContain(state);
+
+    const oldest = await startLogin(t, i, alice);
+    for (let n = 0; n < 600; n++) await browser(t, '/api/auth/oidc/start');
+    expect((await browser(t, oldest.callback, [oldest.flow])).headers.location).toBe('/');
+
+    // Another server process (a restart) has another key, so it can't open this one's cookies.
+    const other = await app();
+    await enableSso(other.t, other.admin, i, { autoCreate: true });
+    const pending = await startLogin(t, i, alice);
+    expect((await browser(other.t, pending.callback, [pending.flow])).headers.location).toBe('/login?sso_error=state');
+  });
+
+  it('refuses an ID token whose signature doesn’t match the provider’s keys', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { autoCreate: true });
+    i.signing = 'wrong-key';
+    expect(await ssoLogin(t, i, alice)).toEqual({ location: '/login?sso_error=idp', session: null });
+    expect(t.ctx.db.prepare('SELECT count(*) FROM users').pluck().get()).toBe(1);
+    expect(t.logLines.join('\n')).toMatch(/signature/i);
+  });
+
+  it('refuses an HS256 ID token, and the log says how to fix it', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { autoCreate: true });
+    i.signing = 'hs256';
+    // Whether or not the provider admits to HS256 in its metadata.
+    for (const algs of [['RS256'], ['HS256'], ['RS256', 'HS256']]) {
+      i.algs = algs;
+      await client(t.app, admin)('PUT', '/api/settings/oidc', settingsBody(i, { autoCreate: true, clientSecret: null })); // rediscover
+      t.logLines.length = 0;
+      expect(await ssoLogin(t, i, alice), algs.join(',')).toEqual({ location: '/login?sso_error=idp', session: null });
+      expect(t.logLines.join('\n'), algs.join(',')).toContain('HS256');
+    }
+    expect(t.ctx.db.prepare('SELECT count(*) FROM users').pluck().get()).toBe(1);
   });
 
   it('sets the flow cookie httpOnly, Lax and short-lived, only for the sign-in routes', async () => {
@@ -552,13 +621,44 @@ describe('signing in with single sign-on', () => {
     expect(i.discoveryHits).toBe(4);
   });
 
-  it('keeps a bounded number of started sign-ins', async () => {
+  it('runs one discovery for a burst of sign-ins on a cold cache', async () => {
     const { t, admin } = await app();
     const i = await idp();
     await enableSso(t, admin, i, { autoCreate: true });
-    const oldest = await startLogin(t, i, alice);
-    for (let n = 0; n < 500; n++) await browser(t, '/api/auth/oidc/start');
-    expect((await browser(t, oldest.callback, [oldest.flow])).headers.location).toBe('/login?sso_error=state');
+    const starts = await Promise.all(Array.from({ length: 8 }, () => browser(t, '/api/auth/oidc/start')));
+    for (const s of starts) expect(s.headers.location).toMatch(new RegExp(`^${i.origin}/authorize\\?`));
+    expect(i.discoveryHits).toBe(1);
+  });
+
+  it('refuses someone deactivated who comes back with a new identity and the same verified email', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { autoCreate: true });
+    const bob = await addPerson(t, admin, 'bob');
+    await client(t.app, bob.cookie)('PATCH', '/api/me', { email: 'bob@example.com' });
+    await client(t.app, admin)('PATCH', `/api/users/${bob.id}`, { disabled: true });
+    const back: IdpUser = { sub: 'new-bob', id: { preferred_username: 'bob', email: 'Bob@example.com', email_verified: true } };
+    expect(await ssoLogin(t, i, back)).toEqual({ location: '/login?sso_error=disabled', session: null });
+    // Linking by email doesn't open a way back either.
+    await client(t.app, admin)('PUT', '/api/settings/oidc', settingsBody(i, { autoCreate: true, linkByEmail: true, clientSecret: null }));
+    expect((await ssoLogin(t, i, back)).location).toBe('/login?sso_error=disabled');
+    expect(t.ctx.db.prepare("SELECT count(*) FROM users WHERE username LIKE 'bob%'").pluck().get()).toBe(1);
+  });
+
+  it('lands on the login page, not a JSON error, when finishing the sign-in fails', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { autoCreate: true });
+    // A "verified" email the users table would refuse is simply left out.
+    const odd = await ssoLogin(t, i, { sub: 'odd', id: { preferred_username: 'odd', email: '@', email_verified: true } });
+    expect((await client(t.app, odd.session!)('GET', '/api/me')).json()).toMatchObject({ username: 'odd', email: null });
+    // Anything else that goes wrong while making the account.
+    t.ctx.db.exec("CREATE TEMP TRIGGER no_new_users BEFORE INSERT ON main.users BEGIN SELECT RAISE(ABORT, 'refused'); END");
+    const { callback, flow } = await startLogin(t, i, { sub: 'new', id: { preferred_username: 'newbie' } });
+    const res = await browser(t, callback, [flow]);
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/login?sso_error=idp');
+    expect(cookieOf(res, 'tt_sid')).toBeNull();
   });
 
   it('password login stays available while single sign-on is on', async () => {
@@ -592,6 +692,8 @@ describe('linking by email', () => {
     await client(t.app, sam.cookie)('PATCH', '/api/me', { email: 'Sam@Example.com' });
     // Not verified: no link.
     expect((await ssoLogin(t, i, { sub: 'x', id: { email: 'sam@example.com', email_verified: false } })).location).toBe('/login?sso_error=no_account');
+    // Only a real boolean counts, not the string "true".
+    expect((await ssoLogin(t, i, { sub: 'y', id: { email: 'sam@example.com', email_verified: 'true' } })).location).toBe('/login?sso_error=no_account');
     const login = await ssoLogin(t, i, verified('sam@example.com'));
     expect(login.location).toBe('/');
     expect((await client(t.app, login.session!)('GET', '/api/me')).json()).toMatchObject({ id: sam.id, ssoLinked: true });
