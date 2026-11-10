@@ -48,7 +48,28 @@
   }
 
   .topnav .topnav-item {
-    padding: 4px 10px;
+    padding: 4px 8px;
+  }
+
+  /* Calendar and Recurring are in the ☰ menu on phones (shown here only while open). */
+  .topnav .topnav-item.topnav-phone-menu:not(.is-current) {
+    display: none;
+  }
+
+  /* While open, just the name, like the menu's other pages. */
+  .topnav .topnav-item.topnav-phone-menu svg {
+    display: none;
+  }
+
+  .topbar {
+    gap: 8px;
+  }
+}
+
+/* The narrowest phones: the bell mark makes way for the nav (the name is already hidden). */
+@media (max-width: 419px) {
+  .topbar-brand {
+    display: none;
   }
 }
 

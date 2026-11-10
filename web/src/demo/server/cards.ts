@@ -25,7 +25,7 @@ import {
   openBlockers,
 } from './cardParts';
 import { findColumn, getBlockedColumnId, getColumnRow, getRoleColumn, listColumns } from './columns';
-import { byPosition, nextId, nowIso, type CardRow, type ColumnRow, type Ctx } from './db';
+import { byPosition, nextId, nowIso, type CardRow, type ColumnRow, type Ctx, type UserRow } from './db';
 import { badRequest, conflict, notFound } from './errors';
 import { labelIdsOf, listLabels, resolveLabels } from './labels';
 import { localDateOf } from './lib';
@@ -66,6 +66,7 @@ export function toTile(ctx: Ctx, c: CardRow): CardTile {
     checklistFailed: items.filter((i) => i.state === 'failed').length,
     checklistUnverified: items.filter((i) => i.state === 'unverified').length,
     blockedBy: openBlockers(ctx, c.id).length,
+    assigneeId: c.assigneeId,
     version: c.version,
   };
 }
@@ -210,6 +211,7 @@ export interface CreateCardInput {
   checklists?: { title: string; items: string[] }[];
   kind?: CardKind;
   parentId?: number | null;
+  assigneeId?: number | null;
 }
 
 export interface CreateCardOptions {
@@ -218,6 +220,19 @@ export interface CreateCardOptions {
   templateId?: number | null;
   templateTitle?: string;
   via?: string;
+}
+
+/** Someone a card can be given to: an existing, active person (400 invalid_assignee / assignee_disabled). */
+function checkAssignee(ctx: Ctx, userId: number): UserRow {
+  const user = ctx.s.users.find((u) => u.id === userId);
+  if (!user) throw badRequest('invalid_assignee', 'That person doesn’t exist (anymore); reload and pick again');
+  if (user.disabledAt) throw badRequest('assignee_disabled', `${user.displayName} is deactivated and can’t be assigned cards`);
+  return user;
+}
+
+function recordAssigned(ctx: Ctx, cardId: number, from: number | null, to: UserRow | null): void {
+  const fromName = from !== null ? (ctx.s.users.find((u) => u.id === from)?.displayName ?? null) : null;
+  recordEvent(ctx, cardId, 'assigned', { from, to: to?.id ?? null, fromName, toName: to?.displayName ?? null });
 }
 
 /** The ticket number up to the counter, e.g. "{YY}{MM}{DD}-{N}" on 2026-10-24 → "261024-". */
@@ -248,6 +263,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
 
   const kind = input.kind ?? 'ticket';
   const parent = checkFamily(ctx, kind, input.parentId ?? null, null);
+  const assignee = input.assigneeId != null ? checkAssignee(ctx, input.assigneeId) : null;
   const column = input.columnId !== undefined ? targetColumn(ctx, input.columnId) : getRoleColumn(ctx, 'triage');
   const labels = resolveLabels(ctx, input.labelIds, input.labelNames);
   const now = nowIso(ctx);
@@ -284,7 +300,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     parentId: parent?.id ?? null,
     resolution: null,
     resolutionMd: '',
-    assigneeId: null,
+    assigneeId: assignee?.id ?? null,
     createdAt: now,
     updatedAt: now,
     labelIds: labels.map((l) => l.id),
@@ -320,6 +336,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     recordEvent(ctx, parent.id, 'child_added', { child: { id, ticketNo, title } });
     touchCard(ctx, parent.id);
   }
+  if (assignee) recordAssigned(ctx, id, null, assignee);
   return getCard(ctx, id);
 }
 
@@ -339,6 +356,7 @@ export interface UpdateCardInput {
   completedAt?: string;
   kind?: CardKind;
   parentId?: number | null;
+  assigneeId?: number | null;
   resolution?: { reason: string; note: string } | null;
 }
 
@@ -437,6 +455,13 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
         touchCard(ctx, parent.id);
       }
     }
+  }
+
+  // Unassigning always works; a new assignee must be an active person.
+  if (patch.assigneeId !== undefined && patch.assigneeId !== card.assigneeId) {
+    const to = patch.assigneeId !== null ? checkAssignee(ctx, patch.assigneeId) : null;
+    next.assigneeId = to?.id ?? null;
+    recordAssigned(ctx, id, card.assigneeId, to);
   }
 
   if (patch.resolution !== undefined) {

@@ -1,6 +1,6 @@
 // You and the people on this install: GET/PATCH /api/me and the directory (GET /api/users).
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MeResponse, UpdateMeBody, UserInfo } from '@tt/shared';
 import { api } from './client';
 import { qk } from './keys';
@@ -18,13 +18,16 @@ export function useIsAdmin(): boolean {
   return useMe().data?.role === 'admin';
 }
 
+/** The people directory query, for useUsers and anything that selects from it (usePerson). */
+export const usersQuery = queryOptions({
+  queryKey: qk.users,
+  queryFn: ({ signal }) => api.get<UserInfo[]>('/api/users', signal),
+  staleTime: 60_000,
+});
+
 /** Everyone on this install, active first (for pickers, mentions and names in history). */
 export function useUsers() {
-  return useQuery({
-    queryKey: qk.users,
-    queryFn: ({ signal }) => api.get<UserInfo[]>('/api/users', signal),
-    staleTime: 60_000,
-  });
+  return useQuery(usersQuery);
 }
 
 export function useUpdateMe() {

@@ -105,6 +105,7 @@ export function toTile(card: CardTile | CardDetail): CardTile {
     checklistFailed: card.checklistFailed,
     checklistUnverified: card.checklistUnverified,
     blockedBy: card.blockedBy,
+    assigneeId: card.assigneeId,
     version: card.version,
   };
 }
@@ -318,6 +319,7 @@ export function tempTile(board: BoardResponse, v: CreateCardVars): CardTile {
     checklistFailed: 0,
     checklistUnverified: 0,
     blockedBy: 0,
+    assigneeId: null,
     version: 0,
   };
 }

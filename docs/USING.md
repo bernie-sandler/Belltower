@@ -14,7 +14,7 @@ Moving a card:
   Screen readers announce each step.
 - **Move to…** in the card (or its **⋯** menu) picks a column and puts the card at the top or bottom.
 
-The filter bar narrows the board by text, label, priority, severity or due date.
+The filter bar narrows the board by text, label, priority, severity, due date or assignee.
 
 Done shows the 50 most recently finished cards. Older ones are a click away (**Show N older cards**), and **Archive
 all cards…** in the column menu clears Done out completely. Archived cards stay searchable.
@@ -63,10 +63,27 @@ That note is gold six months later. "How did I fix this last time?" is a search 
 instead, a toast offers **Add resolution**, and a done card's **Resolution** section can be edited any time. The
 board shows a small badge when a card ended as anything other than the default.
 
+## Who has what
+
+A card can be **assigned** to one person: pick them under **Assignee** in the card, or press **Assign to me**. Their
+initials show on the card's tile (hover for the full name). Deactivated people can't be given cards; one who still
+has a card keeps it until someone changes it.
+
+Two pages in the top bar sort out the work:
+
+- **Mine** lists your open cards, most urgent first.
+- **Unassigned** is the queue: every open card nobody has, from any column, most urgent first and then oldest.
+  **Take it** gives the card to you. If someone else took it a moment before you, you're told who, and it stays
+  theirs.
+
+Both leave out finished cards (and, like the board, archived cards and the Trash). On the board, the filter's
+**Assignee** group shows your cards, unassigned ones, or someone else's. It's kept in the address
+(`?assignee=me`), so a bookmark works.
+
 ## History and the work log
 
-Every change to a card is recorded automatically: moves, edits, labels, links, resolutions. The history can't be
-edited or deleted, by design.
+Every change to a card is recorded automatically: moves, edits, labels, links, assignments, resolutions. The
+history can't be edited or deleted, by design.
 
 The **work log** is for your own notes: "Reseated the SATA cable", "Rolled back to 1.32.5". You can backdate an entry
 to when it actually happened, and edit or retract it later. The original stays in the entry's history.

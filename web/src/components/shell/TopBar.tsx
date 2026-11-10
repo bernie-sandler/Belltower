@@ -1,4 +1,4 @@
-import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2, UserRound } from 'lucide-react';
+import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, Inbox, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2, UserRound, UserRoundCheck } from 'lucide-react';
 import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
@@ -6,16 +6,26 @@ import { useState } from 'react';
 import { useLogout } from '../../api/auth';
 import { useIsAdmin } from '../../api/me';
 import { useAiStatus } from '../../api/tickets';
+import { useIsMobile } from '../../lib/useMediaQuery';
 import { BrandMark } from '../common/BrandMark';
-import { Menu } from '../common/Menu';
+import { Menu, type MenuEntry } from '../common/Menu';
 import { useShell } from './ShellContext';
 
 const NAV = [
   { to: '/', label: 'Board', icon: KanbanSquare },
+  // Assignees: my open cards, and the queue of cards nobody has ("Triage" is already a column name).
+  { to: '/mine', label: 'Mine', icon: UserRoundCheck },
+  { to: '/triage', label: 'Unassigned', icon: Inbox },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/search', label: 'Search', icon: Search },
   { to: '/templates', label: 'Recurring', icon: Repeat },
 ] as const;
+
+/**
+ * On phones these are in the ☰ menu instead, so the rest of the nav fits (CSS hides them there
+ * unless they're the current page, like the menu's pages below).
+ */
+const PHONE_MENU_PAGES: ReadonlySet<string> = new Set(['/calendar', '/templates']);
 
 /** Pages reached from the menu; shown in the nav while open. */
 const EXTRA_PAGES: Record<string, string> = {
@@ -37,6 +47,18 @@ export function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const page = (backgroundOf(location) ?? location).pathname;
+  const isMobile = useIsMobile();
+  const phonePages: MenuEntry[] = isMobile
+    ? [
+        ...NAV.filter((n) => PHONE_MENU_PAGES.has(n.to)).map(({ to, label, icon: Icon }) => ({
+          key: to,
+          label,
+          icon: <Icon size={16} />,
+          onSelect: () => void navigate(to),
+        })),
+        'separator',
+      ]
+    : [];
 
   return (
     <header className="topbar">
@@ -48,7 +70,12 @@ export function TopBar() {
         {NAV.map(({ to, label, icon: Icon }) => {
           const current = to === '/' ? page === '/' || page.startsWith('/cards') : page.startsWith(to);
           return (
-            <Link key={to} to={to} className={cls('topnav-item', current && 'is-current')} aria-current={current ? 'page' : undefined}>
+            <Link
+              key={to}
+              to={to}
+              className={cls('topnav-item', current && 'is-current', PHONE_MENU_PAGES.has(to) && 'topnav-phone-menu')}
+              aria-current={current ? 'page' : undefined}
+            >
               <Icon size={16} aria-hidden />
               <span className="topnav-label">{label}</span>
             </Link>
@@ -133,6 +160,7 @@ export function TopBar() {
           onClose={() => setMenuAnchor(null)}
           label="Main menu"
           items={[
+            ...phonePages,
             { key: 'labels', label: 'Manage labels', icon: <Tag size={16} />, onSelect: shell.openLabels },
             { key: 'column', label: 'Add column', icon: <Columns3 size={16} />, onSelect: shell.requestAddColumn },
             { key: 'archive', label: 'Archive', icon: <Archive size={16} />, onSelect: () => void navigate('/archive') },

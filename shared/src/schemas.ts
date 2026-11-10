@@ -144,6 +144,8 @@ export const CreateCardBody = z.object({
   kind: z.enum(CARD_KINDS).optional(),
   /** The work card this ticket is part of. */
   parentId: id.nullable().optional(),
+  /** Who has it (a user id); left out or null = nobody. Deactivated people can't be assigned. */
+  assigneeId: id.nullable().optional(),
 });
 export type CreateCardBody = z.infer<typeof CreateCardBody>;
 
@@ -162,6 +164,8 @@ export const UpdateCardBody = z.object({
   kind: z.enum(CARD_KINDS).optional(),
   /** File the ticket under a work card (null takes it out). */
   parentId: id.nullable().optional(),
+  /** Assign it to someone (a user id; null unassigns). Deactivated people can't be assigned. */
+  assigneeId: id.nullable().optional(),
   /** Set or change how a done card was resolved (null clears it). */
   resolution: z
     .object({

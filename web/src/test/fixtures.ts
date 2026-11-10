@@ -29,6 +29,7 @@ export function tile(over: Partial<CardTile> = {}): CardTile {
     checklistFailed: 0,
     checklistUnverified: 0,
     blockedBy: 0,
+    assigneeId: null,
     version: 1,
     ...over,
   };

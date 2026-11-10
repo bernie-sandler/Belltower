@@ -126,6 +126,7 @@ function optimisticFields(patch: CardPatch): Partial<CardDetail> {
   const out: Partial<CardDetail> = {};
   if (patch.title !== undefined) out.title = patch.title.trim();
   if (patch.labelIds !== undefined) out.labelIds = patch.labelIds;
+  if (patch.assigneeId !== undefined) out.assigneeId = patch.assigneeId;
   return out;
 }
 
@@ -179,6 +180,10 @@ export function useUpdateCard(id: number) {
         return;
       }
       if (isApiError(err, 'unauthenticated')) return; // the login page takes over
+      // Picked someone who was deactivated (or removed by a restore) since the people list loaded.
+      if (isApiError(err, 'assignee_disabled') || isApiError(err, 'invalid_assignee')) {
+        void qc.invalidateQueries({ queryKey: qk.users });
+      }
       if (isCardGone(err)) {
         // 409 card_deleted (it is in Trash) or 404.
         const title = cachedTitle(qc, id);

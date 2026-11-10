@@ -50,6 +50,17 @@ describe('activityText', () => {
     expect(activityText(entry('child_added', { child: { title: 'Back up DB' } }))).toMatch(/^Ticket .*Back up DB.* filed here$/);
   });
 
+  it('describes assignments: to someone, taken by the assignee, and unassigned', () => {
+    const by = (userId: number | null, data: Record<string, unknown>) => activityText({ ...entry('assigned', data), userId });
+    expect(by(1, { from: null, to: 2, fromName: null, toName: 'Alice' })).toBe('Assigned this to Alice');
+    expect(by(2, { from: null, to: 2, fromName: null, toName: 'Alice' })).toBe('Took this');
+    expect(by(3, { from: 2, to: 3, fromName: 'Alice', toName: 'Bob' })).toBe('Took this');
+    expect(by(1, { from: 2, to: null, fromName: 'Alice', toName: null })).toBe('Unassigned Alice');
+    // Changes nobody made (no person on the entry) never read as "took this".
+    expect(by(null, { from: null, to: 2, fromName: null, toName: 'Alice' })).toBe('Assigned this to Alice');
+    expect(by(1, { from: null, to: 5 })).toBe('Assigned this to someone');
+  });
+
   it('describes checklist marks', () => {
     const item = { checklistId: 1, checklist: 'Checklist', itemId: 2, text: 'Order battery' };
     expect(activityText(entry('checklist_item_checked', item))).toBe('Checked ‘Order battery’');

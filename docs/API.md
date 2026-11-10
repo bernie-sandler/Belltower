@@ -138,6 +138,16 @@ have one (`400 invalid_parent`); a work card that still has tickets can't become
 `parent` and `children`. Filing logs `parent_changed` on the ticket and `child_added`/`child_removed` on the work
 cards. `GET /api/cards?kind=work` lists only work cards.
 
+**Assignees (1.5).** One person per card: `CardTile.assigneeId` (a user id, or null). Set it with `assigneeId` on
+`POST /api/cards`, `POST /api/tickets` or `PATCH /api/cards/:id` (`null` unassigns). Assigning a deactivated person
+is `400 assignee_disabled` and an id that isn't a person is `400 invalid_assignee`; someone deactivated while they
+have a card keeps it until it's changed. Each change logs `assigned` `{from, to, fromName, toName}`: user ids, and
+the names as they were then. When `to` equals the entry's `userId`, that person took the card themselves. The server
+also emits the internal event `card_assigned {cardId, from, to, actor}` for personal notifications; the install's
+notification channels ignore it. "Take it" is `PATCH {assigneeId: <your id>, expectedVersion}`, so when two people
+take the same card the second gets `409 version_conflict` with the winner's copy. The Mine and Unassigned pages are
+worked out in the browser from `GET /api/board`. `/api/v1` and card import don't take an assignee.
+
 `PATCH /api/cards/:id` also accepts `completedAt` (an ISO instant) to backdate when a card in Done was completed
 (`409 not_done` otherwise; it can't be in the future).
 
