@@ -2,6 +2,8 @@
 export const qk = {
   auth: ['auth'] as const,
   config: ['config'] as const,
+  me: ['me'] as const,
+  users: ['users'] as const,
   board: ['board'] as const,
   cards: ['card'] as const,
   card: (id: number) => ['card', id] as const,

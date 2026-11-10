@@ -1,5 +1,6 @@
 // Settings (/settings): general options, the submit page and its request types, automation
-// tokens, notifications, and password/version.
+// tokens, notifications, and password/version. Members see only what's theirs to change here
+// (appearance, their own tokens); the install's settings are for admins.
 
 import { DEFAULT_TICKET_FORMAT, type SettingsResponse } from '@tt/shared';
 import { Bot, Copy, Globe, KeyRound, Lock, Palette, RefreshCw, Settings as SettingsIcon } from 'lucide-react';
@@ -10,6 +11,7 @@ import { useSetBlockedColumn } from '../../api/columns';
 import { useConfig } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { qk } from '../../api/keys';
+import { useIsAdmin } from '../../api/me';
 import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
 import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
@@ -36,6 +38,7 @@ export function Section({ icon, title, children }: { icon: ReactNode; title: str
 
 export function SettingsPage() {
   const settings = useSettings();
+  const isAdmin = useIsAdmin();
   if (settings.isPending) return <LoadingScreen />;
   if (!settings.data) return <ErrorScreen title="Can't load settings" message={errorMessage(settings.error)} onRetry={() => void settings.refetch()} />;
   const s = settings.data;
@@ -45,11 +48,11 @@ export function SettingsPage() {
         <SettingsIcon size={20} aria-hidden /> Settings
       </h2>
       <AppearanceSection />
-      <GeneralSection s={s} />
-      <ResolutionReasonsSection s={s} />
-      <SubmitSection s={s} />
+      {isAdmin && <GeneralSection s={s} />}
+      {isAdmin && <ResolutionReasonsSection s={s} />}
+      {isAdmin && <SubmitSection s={s} />}
       <TokensSection />
-      <NotificationsSection s={s} />
+      {isAdmin && <NotificationsSection s={s} />}
       <AccountSection />
     </div>
   );

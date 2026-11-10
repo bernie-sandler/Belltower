@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { useShortcut } from '../../lib/keyboard';
 import { useConfig } from '../../api/config';
+import { useIsAdmin, useMe } from '../../api/me';
 import { useAiStatus } from '../../api/tickets';
 import { errorMessage } from '../../api/errors';
 import { backgroundOf } from '../../lib/navigation';
@@ -27,10 +28,15 @@ const BulkTicketsDialog = lazy(() => import('../tickets/BulkTicketsDialog').then
 const NewTicketDialog = lazy(() => import('../tickets/NewTicketDialog').then((m) => ({ default: m.NewTicketDialog })));
 const SettingsPage = lazy(() => import('../settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const SettingsDialog = lazy(() => import('../settings/SettingsDialog').then((m) => ({ default: m.SettingsDialog })));
+const AccountPage = lazy(() => import('../account/AccountPage').then((m) => ({ default: m.AccountPage })));
 
-/** Signed-in app: needs /api/config (time zone, version) before rendering any dates. */
+/**
+ * Signed-in app: needs /api/config (time zone, version) before rendering any dates, and /api/me
+ * (who you are, whether you're an admin) before showing any admin-only part.
+ */
 export function AppShell() {
   const config = useConfig();
+  const me = useMe();
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newTicket, setNewTicket] = useState<{ mode: NewTicketMode; preset?: NewTicketPreset } | null>(null);
@@ -50,13 +56,16 @@ export function AppShell() {
     [addColumnRequest],
   );
 
-  if (config.isPending) return <LoadingScreen />;
-  if (!config.data) {
+  if (config.isPending || me.isPending) return <LoadingScreen />;
+  if (!config.data || !me.data) {
     return (
       <ErrorScreen
         title="Can't load Belltower"
-        message={errorMessage(config.error)}
-        onRetry={() => void config.refetch()}
+        message={errorMessage(config.error ?? me.error)}
+        onRetry={() => {
+          void config.refetch();
+          void me.refetch();
+        }}
       />
     );
   }
@@ -106,6 +115,7 @@ function AppRoutes({ aiEnabled, onNewTicket }: { aiEnabled: boolean; onNewTicket
   useShortcut('/', () => void navigate('/search'));
   useShortcut('N', onNewTicket);
   const background = backgroundOf(location);
+  const isAdmin = useIsAdmin();
 
   return (
     <>
@@ -125,8 +135,9 @@ function AppRoutes({ aiEnabled, onNewTicket }: { aiEnabled: boolean; onNewTicket
         <Route path="/templates" element={<Lazy><TemplatesPage /></Lazy>} />
         {/* With Claude drafting on, Add ticket replaces the paste-JSON import. */}
         <Route path="/import" element={aiEnabled ? <Navigate to="/" replace /> : <Lazy><ImportCardsPage /></Lazy>} />
-        <Route path="/backup" element={<Lazy><BackupPage /></Lazy>} />
+        <Route path="/backup" element={isAdmin ? <Lazy><BackupPage /></Lazy> : <Navigate to="/" replace />} />
         <Route path="/settings" element={<Lazy><SettingsPage /></Lazy>} />
+        <Route path="/account" element={<Lazy><AccountPage /></Lazy>} />
         <Route
           path="/trash"
           element={
