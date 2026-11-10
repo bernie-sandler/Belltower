@@ -80,6 +80,16 @@ export const CSRF_VALUE = 'tower-tracker';
 export const SESSION_COOKIE = 'tt_sid';
 export const PASSWORD_MIN_LENGTH = 12;
 
+/** Admins run the install (people, settings, backups); members do the board work. */
+export const USER_ROLES = ['admin', 'member'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+/**
+ * The account name password managers saved before 1.5 (the login form's hidden username). Login
+ * accepts it as another name for the owner account, and nobody can take it as a username.
+ */
+export const OWNER_ALIAS = 'tower-tracker';
+
 export const LIMITS = {
   columnName: 60,
   labelName: 40,
@@ -137,6 +147,7 @@ export const ACTIVITY_EVENT_TYPES = [
   'child_added',
   'child_removed',
   'resolved',
+  'assigned',
 ] as const;
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
 export type ActivityType = ActivityEventType | 'worklog';
