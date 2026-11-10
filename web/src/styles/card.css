@@ -272,6 +272,17 @@
   white-space: nowrap;
 }
 
+/* Who did it, then "· time". */
+.activity-by {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.activity-by + .activity-time::before {
+  content: '· ';
+}
+
 .activity-body {
   margin-top: 4px;
   padding: 6px 10px;
