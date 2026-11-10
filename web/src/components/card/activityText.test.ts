@@ -88,6 +88,8 @@ describe('activityActor', () => {
 
   it('names the person who did it', () => {
     expect(by({ userId: 2, userName: 'Alice' })).toBe('Alice');
+    // Assignments get the same line: "Took this · Alice".
+    expect(by({ userId: 2, userName: 'Alice' }, 'assigned', { from: null, to: 2, toName: 'Alice' })).toBe('Alice');
   });
 
   it('names the token and the person it acts for', () => {

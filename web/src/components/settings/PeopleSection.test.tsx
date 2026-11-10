@@ -26,7 +26,7 @@ const KIM = person({ id: 4, username: 'kim', displayName: 'Kim Park', role: 'mem
 function setup(me: UserInfo, people: UserInfo[], patchReply?: { status: number; body: unknown }) {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === '/api/me') return json({ ...me, passwordManagedByEnv: false } satisfies MeResponse);
+    if (url === '/api/me') return json({ ...me, passwordManagedByEnv: false, ssoLinked: false } satisfies MeResponse);
     if (url === '/api/users' && init?.method === 'POST') return json({ ...SAM, id: 9, ...JSON.parse(String(init.body)) }, 201);
     if (url.startsWith('/api/users/') && init?.method === 'PATCH') return patchReply ? json(patchReply.body, patchReply.status) : json(SAM);
     if (url === '/api/users') return json(people);
