@@ -4,7 +4,6 @@ import type { NewTicketMode, NewTicketPreset } from '../tickets/NewTicketDialog'
 /** App-level actions reachable from anywhere (top bar menu, card detail, board). */
 export interface ShellActions {
   openLabels: () => void;
-  openSettings: () => void;
   /** Add ticket: Claude draft ('describe') or the empty form ('blank'). */
   openNewTicket: (mode: NewTicketMode, preset?: NewTicketPreset) => void;
   /** Add or change how a done card was resolved (e.g. from the toast after dragging into Done). */

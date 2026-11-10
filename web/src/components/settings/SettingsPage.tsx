@@ -21,7 +21,6 @@ import { todayLocal } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
-import { useShell } from '../shell/ShellContext';
 import { RequestTypesEditor } from './RequestTypesEditor';
 import { NotificationsSection } from './NotificationsSection';
 import { PeopleSection } from './PeopleSection';
@@ -333,17 +332,15 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
   );
 }
 
-/** The version; your password and tokens moved to Account. */
+/** The version and how this install is set up; your password and tokens are under Account. */
 function AboutSection() {
-  const shell = useShell();
   const { data: config } = useConfig();
+  const uploadMb = config ? Math.round(config.maxUploadBytes / (1024 * 1024)) : null;
   return (
     <Section icon={<Info size={16} aria-hidden />} title="About">
       <p className="muted small">
-        <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'} ·{' '}
-        <button type="button" className="link-btn small" onClick={shell.openSettings}>
-          Details
-        </button>
+        <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'} · uploads up to{' '}
+        {uploadMb ?? '…'} MB
       </p>
       <p className="muted small">
         <UserRound size={12} aria-hidden /> Your password, profile and API tokens are under <Link to="/account">Account</Link>.

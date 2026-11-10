@@ -545,32 +545,6 @@
   font-size: 13px;
 }
 
-/* Settings */
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.settings-section + .settings-section {
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.about-list {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 16px;
-}
-
-.about-list dt {
-  color: var(--muted);
-}
-
-.about-list dd {
-  color: var(--text-strong);
-}
-
 /* ---------- phones: the card is a full-screen sheet ---------- */
 
 @media (max-width: 767px) {
