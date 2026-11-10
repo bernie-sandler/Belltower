@@ -167,12 +167,12 @@ function ChecklistBadge({ tile }: { tile: CardTile }) {
   );
 }
 
-/** The assignee's initials, with their full name for screen readers and on hover. */
+/** The assignee's initials, with their full name for screen readers and on hover (dimmed once deactivated). */
 function AssigneeBadge({ userId }: { userId: number }) {
   const person = usePerson(userId);
-  const text = `Assigned to ${person?.displayName ?? 'someone'}`;
+  const text = `Assigned to ${person?.displayName ?? 'someone'}${person?.disabled ? ' (deactivated)' : ''}`;
   return (
-    <span className="assignee-badge" title={text}>
+    <span className={cls('assignee-badge', person?.disabled && 'is-disabled')} title={text}>
       <span className="visually-hidden">{text}</span>
       <span aria-hidden>{person ? initials(person.displayName) : '?'}</span>
     </span>

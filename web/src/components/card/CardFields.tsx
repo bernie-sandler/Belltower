@@ -16,6 +16,7 @@ import {
 } from '@tt/shared';
 import { CircleCheck, Clock, Flag, Grid3x3, OctagonAlert, UserRound, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { usePerson } from '../../api/assignees';
 import { useUpdateCard, type CardPatch } from '../../api/cards';
 import { useMe, useUsers } from '../../api/me';
 import { cls } from '../../lib/cls';
@@ -99,7 +100,7 @@ function AssigneeField({ card, readOnly, onSave }: { card: CardDetail; readOnly:
   const me = useMe().data;
   const users = useUsers();
   const active = (users.data ?? []).filter((u) => !u.disabled);
-  const current = card.assigneeId !== null ? users.data?.find((u) => u.id === card.assigneeId) : undefined;
+  const current = usePerson(card.assigneeId);
   const id = `assignee-${card.id}`;
   return (
     <div className="field-inline assignee-field">

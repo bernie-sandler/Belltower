@@ -180,6 +180,10 @@ export function useUpdateCard(id: number) {
         return;
       }
       if (isApiError(err, 'unauthenticated')) return; // the login page takes over
+      // Picked someone who was deactivated (or removed by a restore) since the people list loaded.
+      if (isApiError(err, 'assignee_disabled') || isApiError(err, 'invalid_assignee')) {
+        void qc.invalidateQueries({ queryKey: qk.users });
+      }
       if (isCardGone(err)) {
         // 409 card_deleted (it is in Trash) or 404.
         const title = cachedTitle(qc, id);

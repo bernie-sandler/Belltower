@@ -29,7 +29,8 @@ const COPY: Record<Kind, { title: string; intro: string; icon: typeof Inbox }> =
 
 export function QueuePage({ kind }: { kind: Kind }) {
   const { data: board, error, isPending, refetch } = useBoard();
-  const meId = useMe().data?.id ?? null;
+  const me = useMe();
+  const meId = me.data?.id ?? null;
   const now = useNow();
   const openCard = useOpenCard();
   const cards = useMemo(() => {
@@ -40,8 +41,20 @@ export function QueuePage({ kind }: { kind: Kind }) {
   const columnsById = useMemo(() => new Map((board?.columns ?? []).map((c) => [c.id, c] as const)), [board?.columns]);
   const labelsById = useMemo(() => new Map((board?.labels ?? []).map((l) => [l.id, l] as const)), [board?.labels]);
 
-  if (isPending) return <LoadingScreen label="Loading cards…" />;
-  if (!board) return <ErrorScreen title="Couldn't load the cards" message={errorMessage(error)} onRetry={() => void refetch()} />;
+  // Until we know who "me" is, there's no list to show (not "nothing is assigned to you").
+  if (isPending || me.isPending) return <LoadingScreen label="Loading cards…" />;
+  if (!board || meId === null) {
+    return (
+      <ErrorScreen
+        title="Couldn't load the cards"
+        message={errorMessage(error ?? me.error)}
+        onRetry={() => {
+          void refetch();
+          void me.refetch();
+        }}
+      />
+    );
+  }
   const { title, intro, icon: Icon } = COPY[kind];
 
   return (

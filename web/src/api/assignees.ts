@@ -2,22 +2,36 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BoardResponse, CardDetail, CardTile, UpdateCardBody, UserInfo } from '@tt/shared';
+import { useEffect } from 'react';
 import { toast } from '../lib/toast';
 import { applyCardDetail } from './cards';
 import { api } from './client';
 import { conflictCard, errorMessage } from './errors';
 import { qk } from './keys';
+import { usersQuery } from './me';
 
-/** The people directory, as useUsers loads it (same key, same request). */
-const usersQuery = {
-  queryKey: qk.users,
-  queryFn: ({ signal }: { signal: AbortSignal }) => api.get<UserInfo[]>('/api/users', signal),
-  staleTime: 60_000,
-};
+/** Ids the directory has been reloaded for once already, so someone truly gone doesn't cause a loop. */
+const reloadedFor = new Set<number>();
 
-/** One person from the directory, or undefined while loading or unknown. */
+/**
+ * A card names someone the directory doesn't list (added on another device since it loaded): load
+ * it again, once per id.
+ */
+export function reloadPeopleFor(qc: QueryClient, id: number): void {
+  if (reloadedFor.has(id)) return;
+  reloadedFor.add(id);
+  void qc.invalidateQueries({ queryKey: qk.users });
+}
+
+/** One person from the directory, or undefined while loading or unknown (then the directory reloads once). */
 export function usePerson(id: number | null): UserInfo | undefined {
-  return useQuery({ ...usersQuery, select: (users) => (id === null ? undefined : users.find((u) => u.id === id)) }).data;
+  const qc = useQueryClient();
+  const q = useQuery({ ...usersQuery, select: (users) => (id === null ? undefined : users.find((u) => u.id === id)) });
+  const missing = id !== null && q.isSuccess && q.data === undefined;
+  useEffect(() => {
+    if (missing) reloadPeopleFor(qc, id);
+  }, [missing, id, qc]);
+  return q.data;
 }
 
 /** A person's name for a message: from the cache, else a fresh directory (they may be new), else null. */

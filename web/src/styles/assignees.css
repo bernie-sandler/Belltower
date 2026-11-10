@@ -17,6 +17,11 @@
   line-height: 1;
 }
 
+.assignee-badge.is-disabled {
+  background: var(--btn-bg-hover);
+  color: var(--muted);
+}
+
 .assignee-field .input {
   width: auto;
   min-width: 160px;

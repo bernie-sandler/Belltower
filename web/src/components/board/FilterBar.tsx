@@ -12,6 +12,7 @@ import {
   SEVERITY_LABELS,
   type CardTile,
   type Label,
+  type UserInfo,
 } from '@tt/shared';
 import { Filter, Search, X } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -115,6 +116,26 @@ export function matchesFilter(tile: CardTile, f: BoardFilter, labelsById: Map<nu
   return true;
 }
 
+/**
+ * The people offered in the Assignee group, besides "Me" and "Unassigned": everyone active, plus
+ * deactivated people who still have cards on the board (so their cards can be found and handed on)
+ * and anyone already in the filter (so a stale ?assignee=<id> can be switched off). Directory order.
+ */
+export function assigneeChoices(
+  users: UserInfo[] | undefined,
+  meId: number | null,
+  assignedIds: ReadonlySet<number>,
+  filter: BoardFilter,
+): { id: number; label: string }[] {
+  const inFilter = new Set(filter.assignees.filter((a) => /^\d+$/.test(a)).map(Number));
+  const listed = (users ?? [])
+    .filter((u) => (u.id !== meId || inFilter.has(u.id)) && (!u.disabled || assignedIds.has(u.id) || inFilter.has(u.id)))
+    .map((u) => ({ id: u.id, label: u.disabled ? `${u.displayName} (deactivated)` : u.displayName }));
+  // Ids nobody in the directory has (a restore, or a hand-edited link), once it has loaded.
+  const unknown = users ? [...inFilter].filter((id) => !users.some((u) => u.id === id)).map((id) => ({ id, label: `Unknown person (#${id})` })) : [];
+  return [...listed, ...unknown];
+}
+
 export function FilterBar({
   labels,
   filter,
@@ -122,6 +143,7 @@ export function FilterBar({
   active,
   shown,
   total,
+  assignedIds,
 }: {
   labels: Label[];
   filter: BoardFilter;
@@ -129,12 +151,13 @@ export function FilterBar({
   active: boolean;
   shown: number;
   total: number;
+  /** Everyone who has at least one card on the board. */
+  assignedIds: ReadonlySet<number>;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const count = choiceCount(filter);
   const meId = useMe().data?.id ?? null;
-  // Others who can be given cards ("Me" has its own choice).
-  const people = (useUsers().data ?? []).filter((u) => !u.disabled && u.id !== meId);
+  const people = assigneeChoices(useUsers().data, meId, assignedIds, filter);
 
   function toggle<K extends 'labels' | 'priorities' | 'severities' | 'due' | 'kinds' | 'assignees'>(key: K, value: BoardFilter[K][number]) {
     const cur = filter[key] as (typeof value)[];
@@ -198,7 +221,7 @@ export function FilterBar({
             </Toggle>
             {people.map((u) => (
               <Toggle key={u.id} on={filter.assignees.includes(String(u.id))} onClick={() => toggle('assignees', String(u.id))}>
-                {u.displayName}
+                {u.label}
               </Toggle>
             ))}
           </FilterGroup>

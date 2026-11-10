@@ -13,6 +13,7 @@ import type { BoardResponse, CardTile } from '@tt/shared';
 import { Archive, ArrowRightLeft, ExternalLink, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useDeleteCard, useCompleteCard,
@@ -34,7 +35,7 @@ import { useShell } from '../shell/ShellContext';
 import { AddColumn } from './AddColumn';
 import { Column, GroupHeaderView } from './Column';
 import { ColumnPills } from './ColumnPills';
-import { FilterBar, matchesFilter, useBoardFilter } from './FilterBar';
+import { FilterBar, matchesFilter, parseBoardFilter, useBoardFilter } from './FilterBar';
 import {
   autoScroll,
   collisionDetection,
@@ -54,7 +55,11 @@ const NO_TILES: CardTile[] = [];
 
 export function Board() {
   const { data: board, error, isPending, refetch } = useBoard();
-  if (isPending) return <LoadingScreen label="Loading board…" />;
+  const me = useMe();
+  const [params] = useSearchParams();
+  // "Assigned to me" means nothing until we know who that is: no empty board meanwhile.
+  const waitingForMe = me.isPending && parseBoardFilter(params).assignees.includes('me');
+  if (isPending || waitingForMe) return <LoadingScreen label="Loading board…" />;
   if (!board) {
     return <ErrorScreen title="Couldn't load the board" message={errorMessage(error)} onRetry={() => void refetch()} />;
   }
@@ -85,6 +90,10 @@ function BoardView({ board }: { board: BoardResponse }) {
   const labelsById = useMemo(() => new Map(board.labels.map((l) => [l.id, l] as const)), [board.labels]);
   const { filter, setFilter, active: filtering } = useBoardFilter();
   const meId = useMe().data?.id ?? null;
+  const assignedIds = useMemo(
+    () => new Set(board.cards.flatMap((c) => (c.assigneeId !== null ? [c.assigneeId] : []))),
+    [board.cards],
+  );
   const [collapsed, toggleGroup] = useCollapsedGroups();
   // What the board shows (and drags over): everything, or just the cards that pass the filter.
   const visibleBoard = useMemo(
@@ -325,6 +334,7 @@ function BoardView({ board }: { board: BoardResponse }) {
         active={filtering}
         shown={visibleBoard.cards.filter((c) => c.id > 0).length}
         total={board.cards.filter((c) => c.id > 0).length}
+        assignedIds={assignedIds}
       />
       {isMobile && columns.length > 0 && (
         <ColumnPills
