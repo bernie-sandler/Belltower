@@ -8,7 +8,7 @@ import { stmt } from '../db/connection';
 import { badRequest, conflict, notFound } from '../errors';
 import { toActivityEntry, type ActivityRow } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
-import { nowIso, tx, type Ctx } from './context';
+import { actorTokenId, actorUserId, nowIso, tx, type Ctx } from './context';
 import { reindexCard } from './search';
 
 function assertNotFuture(ctx: Ctx, iso: string): void {
@@ -35,9 +35,9 @@ export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; oc
     const id = Number(
       stmt(
         ctx.db,
-        `INSERT INTO activity (card_id, kind, type, data, body_md, occurred_at, created_at)
-         VALUES (?, 'worklog', 'worklog', '{}', ?, ?, ?)`,
-      ).run(cardId, input.bodyMd, input.occurredAt ?? now, now).lastInsertRowid,
+        `INSERT INTO activity (card_id, kind, type, data, body_md, occurred_at, created_at, user_id, token_id)
+         VALUES (?, 'worklog', 'worklog', '{}', ?, ?, ?, ?, ?)`,
+      ).run(cardId, input.bodyMd, input.occurredAt ?? now, now, actorUserId(ctx), actorTokenId(ctx)).lastInsertRowid,
     );
     touchCard(ctx, cardId);
     reindexCard(ctx, cardId);
@@ -66,8 +66,8 @@ export function updateWorklog(
     if (contentChanged) {
       stmt(
         ctx.db,
-        'INSERT INTO activity_revisions (activity_id, body_md, occurred_at, revised_at) VALUES (?, ?, ?, ?)',
-      ).run(id, row.body_md, row.occurred_at, now);
+        'INSERT INTO activity_revisions (activity_id, body_md, occurred_at, revised_at, user_id) VALUES (?, ?, ?, ?, ?)',
+      ).run(id, row.body_md, row.occurred_at, now, actorUserId(ctx));
       stmt(ctx.db, 'UPDATE activity SET body_md = ?, occurred_at = ?, edited_at = ? WHERE id = ?').run(
         body,
         occurred,
@@ -90,6 +90,6 @@ export function listRevisions(ctx: Ctx, id: number): ActivityRevision[] {
   const rows = stmt(
     ctx.db,
     'SELECT * FROM activity_revisions WHERE activity_id = ? ORDER BY revised_at, id',
-  ).all(id) as { id: number; body_md: string; occurred_at: string; revised_at: string }[];
-  return rows.map((r) => ({ id: r.id, bodyMd: r.body_md, occurredAt: r.occurred_at, revisedAt: r.revised_at }));
+  ).all(id) as { id: number; body_md: string; occurred_at: string; revised_at: string; user_id: number | null }[];
+  return rows.map((r) => ({ id: r.id, bodyMd: r.body_md, occurredAt: r.occurred_at, revisedAt: r.revised_at, userId: r.user_id ?? null }));
 }

@@ -420,7 +420,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       touchCard(ctx, parent.id);
     }
     reindexCard(ctx, id);
-    ctx.emit?.({ type: 'card_created', cardId: id, external: opts.external ?? false, ...(opts.via ? { via: opts.via } : {}) });
+    ctx.emit?.({ type: 'card_created', cardId: id, external: opts.external ?? false, ...(opts.via ? { via: opts.via } : {}), actor: ctx.actor });
     return getCard(ctx, id);
   });
 }
@@ -587,7 +587,7 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       if (reindex) reindexCard(ctx, id);
       const now = stmt(ctx.db, 'SELECT priority, severity FROM cards WHERE id = ?').get(id) as { priority: Priority | null; severity: Severity | null };
       if (now.priority !== card.priority || now.severity !== card.severity) {
-        ctx.emit?.({ type: 'card_raised', cardId: id, from: { priority: card.priority, severity: card.severity }, to: now });
+        ctx.emit?.({ type: 'card_raised', cardId: id, from: { priority: card.priority, severity: card.severity }, to: now, actor: ctx.actor });
       }
     }
     return getCard(ctx, id);

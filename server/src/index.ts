@@ -79,7 +79,7 @@ async function main(): Promise<void> {
     ? createClaudeDrafter(config.anthropicApiKey, () => getGeneralSettings(ctx).claudeModel || config.aiModel)
     : null;
   log.info(ai ? `Add ticket: Claude drafting on (${ai.model})` : 'Add ticket: Claude drafting off (no ANTHROPIC_API_KEY)');
-  const app = await buildApp({ ctx, config, auth, limiter, ai, notifier }, log);
+  const app = await buildApp({ baseCtx: ctx, config, auth, limiter, ai, notifier }, log);
 
   purgeExpiredSessions(ctx);
 

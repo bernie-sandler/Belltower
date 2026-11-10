@@ -43,48 +43,48 @@ import { idParam, parse } from '../util';
 const ATTACHMENT_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
 
 export function registerCardPartRoutes(app: FastifyInstance, deps: AppDeps): void {
-  const { ctx, config } = deps;
+  const { config } = deps;
 
   // ---- card lists (link picker, Archive, Trash) ----
-  app.get('/api/cards', async (req) => listCards(ctx, parse(CardListQuery, req.query)));
-  app.post('/api/cards/archive-done', async () => ({ archived: archiveAllDone(ctx) }));
+  app.get('/api/cards', async (req) => listCards(req.ctx, parse(CardListQuery, req.query)));
+  app.post('/api/cards/archive-done', async (req) => ({ archived: archiveAllDone(req.ctx) }));
 
   // ---- checklists ----
-  app.post('/api/cards/:id/checklists', async (req) => addChecklist(ctx, idParam(req), parse(ChecklistBody, req.body).title));
+  app.post('/api/cards/:id/checklists', async (req) => addChecklist(req.ctx, idParam(req), parse(ChecklistBody, req.body).title));
   app.put('/api/cards/:id/checklists/order', async (req) =>
-    reorderChecklists(ctx, idParam(req), parse(ReorderBody, req.body).ids),
+    reorderChecklists(req.ctx, idParam(req), parse(ReorderBody, req.body).ids),
   );
-  app.patch('/api/checklists/:id', async (req) => renameChecklist(ctx, idParam(req), parse(ChecklistBody, req.body).title));
-  app.delete('/api/checklists/:id', async (req) => deleteChecklist(ctx, idParam(req)));
+  app.patch('/api/checklists/:id', async (req) => renameChecklist(req.ctx, idParam(req), parse(ChecklistBody, req.body).title));
+  app.delete('/api/checklists/:id', async (req) => deleteChecklist(req.ctx, idParam(req)));
   app.post('/api/checklists/:id/items', async (req) =>
-    addChecklistItem(ctx, idParam(req), parse(ChecklistItemBody, req.body).text),
+    addChecklistItem(req.ctx, idParam(req), parse(ChecklistItemBody, req.body).text),
   );
   app.put('/api/checklists/:id/items/order', async (req) =>
-    reorderChecklistItems(ctx, idParam(req), parse(ReorderBody, req.body).ids),
+    reorderChecklistItems(req.ctx, idParam(req), parse(ReorderBody, req.body).ids),
   );
   app.patch('/api/checklist-items/:id', async (req) =>
-    updateChecklistItem(ctx, idParam(req), parse(UpdateChecklistItemBody, req.body)),
+    updateChecklistItem(req.ctx, idParam(req), parse(UpdateChecklistItemBody, req.body)),
   );
-  app.delete('/api/checklist-items/:id', async (req) => deleteChecklistItem(ctx, idParam(req)));
+  app.delete('/api/checklist-items/:id', async (req) => deleteChecklistItem(req.ctx, idParam(req)));
 
   // ---- links ----
   app.post('/api/cards/:id/links', async (req) => {
     const body = parse(CreateLinkBody, req.body);
-    return createLink(ctx, idParam(req), body.otherCardId, body.direction);
+    return createLink(req.ctx, idParam(req), body.otherCardId, body.direction);
   });
-  app.delete('/api/cards/:id/links/:linkId', async (req) => deleteLink(ctx, idParam(req), idParam(req, 'linkId')));
+  app.delete('/api/cards/:id/links/:linkId', async (req) => deleteLink(req.ctx, idParam(req), idParam(req, 'linkId')));
 
   // ---- work log ----
   app.post('/api/cards/:id/worklog', async (req, reply) =>
-    reply.status(201).send(addWorklog(ctx, idParam(req), parse(WorklogBody, req.body))),
+    reply.status(201).send(addWorklog(req.ctx, idParam(req), parse(WorklogBody, req.body))),
   );
-  app.patch('/api/activity/:id', async (req) => updateWorklog(ctx, idParam(req), parse(UpdateWorklogBody, req.body)));
-  app.get('/api/activity/:id/revisions', async (req) => listRevisions(ctx, idParam(req)));
+  app.patch('/api/activity/:id', async (req) => updateWorklog(req.ctx, idParam(req), parse(UpdateWorklogBody, req.body)));
+  app.get('/api/activity/:id/revisions', async (req) => listRevisions(req.ctx, idParam(req)));
 
   // ---- attachments ----
   app.post('/api/cards/:id/attachments', async (req) => {
     const cardId = idParam(req);
-    getEditableCard(ctx, cardId); // fail fast before receiving files
+    getEditableCard(req.ctx, cardId); // fail fast before receiving files
     if (!req.isMultipart()) throw badRequest('validation', 'Expected a multipart/form-data upload');
 
     mkdirSync(config.tmpDir, { recursive: true });
@@ -95,7 +95,7 @@ export function registerCardPartRoutes(app: FastifyInstance, deps: AppDeps): voi
         files.push(await saveUploadPart(part, config.tmpDir, config.maxUploadBytes, tmpPaths));
       }
       if (!files.length) throw badRequest('validation', 'No file was uploaded');
-      return addAttachments(ctx, config.attachmentsDir, cardId, files);
+      return addAttachments(req.ctx, config.attachmentsDir, cardId, files);
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === 'FST_REQ_FILE_TOO_LARGE') throw tooLarge(config.maxUploadBytes);
@@ -107,15 +107,15 @@ export function registerCardPartRoutes(app: FastifyInstance, deps: AppDeps): voi
     }
   });
 
-  app.delete('/api/attachments/:id', async (req) => deleteAttachment(ctx, config.attachmentsDir, idParam(req)));
+  app.delete('/api/attachments/:id', async (req) => deleteAttachment(req.ctx, config.attachmentsDir, idParam(req)));
 
   app.get('/api/attachments/:id/text', async (req) =>
-    textPreview(ctx, config.attachmentsDir, idParam(req), parse(TextPreviewQuery, req.query).mode),
+    textPreview(req.ctx, config.attachmentsDir, idParam(req), parse(TextPreviewQuery, req.query).mode),
   );
 
   /** The file itself. Images and text display inline; anything else (or ?download=1) downloads. */
   app.get('/api/attachments/:id', async (req, reply) => {
-    const row = attachmentRow(ctx, idParam(req));
+    const row = attachmentRow(req.ctx, idParam(req));
     const file = attachmentPath(config.attachmentsDir, row);
     let size: number;
     try {

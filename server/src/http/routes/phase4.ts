@@ -13,29 +13,30 @@ import { localDateOf } from '../../lib/localdate';
 import { localTimeOf } from '../../lib/tz';
 import { attachmentEntries, cancelRestore, confirmRestore, exportData, stageRestore } from '../../services/backup';
 import { importCards } from '../../services/cardImport';
+import { ADMIN } from '../guard';
 import { parse } from '../util';
 
 const ConfirmBody = z.object({ confirm: z.literal('RESTORE') });
 
 export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void {
-  const { ctx, config } = deps;
+  const { baseCtx, config } = deps;
 
   const stamp = () => {
-    const now = ctx.clock.now();
-    return `${localDateOf(now, ctx.tz).replace(/-/g, '')}-${localTimeOf(now.toISOString(), ctx.tz).replace(':', '')}`;
+    const now = baseCtx.clock.now();
+    return `${localDateOf(now, baseCtx.tz).replace(/-/g, '')}-${localTimeOf(now.toISOString(), baseCtx.tz).replace(':', '')}`;
   };
 
   // ---- export ----
-  app.get('/api/backup/export.json', async (_req, reply) => {
-    const data = exportData(ctx, config.appVersion);
+  app.get('/api/backup/export.json', ADMIN, async (req, reply) => {
+    const data = exportData(req.ctx, config.appVersion);
     return reply
       .header('Content-Type', 'application/json; charset=utf-8')
       .header('Content-Disposition', contentDisposition(`belltower-backup-${stamp()}.json`))
       .send(JSON.stringify(data, null, 1));
   });
 
-  app.get('/api/backup/export.zip', async (_req, reply) => {
-    const data = exportData(ctx, config.appVersion);
+  app.get('/api/backup/export.zip', ADMIN, async (req, reply) => {
+    const data = exportData(req.ctx, config.appVersion);
     const zip = new yazl.ZipFile();
     zip.addBuffer(Buffer.from(JSON.stringify(data, null, 1)), 'data.json');
     for (const e of attachmentEntries(data)) {
@@ -50,7 +51,7 @@ export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void 
   });
 
   // ---- restore: upload → preview → confirm ----
-  app.post('/api/backup/restore', async (req) => {
+  app.post('/api/backup/restore', ADMIN, async (req) => {
     if (!req.isMultipart()) throw badRequest('validation', 'Upload the backup file (.zip or .json)');
     mkdirSync(config.tmpDir, { recursive: true });
     const upload = path.join(config.tmpDir, `upload-${randomUUID()}.part`);
@@ -71,7 +72,7 @@ export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void 
       readSync(fd, head, 0, 2, 0);
       closeSync(fd);
       const isZip = head.toString('latin1') === 'PK';
-      return await stageRestore(ctx, {
+      return await stageRestore(req.ctx, {
         uploadPath: upload,
         isZip,
         tmpDir: config.tmpDir,
@@ -83,21 +84,22 @@ export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void 
     }
   });
 
-  app.post('/api/backup/restore/:token/confirm', async (req) => {
+  app.post('/api/backup/restore/:token/confirm', ADMIN, async (req) => {
     parse(ConfirmBody, req.body);
     const token = (req.params as { token: string }).token;
-    const r = confirmRestore(ctx, token, { dbPath: config.dbPath, attachmentsDir: config.attachmentsDir, backupsDir: config.backupsDir });
+    // The base context: the restore closes its database and gives it the new one.
+    const r = confirmRestore(baseCtx, token, { dbPath: config.dbPath, attachmentsDir: config.attachmentsDir, backupsDir: config.backupsDir });
     req.log.warn(`Restored from backup; previous database kept at ${r.previousDb}`);
     return { restored: true, previousDb: path.basename(r.previousDb) };
   });
 
-  app.delete('/api/backup/restore/:token', async (req, reply) => {
+  app.delete('/api/backup/restore/:token', ADMIN, async (req, reply) => {
     cancelRestore((req.params as { token: string }).token);
     return reply.status(204).send();
   });
 
   /** What's in /data/backups: nightly snapshots and pre-restore copies. */
-  app.get('/api/backup/snapshots', async () => {
+  app.get('/api/backup/snapshots', ADMIN, async (req) => {
     if (!existsSync(config.backupsDir)) return [];
     return readdirSync(config.backupsDir)
       .filter((f) => f.endsWith('.db'))
@@ -113,7 +115,7 @@ export function registerPhase4Routes(app: FastifyInstance, deps: AppDeps): void 
     const body = parse(CardImportBody, req.body);
     const input = body.text !== undefined ? body.text : body.data;
     if (input === undefined) throw badRequest('validation', 'Paste the cards to import');
-    const result = importCards(ctx, input, body.dryRun);
+    const result = importCards(req.ctx, input, body.dryRun);
     if (!body.dryRun && result.created.length === 0) {
       throw new AppError(400, 'validation', 'Nothing was imported: fix the errors shown in the preview', { result });
     }

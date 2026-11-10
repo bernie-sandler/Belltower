@@ -1,14 +1,42 @@
-import { CSRF_HEADER, CSRF_VALUE, SESSION_COOKIE } from '@tt/shared';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { lookupSession, type SessionRow } from '../auth/sessions';
+import { CSRF_HEADER, CSRF_VALUE, SESSION_COOKIE, type Actor } from '@tt/shared';
+import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
+import { lookupSession, type SessionUser, type SessionWithUser } from '../auth/sessions';
+import { withActor, type Ctx } from '../services/context';
 import { authenticateToken } from '../services/tokens';
+import { adminOnly } from '../services/users';
 import { AppError } from '../errors';
 import type { AppDeps } from '../app';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    session: SessionRow | null;
+    session: SessionWithUser | null;
+    /** The signed-in person; null on public routes and /api/v1. */
+    user: SessionUser | null;
+    /** What a route hands to services: the app's context, acting as whoever sent the request. */
+    ctx: Ctx;
   }
+  interface FastifyContextConfig {
+    /** Only admins may call this route; members get 403 forbidden. */
+    admin?: boolean;
+  }
+}
+
+/** Route options for an admin-only route: `app.put('/api/…', ADMIN, handler)`. */
+export const ADMIN: RouteShorthandOptions = { config: { admin: true } };
+
+const PUBLIC: Actor = { kind: 'public' };
+
+export interface RouteInfo {
+  method: string;
+  url: string;
+  admin: boolean;
+}
+
+const routeTables = new WeakMap<FastifyInstance, RouteInfo[]>();
+
+/** Every route registered on the app, with its admin flag (for the role tests). */
+export function registeredRoutes(app: FastifyInstance): RouteInfo[] {
+  return routeTables.get(app) ?? [];
 }
 
 /** API routes reachable without a session. */
@@ -69,10 +97,10 @@ export function clearSessionCookie(req: FastifyRequest, reply: FastifyReply, dep
 }
 
 /** Resolves the session for a request without enforcing it (used by /api/auth/status too). */
-export function resolveSession(req: FastifyRequest, reply: FastifyReply, deps: AppDeps): SessionRow | null {
+export function resolveSession(req: FastifyRequest, reply: FastifyReply, deps: AppDeps): SessionWithUser | null {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
-  const found = lookupSession(deps.ctx, { rememberDays: deps.config.sessionDays }, token);
+  const found = lookupSession(deps.baseCtx, { rememberDays: deps.config.sessionDays }, token);
   if (!found) {
     clearSessionCookie(req, reply, deps);
     return null;
@@ -105,17 +133,31 @@ export function isApiRequest(req: FastifyRequest): boolean {
  * custom X-Requested-With header (a cross-site form or fetch can't add it without a CORS preflight we
  * never answer) and, when the browser sends Origin, the Origin host must match the Host we were
  * reached as. Every API route except the public auth endpoints and the submit page then needs a valid
- * session. /api/v1/* is different: an API token in the Authorization header, nothing else.
+ * session, and routes marked ADMIN need an admin. /api/v1/* is different: an API token in the
+ * Authorization header, nothing else. Every request gets `req.ctx`, acting as the person, the token
+ * or the public.
  */
 export function installGuard(app: FastifyInstance, deps: AppDeps): void {
   app.decorateRequest('session', null);
+  app.decorateRequest('user', null);
   app.decorateRequest('apiToken', null);
+  app.decorateRequest('ctx', null as unknown as Ctx);
+
+  const table: RouteInfo[] = [];
+  routeTables.set(app, table);
+  app.addHook('onRoute', (route) => {
+    for (const method of [route.method].flat()) {
+      table.push({ method, url: route.url, admin: (route.config as { admin?: boolean } | undefined)?.admin === true });
+    }
+  });
 
   app.addHook('onRequest', async (req, reply) => {
+    req.ctx = withActor(deps.baseCtx, PUBLIC);
     if (isV1Route(req)) {
       const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
-      req.apiToken = m ? authenticateToken(deps.ctx, m[1]!) : null;
+      req.apiToken = m ? authenticateToken(req.ctx, m[1]!) : null;
       if (!req.apiToken) throw new AppError(401, 'unauthenticated', 'Send a valid API token: Authorization: Bearer tt_…');
+      req.ctx = withActor(deps.baseCtx, { kind: 'token', tokenId: req.apiToken.id, userId: req.apiToken.userId });
       // Read-only tokens only get routes that opt in with config.readScope (the summary), so a route
       // added later is closed to them unless it says otherwise. Unknown paths fall through to the 404.
       if (req.apiToken.scope === 'read' && req.routeOptions.url !== undefined && req.routeOptions.config.readScope !== true) {
@@ -148,5 +190,8 @@ export function installGuard(app: FastifyInstance, deps: AppDeps): void {
     const session = resolveSession(req, reply, deps);
     if (!session) throw new AppError(401, 'unauthenticated', 'Please log in');
     req.session = session;
+    req.user = session.user;
+    req.ctx = withActor(deps.baseCtx, { kind: 'user', userId: session.user.id });
+    if (req.routeOptions.config.admin === true && session.user.role !== 'admin') throw adminOnly();
   });
 }
