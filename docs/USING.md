@@ -107,7 +107,8 @@ starts watching the card. Editing a note tells only the people it didn't mention
 nobody. `@` in code or an email address isn't a mention.
 
 **The bell** in the top bar shows how many notifications you haven't read: cards assigned to you, mentions, and
-changes on cards you watch. Open the list and pick one to go to its card (that marks it read), or **Mark all read**.
+changes on cards you watch. Open the list and pick one to go to its card, or **Mark all read**. Opening a card, from
+the bell or anywhere else, marks its notifications read.
 You're never told about your own changes. The bell checks for news every 30 seconds, also while the tab is in the
 background, and can play a sound when something new comes in: **Off**, **Chime** or **Ping**, chosen per device under
 **Settings → Appearance**, with a **Test** button. With several tabs open, only one plays it. Browsers only allow
