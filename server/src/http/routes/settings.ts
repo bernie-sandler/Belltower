@@ -1,5 +1,6 @@
 // Settings page: general options, the submit page and its request types, API tokens, and
-// notifications (Discord, ntfy, Gotify, webhook). Signed-in only, like the rest of /api.
+// notifications (Discord, ntfy, Gotify, webhook). Everyone signed in can read the settings (they're
+// redacted); changing them is for admins. API tokens: your own, or everyone's for admins.
 
 import {
   ApiTokenBody,
@@ -13,9 +14,10 @@ import {
   RequestTypeBody,
   SubmitSettingsBody,
 } from '@tt/shared';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppDeps } from '../../app';
 import { AppError } from '../../errors';
+import type { Ctx } from '../../services/context';
 import {
   createRequestType,
   deleteRequestType,
@@ -35,90 +37,96 @@ import {
 } from '../../services/settings';
 import { resetStatusLinks } from '../../services/status';
 import { createToken, listTokens, revokeToken } from '../../services/tokens';
+import { ADMIN } from '../guard';
 import { idParam, parse } from '../util';
 
 export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps): void {
-  const { ctx, config } = deps;
-  const current = () => settingsResponse(ctx, { modelFromEnv: config.anthropicApiKey ? config.aiModel : null, enabled: deps.ai !== null });
+  const { config } = deps;
+  const current = (ctx: Ctx) => settingsResponse(ctx, { modelFromEnv: config.anthropicApiKey ? config.aiModel : null, enabled: deps.ai !== null });
 
-  app.get('/api/settings', async () => current());
-  app.put('/api/settings/general', async (req) => {
-    updateGeneralSettings(ctx, parse(GeneralSettingsBody, req.body));
-    return current();
+  app.get('/api/settings', async (req) => current(req.ctx));
+  app.put('/api/settings/general', ADMIN, async (req) => {
+    updateGeneralSettings(req.ctx, parse(GeneralSettingsBody, req.body));
+    return current(req.ctx);
   });
-  app.put('/api/settings/submit', async (req) => {
-    updateSubmitSettings(ctx, parse(SubmitSettingsBody, req.body));
-    return current();
+  app.put('/api/settings/submit', ADMIN, async (req) => {
+    updateSubmitSettings(req.ctx, parse(SubmitSettingsBody, req.body));
+    return current(req.ctx);
   });
-  app.put('/api/settings/resolutions', async (req) => {
-    setResolutionReasons(ctx, parse(ResolutionReasonsBody, req.body).reasons);
-    return current();
+  app.put('/api/settings/resolutions', ADMIN, async (req) => {
+    setResolutionReasons(req.ctx, parse(ResolutionReasonsBody, req.body).reasons);
+    return current(req.ctx);
   });
-  app.post('/api/settings/submit/new-link', async () => {
-    regenerateSubmitKey(ctx);
-    return current();
+  app.post('/api/settings/submit/new-link', ADMIN, async (req) => {
+    regenerateSubmitKey(req.ctx);
+    return current(req.ctx);
   });
-  app.post('/api/settings/submit/reset-status-links', async () => {
-    resetStatusLinks(ctx);
-    return current();
+  app.post('/api/settings/submit/reset-status-links', ADMIN, async (req) => {
+    resetStatusLinks(req.ctx);
+    return current(req.ctx);
   });
-  app.put('/api/settings/discord', async (req) => {
-    updateDiscordSettings(ctx, parse(DiscordSettingsBody, req.body));
-    return current();
-  });
-  app.post('/api/settings/discord/test', async () => {
-    if (!deps.notifier) throw new AppError(503, 'unavailable', 'Notifications aren’t available');
-    const result = await deps.notifier.sendTest(ctx);
-    return { ...result, settings: current() };
+  app.put('/api/settings/discord', ADMIN, async (req) => {
+    updateDiscordSettings(req.ctx, parse(DiscordSettingsBody, req.body));
+    return current(req.ctx);
   });
 
-  app.post('/api/settings/discord/digest-now', async () => {
-    if (!deps.notifier) throw new AppError(503, 'unavailable', 'Notifications aren’t available');
-    const result = await deps.notifier.sendDigest(ctx, ctx.clock.now());
-    return { ...result, settings: current() };
-  });
-
-  // ---- every channel: alert levels and summary time; then ntfy, Gotify, webhook ----
-  app.put('/api/settings/notify', async (req) => {
-    updateAlertSettings(ctx, parse(NotifyAlertsBody, req.body));
-    return current();
-  });
-  const saveChannel = (channel: NotifyChannel, body: unknown) => {
-    updateChannelSettings(ctx, channel, parse(NotifyChannelBody, body));
-    return current();
-  };
   const notifier = () => {
     if (!deps.notifier) throw new AppError(503, 'unavailable', 'Notifications aren’t available');
     return deps.notifier;
   };
-  const testChannel = async (channel: NotifyChannel) => ({ ...(await notifier().sendTest(ctx, channel)), settings: current() });
-  const digestNow = async (channel: NotifyChannel) => ({ ...(await notifier().sendDigest(ctx, ctx.clock.now(), channel)), settings: current() });
-  // Each route spelled out, so the demo's route list (web/src/demo/routes.test.ts) sees it.
-  app.put('/api/settings/notify/ntfy', async (req) => saveChannel('ntfy', req.body));
-  app.put('/api/settings/notify/gotify', async (req) => saveChannel('gotify', req.body));
-  app.put('/api/settings/notify/webhook', async (req) => saveChannel('webhook', req.body));
-  app.post('/api/settings/notify/ntfy/test', async () => testChannel('ntfy'));
-  app.post('/api/settings/notify/gotify/test', async () => testChannel('gotify'));
-  app.post('/api/settings/notify/webhook/test', async () => testChannel('webhook'));
-  app.post('/api/settings/notify/ntfy/digest-now', async () => digestNow('ntfy'));
-  app.post('/api/settings/notify/gotify/digest-now', async () => digestNow('gotify'));
-  app.post('/api/settings/notify/webhook/digest-now', async () => digestNow('webhook'));
+  app.post('/api/settings/discord/test', ADMIN, async (req) => {
+    const result = await notifier().sendTest(req.ctx);
+    return { ...result, settings: current(req.ctx) };
+  });
+  app.post('/api/settings/discord/digest-now', ADMIN, async (req) => {
+    const result = await notifier().sendDigest(req.ctx, req.ctx.clock.now());
+    return { ...result, settings: current(req.ctx) };
+  });
 
-  // ---- request types ----
-  app.get('/api/request-types', async () => listRequestTypes(ctx));
-  app.post('/api/request-types', async (req, reply) => reply.status(201).send(createRequestType(ctx, parse(RequestTypeBody, req.body))));
-  app.put('/api/request-types/order', async (req) => reorderRequestTypes(ctx, parse(ReorderBody, req.body).ids));
-  app.put('/api/request-types/:id', async (req) => updateRequestType(ctx, idParam(req), parse(RequestTypeBody, req.body)));
-  app.delete('/api/request-types/:id', async (req, reply) => {
-    deleteRequestType(ctx, idParam(req));
+  // ---- every channel: alert levels and summary time; then ntfy, Gotify, webhook ----
+  app.put('/api/settings/notify', ADMIN, async (req) => {
+    updateAlertSettings(req.ctx, parse(NotifyAlertsBody, req.body));
+    return current(req.ctx);
+  });
+  const saveChannel = (req: FastifyRequest, channel: NotifyChannel) => {
+    updateChannelSettings(req.ctx, channel, parse(NotifyChannelBody, req.body));
+    return current(req.ctx);
+  };
+  const testChannel = async (req: FastifyRequest, channel: NotifyChannel) => ({
+    ...(await notifier().sendTest(req.ctx, channel)),
+    settings: current(req.ctx),
+  });
+  const digestNow = async (req: FastifyRequest, channel: NotifyChannel) => ({
+    ...(await notifier().sendDigest(req.ctx, req.ctx.clock.now(), channel)),
+    settings: current(req.ctx),
+  });
+  // Each route spelled out, so the demo's route list (web/src/demo/routes.test.ts) sees it.
+  app.put('/api/settings/notify/ntfy', ADMIN, async (req) => saveChannel(req, 'ntfy'));
+  app.put('/api/settings/notify/gotify', ADMIN, async (req) => saveChannel(req, 'gotify'));
+  app.put('/api/settings/notify/webhook', ADMIN, async (req) => saveChannel(req, 'webhook'));
+  app.post('/api/settings/notify/ntfy/test', ADMIN, async (req) => testChannel(req, 'ntfy'));
+  app.post('/api/settings/notify/gotify/test', ADMIN, async (req) => testChannel(req, 'gotify'));
+  app.post('/api/settings/notify/webhook/test', ADMIN, async (req) => testChannel(req, 'webhook'));
+  app.post('/api/settings/notify/ntfy/digest-now', ADMIN, async (req) => digestNow(req, 'ntfy'));
+  app.post('/api/settings/notify/gotify/digest-now', ADMIN, async (req) => digestNow(req, 'gotify'));
+  app.post('/api/settings/notify/webhook/digest-now', ADMIN, async (req) => digestNow(req, 'webhook'));
+
+  // ---- request types (the submit page's forms) ----
+  app.get('/api/request-types', async (req) => listRequestTypes(req.ctx));
+  app.post('/api/request-types', ADMIN, async (req, reply) => reply.status(201).send(createRequestType(req.ctx, parse(RequestTypeBody, req.body))));
+  app.put('/api/request-types/order', ADMIN, async (req) => reorderRequestTypes(req.ctx, parse(ReorderBody, req.body).ids));
+  app.put('/api/request-types/:id', ADMIN, async (req) => updateRequestType(req.ctx, idParam(req), parse(RequestTypeBody, req.body)));
+  app.delete('/api/request-types/:id', ADMIN, async (req, reply) => {
+    deleteRequestType(req.ctx, idParam(req));
     return reply.status(204).send();
   });
 
-  // ---- API tokens ----
-  app.get('/api/tokens', async () => listTokens(ctx));
-  app.post('/api/tokens', async (req, reply) => reply.status(201).send(createToken(ctx, parse(ApiTokenBody, req.body))));
+  // ---- API tokens: admins see and revoke everyone's, members only their own ----
+  const ownerScope = (req: FastifyRequest) => (req.user!.role === 'admin' ? {} : { ownerId: req.user!.id });
+  app.get('/api/tokens', async (req) => listTokens(req.ctx, ownerScope(req)));
+  app.post('/api/tokens', async (req, reply) => reply.status(201).send(createToken(req.ctx, parse(ApiTokenBody, req.body))));
   app.delete('/api/tokens/:id', async (req, reply) => {
-    revokeToken(ctx, idParam(req));
+    revokeToken(req.ctx, idParam(req), ownerScope(req));
     return reply.status(204).send();
   });
 }

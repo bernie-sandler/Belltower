@@ -76,7 +76,7 @@ export async function makeApp(
   const log = createLogger({ level: 'info', write: (l) => logLines.push(l) });
   const auth = await bootstrapAuth(t.ctx, config.appPassword, log);
   const limiter = new LoginRateLimiter(t.clock, { ...DEFAULT_RATE_LIMIT, globalDelayMs: opts.globalDelayMs ?? 0 });
-  const app = await buildApp({ ctx: t.ctx, config, auth, limiter, ai: opts.ai ?? null }, log);
+  const app = await buildApp({ baseCtx: t.ctx, config, auth, limiter, ai: opts.ai ?? null }, log);
   await app.ready();
   return {
     ...t,
@@ -113,9 +113,35 @@ export function sessionCookie(res: LightMyRequestResponse): string {
   return `tt_sid=${c.value}`;
 }
 
-/** Completes first-run setup with the logged code and returns the session cookie. */
+/** Completes first-run setup with the logged code (the owner is `admin`) and returns the session cookie. */
 export async function setupAndLogin(t: TestApp): Promise<string> {
   const res = await client(t.app)('POST', '/api/auth/setup', { setupCode: t.auth.setupCode, password: PASSWORD });
   if (res.statusCode !== 204) throw new Error(`setup failed: ${res.statusCode} ${res.body}`);
   return sessionCookie(res);
+}
+
+/** Signs in as someone and returns the session cookie (throws on failure). Each call uses its own address, so the limiter stays out of it. */
+let loginCounter = 0;
+export async function loginAs(t: TestApp, username: string, password = PASSWORD): Promise<string> {
+  const res = await t.app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    remoteAddress: `10.77.${Math.floor(++loginCounter / 250)}.${loginCounter % 250}`,
+    headers: { 'x-requested-with': CSRF_VALUE },
+    payload: { username, password },
+  });
+  return sessionCookie(res);
+}
+
+/** An admin adds someone (with PASSWORD unless given) and that person signs in. Returns their id and cookie. */
+export async function addPerson(
+  t: TestApp,
+  adminCookie: string,
+  username: string,
+  role: 'admin' | 'member' = 'member',
+  password = PASSWORD,
+): Promise<{ id: number; cookie: string }> {
+  const res = await client(t.app, adminCookie)('POST', '/api/users', { username, displayName: username, role, password });
+  if (res.statusCode !== 201) throw new Error(`adding ${username} failed: ${res.statusCode} ${res.body}`);
+  return { id: res.json().id as number, cookie: await loginAs(t, username, password) };
 }
