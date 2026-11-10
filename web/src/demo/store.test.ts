@@ -329,6 +329,34 @@ describe('people', () => {
   });
 });
 
+describe('assignees', () => {
+  it('assigns like the server: logged as assigned, deactivated and unknown people refused', () => {
+    const store = makeStore();
+    const users = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
+    const me = users.find((u) => u.username === 'admin')!;
+    const jordan = users.find((u) => u.username === 'jordan')!;
+    const card = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Printer jammed', assigneeId: jordan.id }));
+    expect(card.assigneeId).toBe(jordan.id);
+
+    const taken = ok<CardDetail>(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: me.id, expectedVersion: card.version }));
+    expect(taken).toMatchObject({ assigneeId: me.id, version: card.version + 1 });
+    expect(board(store).cards.find((c) => c.id === card.id)!.assigneeId).toBe(me.id);
+    const history = ok<ActivityEntry[]>(call(store, 'GET', `/api/cards/${card.id}/activity`)).filter((e) => e.type === 'assigned');
+    expect(history.map((e) => [e.data, e.userId])).toEqual([
+      [{ from: jordan.id, to: me.id, fromName: 'Jordan Lee', toName: 'Admin' }, me.id],
+      [{ from: null, to: jordan.id, fromName: null, toName: 'Jordan Lee' }, me.id],
+    ]);
+    // Someone else took it first: the stale version gets a 409.
+    expect(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: jordan.id, expectedVersion: card.version }).status).toBe(409);
+
+    ok(call(store, 'PATCH', `/api/users/${jordan.id}`, { disabled: true }));
+    const refused = call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: jordan.id, expectedVersion: taken.version });
+    expect([refused.status, (refused.body as { error: string }).error]).toEqual([400, 'assignee_disabled']);
+    expect((call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: 999, expectedVersion: taken.version }).body as { error: string }).error).toBe('invalid_assignee');
+    expect(ok<CardDetail>(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: null, expectedVersion: taken.version })).assigneeId).toBeNull();
+  });
+});
+
 describe('persistence and reset', () => {
   it('saves under a namespaced, versioned key and loads it back', () => {
     const storage = memoryStorage();
