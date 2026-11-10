@@ -332,7 +332,7 @@ describe('people', () => {
     const store = makeStore();
     const card = board(store).cards[0]!;
     const note = ok<ActivityEntry>(call(store, 'POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Owner’s note' }));
-    expect(note).toMatchObject({ userName: 'Admin', tokenName: null });
+    expect(note).toMatchObject({ userName: 'Admin', userUsername: 'admin', tokenName: null });
     const history = ok<ActivityEntry[]>(call(store, 'GET', `/api/cards/${card.id}/activity`));
     expect(history.every((e) => (e.userId === null ? e.userName === null : typeof e.userName === 'string'))).toBe(true);
 

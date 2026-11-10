@@ -55,7 +55,7 @@ describe('work-log permissions', () => {
     expect(edit.json()).toMatchObject({ userName: 'sam' }); // still Sam's entry
     expect((await client(t.app, admin)('PATCH', `/api/activity/${note.id}`, { retracted: true })).statusCode).toBe(200);
     const revisions = (await client(t.app, sam.cookie)('GET', `/api/activity/${note.id}/revisions`)).json();
-    expect(revisions).toMatchObject([{ bodyMd: 'Dusted', userName: 'admin' }]);
+    expect(revisions).toMatchObject([{ bodyMd: 'Dusted', userName: 'admin', userUsername: 'admin' }]);
   });
 
   it('records who retracted or restored an entry, since the entry stays its author’s', async () => {
@@ -110,7 +110,7 @@ describe('who did what, by name', () => {
     const { t, admin, sam, card } = await setup();
     await client(t.app, sam.cookie)('PATCH', '/api/me', { displayName: 'Sam Ortiz' });
     const history = (await client(t.app, admin)('GET', `/api/cards/${card.id}/activity`)).json();
-    expect(history.find((e: { type: string }) => e.type === 'created')).toMatchObject({ userName: 'Sam Ortiz', tokenName: null });
+    expect(history.find((e: { type: string }) => e.type === 'created')).toMatchObject({ userName: 'Sam Ortiz', userUsername: 'sam', tokenName: null });
 
     const { token } = (await client(t.app, admin)('POST', '/api/tokens', { name: 'Kuma' })).json();
     const v1 = await t.app.inject({ method: 'POST', url: '/api/v1/cards', headers: { authorization: `Bearer ${token}` }, payload: { title: 'NAS down' } });

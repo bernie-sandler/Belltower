@@ -76,6 +76,7 @@ test('a work-log note shows who wrote it, and only its author or an admin can ch
   await page.goto(`/cards/${card.id}`);
   const adminNote = page.locator('.activity-item.is-worklog', { hasText: 'Admin checked the fans' });
   await expect(adminNote.locator('.activity-by')).toHaveText('Admin');
+  await expect(adminNote.locator('.activity-by')).toHaveAttribute('title', '@admin'); // display names aren't unique
   await expect(adminNote.getByRole('button', { name: /Edit|Retract/ })).toHaveCount(0);
 
   await page.getByRole('textbox', { name: 'Log work' }).fill('Blew out the dust');

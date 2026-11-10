@@ -118,9 +118,17 @@ export function listRevisions(ctx: Ctx, id: number): ActivityRevision[] {
   getActivityEntry(ctx, id);
   const rows = stmt(
     ctx.db,
-    `SELECT r.*, u.display_name AS user_name FROM activity_revisions r LEFT JOIN users u ON u.id = r.user_id
+    `SELECT r.*, u.display_name AS user_name, u.username AS user_username FROM activity_revisions r LEFT JOIN users u ON u.id = r.user_id
       WHERE r.activity_id = ? ORDER BY r.revised_at, r.id`,
-  ).all(id) as { id: number; body_md: string; occurred_at: string; revised_at: string; user_id: number | null; user_name: string | null }[];
+  ).all(id) as {
+    id: number;
+    body_md: string;
+    occurred_at: string;
+    revised_at: string;
+    user_id: number | null;
+    user_name: string | null;
+    user_username: string | null;
+  }[];
   return rows.map((r) => ({
     id: r.id,
     bodyMd: r.body_md,
@@ -128,5 +136,6 @@ export function listRevisions(ctx: Ctx, id: number): ActivityRevision[] {
     revisedAt: r.revised_at,
     userId: r.user_id ?? null,
     userName: r.user_name ?? null,
+    userUsername: r.user_username ?? null,
   }));
 }

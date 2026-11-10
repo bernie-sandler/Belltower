@@ -115,7 +115,12 @@ function mayChangeWorklog(entry: ActivityEntry, me: { id: number; role: string }
 /** Who did it, beside the time ("Alice", "via API token “Kuma” (Alice)", "submit page (Sam)"). */
 function ActivityBy({ entry }: { entry: ActivityEntry }) {
   const by = activityActor(entry);
-  return by ? <span className="activity-by">{by}</span> : null;
+  // Display names aren't unique; the username tells two Alexes apart.
+  return by ? (
+    <span className="activity-by" title={entry.userUsername ? `@${entry.userUsername}` : undefined}>
+      {by}
+    </span>
+  ) : null;
 }
 
 // ---- composer ----
@@ -394,7 +399,12 @@ function RevisionList({ activityId, now }: { activityId: number; now: number }) 
           <p className="muted small">
             {i === 0 ? 'Original' : `Version ${i + 1}`} · for {formatDateTime(r.occurredAt, now)} · replaced{' '}
             {formatDateTime(r.revisedAt, now)}
-            {r.userName ? ` by ${r.userName}` : ''}
+            {r.userName && (
+              <>
+                {' by '}
+                <span title={r.userUsername ? `@${r.userUsername}` : undefined}>{r.userName}</span>
+              </>
+            )}
           </p>
           <Markdown text={r.bodyMd} className="activity-body" />
         </li>

@@ -2,7 +2,7 @@
 // previous version, and a wrong entry is retracted. Only the author or an admin may change one.
 
 import type { ActivityEntry, ActivityRevision } from '@tt/shared';
-import { recordEvent, toActivityEntry, userNameOf } from './activity';
+import { recordEvent, toActivityEntry, userNamesOf } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorId, nextId, nowIso, type Ctx } from './db';
 import { DemoError, badRequest, conflict, notFound } from './errors';
@@ -113,6 +113,6 @@ export function listRevisions(ctx: Ctx, id: number): ActivityRevision[] {
       occurredAt: r.occurredAt,
       revisedAt: r.revisedAt,
       userId: r.userId,
-      userName: userNameOf(ctx, r.userId),
+      ...userNamesOf(ctx, r.userId),
     }));
 }

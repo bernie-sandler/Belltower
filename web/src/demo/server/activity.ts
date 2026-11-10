@@ -24,9 +24,11 @@ export function recordEvent(ctx: Ctx, cardId: number, type: ActivityEventType, d
   return id;
 }
 
-/** A person's display name, for who did what (the demo has no API tokens). */
-export const userNameOf = (ctx: Ctx, id: number | null): string | null =>
-  id === null ? null : (ctx.s.users.find((u) => u.id === id)?.displayName ?? null);
+/** A person's display name and username, for who did what (the demo has no API tokens). */
+export function userNamesOf(ctx: Ctx, id: number | null): { userName: string | null; userUsername: string | null } {
+  const u = id === null ? undefined : ctx.s.users.find((x) => x.id === id);
+  return { userName: u?.displayName ?? null, userUsername: u?.username ?? null };
+}
 
 export function toActivityEntry(ctx: Ctx, row: ActivityRow): ActivityEntry {
   return {
@@ -43,7 +45,7 @@ export function toActivityEntry(ctx: Ctx, row: ActivityRow): ActivityEntry {
     revisionCount: ctx.s.revisions.filter((r) => r.activityId === row.id).length,
     userId: row.userId,
     tokenId: row.tokenId,
-    userName: userNameOf(ctx, row.userId),
+    ...userNamesOf(ctx, row.userId),
     tokenName: null,
   };
 }
