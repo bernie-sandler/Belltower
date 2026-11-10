@@ -34,7 +34,8 @@ export function mayChangeWorklog(ctx: Ctx, authorId: number | null): boolean {
   return me !== null && authorId === me;
 }
 
-export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; occurredAt?: string }): ActivityEntry {
+/** `quiet`: imported notes notify nobody and don't make the importer watch (as on the server). */
+export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; occurredAt?: string }, opts: { quiet?: boolean } = {}): ActivityEntry {
   getEditableCard(ctx, cardId);
   const now = nowIso(ctx);
   if (input.occurredAt) assertNotFuture(ctx, input.occurredAt);
@@ -54,7 +55,7 @@ export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; oc
     tokenId: null,
   });
   touchCard(ctx, cardId);
-  notifyNoteAdded(ctx, cardId, id, input.bodyMd);
+  if (!opts.quiet) notifyNoteAdded(ctx, cardId, id, input.bodyMd);
   return getActivityEntry(ctx, id);
 }
 

@@ -34,14 +34,15 @@ interface NotifyInput {
   data: Omit<NotificationData, 'actorName' | 'hidden'>;
 }
 
-export function notifyPeople(ctx: Ctx, input: NotifyInput): number[] {
+/** Returns the new rows: their ids and whom each is for. */
+export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId: number }[] {
   const me = selfId(ctx);
   const ids = new Set([...input.userIds].filter((id) => id !== me));
   if (!ids.size) return [];
   const actor = me === null ? undefined : ctx.s.users.find((u) => u.id === me);
   const data: NotificationData = { ...input.data, actorName: actor?.displayName ?? null };
   const now = nowIso(ctx);
-  const out: number[] = [];
+  const out: { id: number; userId: number }[] = [];
   for (const p of activePeople(ctx).filter((u) => ids.has(u.id))) {
     const picks = notifyPrefsFrom(p.notifyPrefs)[input.type];
     if (!picks.inApp && !picks.discord && !picks.ntfy) continue;
@@ -59,10 +60,12 @@ export function notifyPeople(ctx: Ctx, input: NotifyInput): number[] {
       createdAt: now,
       readAt: picks.inApp ? null : now,
     });
-    out.push(id);
+    out.push({ id, userId: p.id });
   }
   return out;
 }
+
+const told = (rows: { userId: number }[]) => new Set(rows.map((r) => r.userId));
 
 // ---- watching ----
 
@@ -99,16 +102,17 @@ export function notifyMoved(ctx: Ctx, cardId: number, activityId: number, move: 
 
 export function notifyAssigned(ctx: Ctx, cardId: number, activityId: number, change: { to: { id: number; name: string } | null; fromName: string | null }): void {
   const { to } = change;
+  let assigned = new Set<number>();
   if (to) {
     watchCard(ctx, cardId, to.id);
-    notifyPeople(ctx, { cardId, activityId, type: 'assigned', userIds: [to.id], data: {} });
+    assigned = told(notifyPeople(ctx, { cardId, activityId, type: 'assigned', userIds: [to.id], data: {} }));
   }
   const took = to !== null && to.id === actorId(ctx);
   notifyPeople(ctx, {
     cardId,
     activityId,
     type: 'watching',
-    userIds: watchersOf(ctx, cardId).filter((id) => id !== to?.id),
+    userIds: watchersOf(ctx, cardId).filter((id) => !assigned.has(id)),
     data: { what: 'assigned', toName: to?.name ?? null, fromName: change.fromName, ...(took ? { took: true } : {}) },
   });
 }
@@ -125,12 +129,12 @@ export function notifyNoteAdded(ctx: Ctx, cardId: number, entryId: number, md: s
   const mentioned = mentionedPeople(ctx, md);
   for (const id of mentioned) watchCard(ctx, cardId, id);
   const excerpt = noteExcerpt(md);
-  notifyPeople(ctx, { cardId, activityId: entryId, type: 'mentioned', userIds: mentioned, data: { excerpt } });
+  const mentionedTold = told(notifyPeople(ctx, { cardId, activityId: entryId, type: 'mentioned', userIds: mentioned, data: { excerpt } }));
   notifyPeople(ctx, {
     cardId,
     activityId: entryId,
     type: 'watching',
-    userIds: watchersOf(ctx, cardId).filter((id) => !mentioned.includes(id)),
+    userIds: watchersOf(ctx, cardId).filter((id) => !mentionedTold.has(id)),
     data: { what: 'note', excerpt },
   });
 }
@@ -187,7 +191,7 @@ export function markNotificationsRead(ctx: Ctx, userId: number, body: MarkNotifi
   const now = nowIso(ctx);
   const ids = new Set(body.ids ?? []);
   for (const n of ctx.s.notifications) {
-    if (n.userId === userId && n.readAt === null && (body.all || ids.has(n.id))) n.readAt = now;
+    if (n.userId === userId && n.readAt === null && (body.all || ids.has(n.id) || n.cardId === body.cardId)) n.readAt = now;
   }
   return ctx.s.notifications.filter((n) => n.userId === userId && n.readAt === null && inBell(ctx, n)).length;
 }

@@ -458,6 +458,9 @@ describe('notifications', () => {
       ['mentioned', 'Alex Chen mentioned you: “The warranty replacement shipped; tracking says Thursday. @admin can you preclear it when it lands?”', 'Disk 3 reallocated sectors climbing'],
     ]);
     expect(ok<{ unread: number }>(call(store, 'POST', '/api/notifications/read', { ids: [bell.items[0]!.id] })).unread).toBe(1);
+    // Opening the disk 3 card marks its mention read.
+    expect(ok<{ unread: number }>(call(store, 'POST', '/api/notifications/read', { cardId: bell.items[1]!.cardId })).unread).toBe(0);
+    expect(call(store, 'POST', '/api/notifications/read', {}).status).toBe(400);
     expect(ok<{ unread: number }>(call(store, 'POST', '/api/notifications/read', { all: true })).unread).toBe(0);
     expect(ok<NotificationsResponse>(call(store, 'GET', `/api/notifications?after=${bell.latestId}`)).items).toEqual([]);
   });
@@ -475,6 +478,17 @@ describe('notifications', () => {
     expect(s.notifications.filter((n) => n.cardId === card.id).map((n) => [n.userId, n.type])).toEqual([[jordan, 'mentioned']]);
     expect(s.watchers.filter((w) => w.cardId === card.id).map((w) => w.userId).sort()).toEqual([s.users.find((u) => u.isOwner)!.id, jordan].sort());
     expect(s.notifications.some((n) => n.userId === alex && n.cardId === card.id)).toBe(false);
+
+    // Imported notes are history: no notifications, old @mentions included, and nobody starts watching.
+    const imported = ok<{ created: number[] }>(
+      call(store, 'POST', '/api/import/cards', {
+        data: { format: 'belltower/cards@1', cards: [{ title: 'Old one', worklog: [{ text: 'Back then @jordan fixed it' }] }] },
+        dryRun: false,
+      }),
+    ).created[0]!;
+    const after = store.snapshot();
+    expect(after.notifications.some((n) => n.cardId === imported)).toBe(false);
+    expect(after.watchers.some((w) => w.cardId === imported)).toBe(false);
 
     const settings = ok<PersonalNotifySettings>(call(store, 'GET', '/api/me/notifications'));
     expect(settings.install).toEqual({ discord: false, ntfy: false });
