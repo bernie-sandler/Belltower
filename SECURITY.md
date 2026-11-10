@@ -1,6 +1,6 @@
 # Security
 
-Belltower is a single-user app meant for a home network or a tailnet. This page says what it protects, what
+Belltower is a self-hosted app for a household or a small team, meant for a home network or a tailnet. This page says what it protects, what
 it relies on you for, and how to report a problem.
 
 ## Reporting a problem
@@ -12,14 +12,22 @@ Fixes go into the newest 1.x release.
 
 ## What the app does
 
-- **Password.**
-  - One password, hashed with scrypt.
+- **Accounts and passwords.**
+  - Each person has a username and a password, hashed with scrypt. Accounts are deactivated, never deleted.
+  - A wrong password, an unknown username and a deactivated account fail the same way and take the same time, so
+    login doesn't reveal which usernames exist.
   - 5 wrong attempts lock that address out for 15 minutes, and logins are also paced globally.
   - Behind a reverse proxy, the real client address is only used when `TRUST_PROXY` names that proxy.
+  - The owner account can't be demoted or deactivated, and `APP_PASSWORD` resets it, so the install can't lock
+    itself out.
+- **Roles.** Admins manage people, the install's settings (submit page, notification channels), backups and
+  restores; members do the board work and manage their own profile, password and API tokens. The server enforces
+  this on every request, and each change is recorded with who made it.
 - **Sessions.**
   - An HTTP-only, SameSite=Lax cookie; only a SHA-256 hash of it is stored.
   - It gets the Secure flag over HTTPS.
-  - Changing or resetting the password signs out every device.
+  - Changing your password signs you out on your other devices; an admin resetting someone's password or
+    deactivating them signs that person out everywhere.
 - **Cross-site requests.** Every change needs the `X-Requested-With: tower-tracker` header, and the Origin must
   match the Host. A strict Content-Security-Policy allows only the app's own scripts, styles and images.
 - **Your content.**
@@ -34,8 +42,8 @@ Fixes go into the newest 1.x release.
   - With [notifications](docs/NOTIFICATIONS.md) set up, card titles, ticket numbers, columns and priorities go to
     the channels you chose: Discord, ntfy, Gotify or a webhook. Descriptions and work logs never do.
     - The Discord channel only accepts Discord webhook addresses.
-    - ntfy, Gotify and webhooks accept any `http(s)` address, including ones on your network. Only you, signed in,
-      can set them.
+    - ntfy, Gotify and webhooks accept any `http(s)` address, including ones on your network. Only an admin, signed
+      in, can set them.
     - Saved tokens and secrets are never shown again. Pointing a channel at another server, port or scheme (`https`
       to `http` included) forgets its saved token.
     - Redirects aren't followed, so a token can't be passed on to another host.
@@ -50,7 +58,8 @@ Fixes go into the newest 1.x release.
   - It's rate limited, rejects non-image screenshots, and has a hidden field that catches simple bots.
   - **New link** cuts off the old address.
 - **API tokens** can only open and update tickets through `/api/v1` and read its ticket counts. Read-only tokens
-  (for dashboards) can only read the counts, never ticket details. Only a hash of each is stored. Revoke them in Settings.
+  (for dashboards) can only read the counts, never ticket details. Only a hash of each is stored. Each belongs to the
+  person who made it and stops working while they're deactivated. Revoke them in Settings.
 - **Upgrades.**
   - The database is copied before every schema upgrade.
   - A nightly snapshot keeps the last 7 days.
@@ -68,5 +77,5 @@ Fixes go into the newest 1.x release.
 - **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD` and `ANTHROPIC_API_KEY`.
 - **Back up `/data`** (or use the export). The pre-upgrade copies and nightly snapshots live in the same folder,
   so they don't protect against losing the disk.
-- **Keep exports private.** They don't contain your password, but they do contain the submit page's link,
+- **Keep exports private.** They don't contain passwords, but they do contain people's names and emails, the submit page's link,
   notification addresses and tokens (Discord, ntfy, Gotify, webhook) and API token hashes. See [docs/BACKUP-FORMAT.md](docs/BACKUP-FORMAT.md).

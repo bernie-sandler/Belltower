@@ -26,6 +26,17 @@ Saved a copy of the database before upgrading it: /data/backups/pre-migrate-v5-t
 Applied database migration(s): 6
 ```
 
+## Upgrading to 1.5 (people)
+
+1.5 turns the single password into accounts. Nothing needs doing, and nobody is signed out:
+
+- Your password becomes the **owner** account, username `admin`. Sign in with `admin` (or leave the username empty).
+  Password managers that saved the old login under `tower-tracker` keep working: that name still means the owner.
+- Signed-in devices stay signed in, and every existing API token keeps working; both now belong to the owner.
+- `APP_PASSWORD`, if you use it, now manages the owner's password only. "Set `APP_PASSWORD` and restart" still gets you
+  back in.
+- History from before 1.5 doesn't say who did what; everything from now on does.
+
 ## Picking a version
 
 `TT_VERSION` in `.env` decides what `docker compose pull` fetches:
@@ -67,7 +78,9 @@ together with the safety copy:
    return to anything older you'd have to build it yourself from its commit in the git history.
 
 For example, 1.3 upgrades the database to layout 7 (for read-only API tokens), so a 1.2 image refuses to start on it
-until you put the `pre-migrate-v6-to-v7-…db` copy back.
+until you put the `pre-migrate-v6-to-v7-…db` copy back. Likewise 1.5 upgrades to layout 9 (people), and going back to
+1.4 means putting the `pre-migrate-v8-to-v9-…db` copy back.
 
 Anything you changed after the upgrade is lost this way. Export a backup first if that matters, then open an issue so
-it can be fixed.
+it can be fixed. Rolling back from 1.5 also loses the accounts created since the upgrade (and who did what), and 1.4
+signs in with the password you had before upgrading, since that's what the copy holds.

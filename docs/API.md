@@ -18,9 +18,9 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
   |---|---|
   | 400 | `validation` (zod issues in `details`), `anchor_not_found`, `target_required`, `invalid_target` (a column in the body no longer exists: refetch), `bad_request` |
   | 401 | `unauthenticated` (no or expired session → show the login page), `invalid_password` |
-  | 403 | `csrf`, `invalid_setup_code` |
+  | 403 | `csrf`, `invalid_setup_code`, `forbidden` (an admin-only route called by a member) |
   | 404 | `not_found`, `setup_not_available` |
-  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `open_instance`, `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed` |
+  | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `open_instance`, `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed`, `username_taken`, `owner_protected`, `last_admin`, `cannot_disable_self` |
   | 413 | `too_large` |
   | 429 | `rate_limited` (body also has `retryAfterSec`), `busy` |
   | 500 | `internal` |
@@ -28,20 +28,35 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
   the server ignores the header when there is no body.
 - **No auth needed** for: `GET /health`, `GET /api/auth/status`, `POST /api/auth/login`, `POST /api/auth/setup`,
   and static files. Everything else returns `401 unauthenticated` without a valid session.
+- **Roles** (1.5): every session belongs to a person, an `admin` or a `member`. Routes marked **Admin** below answer
+  `403 forbidden` to members: managing people, changing the install's settings (general, submit page and request
+  types, resolution reasons, notification channels), backups and restores. Everything else (all board work, card
+  import, your own profile, password and API tokens, reading settings) is open to everyone signed in. What a request
+  changes is recorded as done by that person (`ActivityEntry.userId`).
 
 ## Auth
 
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
 | `GET /api/auth/status` | — | `AuthStatus` | Call on app load to choose between the setup page, the login page, or the app. |
-| `POST /api/auth/setup` | `SetupBody {setupCode, password}` | `204` + cookie | First run only. The setup code is printed in the container log. `404 setup_not_available` once a password exists. `403 invalid_setup_code`. Password must be at least 12 characters. Logs you in as a remembered device. |
-| `POST /api/auth/login` | `LoginBody {password, remember}` | `204` + cookie | `401 invalid_password`, `429 rate_limited {retryAfterSec}`, `409 setup_required`. `remember: true` gives a 90-day sliding cookie; otherwise the cookie lasts for the browser session with a 12-hour idle timeout. |
+| `POST /api/auth/setup` | `SetupBody {setupCode, username?, displayName?, password}` | `204` + cookie | First run only: creates the owner account (an admin; `username` defaults to `admin`: 2–32 of `a-z 0-9 . _ -`, never `tower-tracker`). The setup code is printed in the container log. `404 setup_not_available` once an account exists. `403 invalid_setup_code`. Password must be at least 12 characters. Logs you in as a remembered device. |
+| `POST /api/auth/login` | `LoginBody {username?, password, remember}` | `204` + cookie | Usernames ignore case. No `username` (or an empty one), and `tower-tracker` (the name password managers saved before 1.5), mean the owner. `401 invalid_password` for a wrong password and equally for an unknown, deactivated or password-less account (same timing too), `429 rate_limited {retryAfterSec}`, `409 setup_required`. `remember: true` gives a 90-day sliding cookie; otherwise the cookie lasts for the browser session with a 12-hour idle timeout. |
 | `POST /api/auth/logout` | — | `204` | Clears the cookie. |
-| `POST /api/auth/password` | `ChangePasswordBody {currentPassword, newPassword}` | `204` | `401 invalid_password`, `409 managed_by_env`. Revokes every other session. |
+| `POST /api/auth/password` | `ChangePasswordBody {currentPassword, newPassword}` | `204` | Your own password. `401 invalid_password`, `409 managed_by_env` (the owner while `APP_PASSWORD` is set). Signs you out on your other devices; nobody else. |
+
+## People (1.5)
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/me` | — | `MeResponse` | You: `UserInfo` plus `passwordManagedByEnv` (true only for the owner while `APP_PASSWORD` is set). |
+| `PATCH /api/me` | `UpdateMeBody {displayName?, email?}` | `MeResponse` | Your profile. `email: null` removes it. |
+| `GET /api/users` | — | `UserInfo[]` | The directory, for pickers and names in history: `{id, username, displayName, role, disabled, isOwner, email, hasPassword, createdAt, disabledAt}`, active people first. `email` is null except for admins and your own entry. |
+| `POST /api/users` | `CreateUserBody {username, displayName, role?, email?, password}` | `201 UserInfo` | **Admin.** `role` is `admin` or `member` (default). `password` is a temporary one to hand over (12+ characters). `409 username_taken`. |
+| `PATCH /api/users/:id` | `UpdateUserBody {displayName?, email?, role?, disabled?, password?}` | `UserInfo` | **Admin.** `disabled: true` deactivates (signs them out everywhere, their API tokens stop working until re-enabled); people are never deleted. `password` resets it and signs them out. `409 owner_protected` (the owner stays an active admin, and only the owner changes the owner's password), `409 last_admin` (one active admin must remain), `409 cannot_disable_self`, `409 managed_by_env`. |
 
 ## Config
 
-| `GET /api/config` | → `AppConfig {appVersion, timeZone, maxUploadBytes, passwordManagedByEnv}` |
+| `GET /api/config` | → `AppConfig {appVersion, timeZone, maxUploadBytes, passwordManagedByEnv}` (`passwordManagedByEnv` is for the signed-in person: only the owner's password comes from `APP_PASSWORD`) |
 |---|---|
 
 ## Board
@@ -159,12 +174,12 @@ occurrence.
 
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
-| `GET /api/backup/export.json` | — | JSON file | `{format: "tower-tracker-backup", schemaVersion, appVersion, appTz, exportedAt, tables}`. Sessions and the password are excluded. |
-| `GET /api/backup/export.zip` | — | ZIP file | `data.json` plus `attachments/<card id>/<uuid>`. |
-| `POST /api/backup/restore` | multipart `file` (.zip or .json), up to `MAX_IMPORT_MB` | `RestorePreview` | Builds and checks a new database; nothing live changes. The preview `token` is valid for 30 minutes. |
-| `POST /api/backup/restore/:token/confirm` | `{confirm: "RESTORE"}` | `{restored, previousDb}` | Swaps the restored data in. The old database and attachments are kept in `/data/backups`. Password and sessions carry over. |
-| `DELETE /api/backup/restore/:token` | — | `204` | Discards a staged restore. |
-| `GET /api/backup/snapshots` | — | `{name, sizeBytes, modifiedAt}[]` | Files in `/data/backups`. |
+| `GET /api/backup/export.json` | — | JSON file | **Admin.** `{format: "tower-tracker-backup", schemaVersion, appVersion, appTz, exportedAt, tables}`. Sessions, passwords and personal notifications are excluded. See [BACKUP-FORMAT.md](BACKUP-FORMAT.md). |
+| `GET /api/backup/export.zip` | — | ZIP file | **Admin.** `data.json` plus `attachments/<card id>/<uuid>`. |
+| `POST /api/backup/restore` | multipart `file` (.zip or .json), up to `MAX_IMPORT_MB` | `RestorePreview` | **Admin.** Builds and checks a new database; nothing live changes. The preview `token` is valid for 30 minutes. |
+| `POST /api/backup/restore/:token/confirm` | `{confirm: "RESTORE"}` | `{restored, previousDb}` | **Admin.** Swaps the restored data in. The old database and attachments are kept in `/data/backups`. This server's people keep their passwords, roles and sessions (matched by username); see [BACKUP-FORMAT.md](BACKUP-FORMAT.md#whats-left-out). |
+| `DELETE /api/backup/restore/:token` | — | `204` | **Admin.** Discards a staged restore. |
+| `GET /api/backup/snapshots` | — | `{name, sizeBytes, modifiedAt}[]` | **Admin.** Files in `/data/backups`. |
 | `POST /api/import/cards` | `{text?: string, data?: any, dryRun?: boolean = true}` | `200` preview / `201` result | See [CARD-IMPORT.md](CARD-IMPORT.md). All-or-nothing; `400` with `result` when any card is invalid. |
 
 ## Add ticket (Claude drafting)
@@ -180,21 +195,21 @@ occurrence.
 
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
-| `GET /api/settings` | — | `SettingsResponse` | General, submit page (including its `key`), Discord (the webhook is never returned, only `webhookSet` and a masked `webhookHint`), `notify` (`alerts` shared by every channel, and `channels.ntfy/gotify/webhook` with `set`, `hint`, `secretSet`, `events`, `lastDelivery`; addresses and secrets are never returned), and `blockedColumnId`. |
-| `PUT /api/settings/general` | `GeneralSettingsBody {ticketFormat, appUrl, claudeModel}` | `SettingsResponse` | `ticketFormat` must end with `{N}` and can't contain `%` or `_`. |
-| `PUT /api/settings/submit` | `SubmitSettingsBody {enabled, columnId, pageTitle, intro}` | `SettingsResponse` | Turning the page on the first time creates its key. |
-| `POST /api/settings/submit/new-link` | — | `SettingsResponse` | A new key; the old link stops working. |
-| `POST /api/settings/submit/reset-status-links` | — | `SettingsResponse` | A new signing secret; every status link handed out so far stops working. |
-| `PUT /api/settings/resolutions` | `ResolutionReasonsBody {reasons}` | `SettingsResponse` | 1–12 reasons, each 1–40 characters, no duplicates (ignoring case). The first is the default. |
-| `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime?, alertPriority?, alertSeverity?}` | `SettingsResponse` | `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. The optional fields keep their saved values when left out. |
-| `POST /api/settings/discord/test` · `POST /api/settings/discord/digest-now` | — | `{ok, message, settings}` | Sends a test message / today's summary. |
-| `PUT /api/settings/notify` | `NotifyAlertsBody {digestTime, alertPriority, alertSeverity}` | `SettingsResponse` | What counts as urgent and when the daily summary goes out, for every channel. |
-| `PUT /api/settings/notify/ntfy` · `…/gotify` · `…/webhook` | `NotifyChannelBody {url, secret, events}` | `SettingsResponse` | `url` and `secret`: `null` keeps the saved value, `''` removes it. `url` must be `http(s)` without a user name or password; for ntfy it's the topic's address. A new `url` on another host forgets the saved secret unless one is sent too. `secret` is ntfy's access token, Gotify's app token (required to send) or the webhook's signing secret. |
-| `POST /api/settings/notify/{ntfy\|gotify\|webhook}/test` · `…/digest-now` | — | `{ok, message, settings}` | Sends a test message / today's summary through that channel. `ok: false` with a message when it isn't set up or the send failed. `503` when the server runs without a notifier (tests). |
+| `GET /api/settings` | — | `SettingsResponse` | Everyone signed in (it's redacted). General, submit page (including its `key`), Discord (the webhook is never returned, only `webhookSet` and a masked `webhookHint`), `notify` (`alerts` shared by every channel, and `channels.ntfy/gotify/webhook` with `set`, `hint`, `secretSet`, `events`, `lastDelivery`; addresses and secrets are never returned), and `blockedColumnId`. |
+| `PUT /api/settings/general` | `GeneralSettingsBody {ticketFormat, appUrl, claudeModel}` | `SettingsResponse` | **Admin.** `ticketFormat` must end with `{N}` and can't contain `%` or `_`. |
+| `PUT /api/settings/submit` | `SubmitSettingsBody {enabled, columnId, pageTitle, intro}` | `SettingsResponse` | **Admin.** Turning the page on the first time creates its key. |
+| `POST /api/settings/submit/new-link` | — | `SettingsResponse` | **Admin.** A new key; the old link stops working. |
+| `POST /api/settings/submit/reset-status-links` | — | `SettingsResponse` | **Admin.** A new signing secret; every status link handed out so far stops working. |
+| `PUT /api/settings/resolutions` | `ResolutionReasonsBody {reasons}` | `SettingsResponse` | **Admin.** 1–12 reasons, each 1–40 characters, no duplicates (ignoring case). The first is the default. |
+| `PUT /api/settings/discord` | `DiscordSettingsBody {webhookUrl, events, digestTime?, alertPriority?, alertSeverity?}` | `SettingsResponse` | **Admin.** `webhookUrl`: `null` keeps the saved one, `''` removes it; only `https://discord.com/api/webhooks/…` (or discordapp.com) is accepted. The optional fields keep their saved values when left out. |
+| `POST /api/settings/discord/test` · `POST /api/settings/discord/digest-now` | — | `{ok, message, settings}` | **Admin.** Sends a test message / today's summary. |
+| `PUT /api/settings/notify` | `NotifyAlertsBody {digestTime, alertPriority, alertSeverity}` | `SettingsResponse` | **Admin.** What counts as urgent and when the daily summary goes out, for every channel. |
+| `PUT /api/settings/notify/ntfy` · `…/gotify` · `…/webhook` | `NotifyChannelBody {url, secret, events}` | `SettingsResponse` | **Admin.** `url` and `secret`: `null` keeps the saved value, `''` removes it. `url` must be `http(s)` without a user name or password; for ntfy it's the topic's address. A new `url` on another host forgets the saved secret unless one is sent too. `secret` is ntfy's access token, Gotify's app token (required to send) or the webhook's signing secret. |
+| `POST /api/settings/notify/{ntfy\|gotify\|webhook}/test` · `…/digest-now` | — | `{ok, message, settings}` | **Admin.** Sends a test message / today's summary through that channel. `ok: false` with a message when it isn't set up or the send failed. `503` when the server runs without a notifier (tests). |
 | `GET /api/request-types` | — | `RequestType[]` | |
-| `POST /api/request-types` · `PUT /api/request-types/:id` | `RequestTypeBody` | `201` / `RequestType` | Questions: `{key, label, help, kind: short\|long\|choice\|multi\|datetime\|yesno, required, options}`; the title pattern may use `{summary}` and question keys. |
-| `PUT /api/request-types/order` · `DELETE /api/request-types/:id` | `{ids}` / — | `RequestType[]` / `204` | |
-| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` | — / `{name, canComplete, scope?}` / — | `ApiTokenInfo[]` / `201 {token, info}` / `204` | The token is only in the create response. Delete revokes. `scope` is `full` (default) or `read`; a `read` token only gets `GET /api/v1/summary` and never completes tickets. |
+| `POST /api/request-types` · `PUT /api/request-types/:id` | `RequestTypeBody` | `201` / `RequestType` | **Admin.** Questions: `{key, label, help, kind: short\|long\|choice\|multi\|datetime\|yesno, required, options}`; the title pattern may use `{summary}` and question keys. |
+| `PUT /api/request-types/order` · `DELETE /api/request-types/:id` | `{ids}` / — | `RequestType[]` / `204` | **Admin.** |
+| `GET /api/tokens` · `POST /api/tokens` · `DELETE /api/tokens/:id` | — / `{name, canComplete, scope?}` / — | `ApiTokenInfo[]` / `201 {token, info}` / `204` | The token is only in the create response. Delete revokes. `scope` is `full` (default) or `read`; a `read` token only gets `GET /api/v1/summary` and never completes tickets. A token belongs to whoever creates it (`owner: UserRef`) and acts for them; it stops working while they're deactivated. Members list and revoke only their own (someone else's is a `404`); admins see and revoke everyone's. |
 | `GET /api/public/submit/:key` | — | `PublicSubmitConfig` | **No session.** `404` when the page is off or the key is wrong. |
 | `POST /api/public/submit/:key` | multipart: `data` (JSON `SubmitBody`) + up to 3 `screenshots` | `201 {ticketNo, statusPath}` | **No session**, but needs `X-Requested-With`. `429 rate_limited` (5 per 10 min per address, 30 per hour overall). `statusPath` is the new ticket's status page. |
 | `GET /api/public/status/:id/:sig` | — | `PublicTicketStatus {ticketNo, title, submittedAt, state, resolution, changedAt}` | **No session.** `state` is `received`, `in_progress`, `waiting` or `done`; `resolution` is the reason only. The same `404` for a bad signature, a work card, a card in the Trash or the page being off. `429 rate_limited` past 60 a minute per address. |

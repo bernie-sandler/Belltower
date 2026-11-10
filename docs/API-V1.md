@@ -30,6 +30,11 @@ Authorization: Bearer tt_…
 `/api/v1/` accepts tokens only. Session cookies and the web UI's CSRF header aren't used or needed. A missing,
 mistyped or revoked token gets `401`.
 
+**A token belongs to the person who created it** (since 1.5) and acts for them: what it does shows in a card's history
+as done through that token, by its owner. While its owner is deactivated, the token gets `401` like a revoked one; it
+isn't revoked, so it works again when they're re-enabled. Tokens created before 1.5 belong to the owner account.
+Members see and revoke their own tokens; admins see everyone's. Requests and responses are the same as before.
+
 Each token is one of two kinds:
 
 - **Full** tokens can use everything below. Their one switch, **may complete tickets** (`canComplete`), decides what a
@@ -58,7 +63,7 @@ Errors are JSON with a stable machine-readable `error` code and a human-readable
 | HTTP | `error` | When |
 |---|---|---|
 | 400 | `validation` | The card doesn't validate. `errors` lists every problem. |
-| 401 | `unauthenticated` | No valid token. |
+| 401 | `unauthenticated` | No valid token (missing, wrong, revoked, or its owner is deactivated). |
 | 403 | `forbidden` | A read-only token called something other than the summary. |
 | 404 | `not_found` | No such route under `/api/v1/`. |
 | 413 | `too_large` | The body is over 2 MB. |

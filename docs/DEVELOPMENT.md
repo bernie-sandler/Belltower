@@ -118,7 +118,8 @@ Only add optional fields; anything else needs `/api/v2/`.
 - `tt_sid` and the `tt:` / `tt-` browser storage keys: changing them signs people out and resets per-device settings.
 - The `tower-tracker-backup` format id: frozen, see [BACKUP-FORMAT.md](BACKUP-FORMAT.md).
 - The CSRF header value: tabs still open on the previous bundle would get `403` on every change.
-- The hidden `username` field on the password forms: it's the account name saved in password managers.
+- `tower-tracker` as a login name for the owner account: it's the account name password managers saved before 1.5,
+  when the password forms had a hidden `username` field with that value. Nobody can take it as a username.
 - The volume name in `docker-compose.local.yml`: it's where an existing desktop install keeps its data.
 - The `@tt/*` workspace names: internal, and never seen by anyone running the app.
 

@@ -27,12 +27,13 @@ back.
 
 ## 3. Export and restore (from the app)
 
-**Menu → Backup & restore**:
+**Menu → Backup & restore** (admins only):
 
 - **Download ZIP** is everything, attachments included.
 - **Download JSON** is the data without attachment files. It's smaller, and handy for scripts.
 
-Your password and signed-in devices are never part of an export. Everything else is, including API token hashes,
+Passwords and signed-in devices are never part of an export. Everything else is, including people's names and
+emails, API token hashes,
 your notification addresses and tokens (Discord, ntfy, Gotify, webhook) and the submit page's link, so keep exports
 somewhere private. (The format is
 documented in [BACKUP-FORMAT.md](BACKUP-FORMAT.md).)
@@ -44,7 +45,9 @@ documented in [BACKUP-FORMAT.md](BACKUP-FORMAT.md).)
 2. Type `RESTORE` to confirm.
 3. Everything on the board is replaced. Your previous database and attachments are kept in
    `backups/pre-restore-…` (the last 5), so a restore is never a one-way door.
-4. You stay signed in.
+4. You stay signed in. Everyone on this server keeps their own password, role and devices: people are matched to the
+   backup's by username, and anyone the backup doesn't have is kept. People only in the backup come back without a
+   password until an admin gives them one.
 
 Exports from any older version restore fine; they're upgraded on the way in. An export from a *newer* version is
 refused, so update the app first.
@@ -52,7 +55,9 @@ refused, so update the app first.
 ## Moving to a new server
 
 1. On the old server, **Download ZIP**.
-2. On the new one, [install](INSTALL.md) Belltower and set a password.
+2. On the new one, [install](INSTALL.md) Belltower and create the owner account (use the same username as before, so
+   the backup's history and API tokens line up with you).
 3. **Restore** the ZIP.
 
-That carries over everything except your password and signed-in devices.
+That carries over everything except passwords and signed-in devices. Other people come back without a password; give
+each a new one.

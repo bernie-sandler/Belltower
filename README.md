@@ -80,7 +80,7 @@ Belltower is stable. Updates within 1.x never break your data, backups or automa
 3. In **Docker → Compose**, add a stack pointing at that folder and press **Compose Up** (or run
    `docker compose up -d`).
 4. Open `http://tower:8080`.
-5. Grab the one-time setup code from the container log and choose a password.
+5. Grab the one-time setup code from the container log and choose a username and password.
 
 The full walkthrough (where the data should live, every setting) is in
 [docs/INSTALL.md](docs/INSTALL.md).
