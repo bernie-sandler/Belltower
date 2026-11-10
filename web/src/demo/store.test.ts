@@ -8,12 +8,15 @@ import {
   type BoardResponse,
   type CardDetail,
   type MeResponse,
+  type NotificationsResponse,
+  type PersonalNotifySettings,
   type SettingsResponse,
   type UserInfo,
 } from '@tt/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { seedDemo } from './seed';
 import { DEMO_SCHEMA_VERSION } from './server/db';
+import { DEMO_UNAVAILABLE_CODE } from './server/errors';
 import { dispatch, type DemoResponse, type Method } from './server/routes';
 import { DemoStore, memoryStorage, STORAGE_KEY, STORAGE_PREFIX } from './store';
 
@@ -300,7 +303,8 @@ describe('people', () => {
     // The owner's own history says who did it; the submit page's tickets don't.
     const s = store.snapshot();
     const owner = s.users.find((u) => u.isOwner)!.id;
-    expect(s.activity.filter((a) => a.type === 'worklog').every((a) => a.userId === owner)).toBe(true);
+    const alex = s.users.find((u) => u.username === 'alex')!.id;
+    expect(s.activity.filter((a) => a.type === 'worklog').every((a) => a.userId === owner || a.userId === alex)).toBe(true);
     const submitted = s.cards.find((c) => c.sourceRef === 'submit')!;
     expect(s.activity.find((a) => a.cardId === submitted.id && a.type === 'created')!.userId).toBeNull();
     // A few cards are assigned: three to the visitor (so Mine isn't empty), one each to the others.
@@ -441,5 +445,43 @@ describe('persistence and reset', () => {
     const res = call(stuck, 'POST', '/api/cards', { title: 'Will not fit' });
     expect(res.status).toBe(507);
     expect(board(stuck).cards.some((c) => c.title === 'Will not fit')).toBe(false);
+  });
+});
+
+describe('notifications', () => {
+  it('greets the visitor with two unread: a mention and a move on a card they watch', () => {
+    const store = makeStore();
+    const bell = ok<NotificationsResponse>(call(store, 'GET', '/api/notifications'));
+    expect(bell.unread).toBe(2);
+    expect(bell.items.map((n) => [n.type, n.text, n.cardTitle])).toEqual([
+      ['watching', 'Jordan Lee moved this to In Progress', 'Label the patch panel'],
+      ['mentioned', 'Alex Chen mentioned you: “The warranty replacement shipped; tracking says Thursday. @admin can you preclear it when it lands?”', 'Disk 3 reallocated sectors climbing'],
+    ]);
+    expect(ok<{ unread: number }>(call(store, 'POST', '/api/notifications/read', { ids: [bell.items[0]!.id] })).unread).toBe(1);
+    expect(ok<{ unread: number }>(call(store, 'POST', '/api/notifications/read', { all: true })).unread).toBe(0);
+    expect(ok<NotificationsResponse>(call(store, 'GET', `/api/notifications?after=${bell.latestId}`)).items).toEqual([]);
+  });
+
+  it('watching and mentions work as on the server; personal Discord and ntfy need the server', () => {
+    const store = makeStore();
+    const card = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Mention test' }));
+    expect(card.watching).toBe(true);
+    expect(ok<{ watching: boolean }>(call(store, 'DELETE', `/api/cards/${card.id}/watch`)).watching).toBe(false);
+    expect(ok<CardDetail>(call(store, 'GET', `/api/cards/${card.id}`)).watching).toBe(false);
+    ok(call(store, 'POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Can you look, @Jordan? Not `@alex`.' }));
+    const s = store.snapshot();
+    const jordan = s.users.find((u) => u.username === 'jordan')!.id;
+    const alex = s.users.find((u) => u.username === 'alex')!.id;
+    expect(s.notifications.filter((n) => n.cardId === card.id).map((n) => [n.userId, n.type])).toEqual([[jordan, 'mentioned']]);
+    expect(s.watchers.filter((w) => w.cardId === card.id).map((w) => w.userId).sort()).toEqual([s.users.find((u) => u.isOwner)!.id, jordan].sort());
+    expect(s.notifications.some((n) => n.userId === alex && n.cardId === card.id)).toBe(false);
+
+    const settings = ok<PersonalNotifySettings>(call(store, 'GET', '/api/me/notifications'));
+    expect(settings.install).toEqual({ discord: false, ntfy: false });
+    const prefs = { ...settings.prefs, watching: { inApp: false, discord: false, ntfy: false } };
+    expect(ok<PersonalNotifySettings>(call(store, 'PUT', '/api/me/notifications', { discordUserId: null, ntfyTopic: null, prefs })).prefs.watching.inApp).toBe(false);
+    const withId = call(store, 'PUT', '/api/me/notifications', { discordUserId: '123456789012345678', ntfyTopic: null, prefs });
+    expect(withId.body).toMatchObject({ error: DEMO_UNAVAILABLE_CODE });
+    expect(call(store, 'POST', '/api/me/notifications/test').body).toMatchObject({ error: DEMO_UNAVAILABLE_CODE });
   });
 });

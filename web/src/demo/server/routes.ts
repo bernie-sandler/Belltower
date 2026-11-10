@@ -25,16 +25,22 @@ import {
   CSRF_VALUE,
   DeleteColumnQuery,
   DiscordSettingsBody,
+  NotificationsQuery,
   NotifyAlertsBody,
   NotifyChannelBody,
   OidcSettingsBody,
   OidcTestBody,
+  PersonalNotifyBody,
+  type NotificationsResponse,
+  type PersonalNotifySettings,
+  type PersonalTestResult,
   type OidcSettingsInfo,
   type OidcTestResult,
   DraftTicketBody,
   GeneralSettingsBody,
   LabelBody,
   LoginBody,
+  MarkNotificationsReadBody,
   MoveCardBody,
   MoveCardsBody,
   ReorderBody,
@@ -119,6 +125,15 @@ import { createColumn, deleteColumn, renameColumn, reorderColumns, setBlockedCol
 import { actorId, type Ctx } from './db';
 import { badRequest, DemoError, idParam, notFound, notInDemo, parse } from './errors';
 import { createLabel, deleteLabel, reorderLabels, updateLabel } from './labels';
+import {
+  listNotifications,
+  markNotificationsRead,
+  personalNotifySettings,
+  pruneNotifications,
+  unwatchCard,
+  updatePersonalNotify,
+  watchCard,
+} from './notifications';
 import { createLink, deleteLink } from './links';
 import { createTemplate, deleteTemplate, getTemplate, listTemplates, runDueTemplates, runTemplateNow, updateTemplate } from './recurring';
 import { searchCards, similarCards } from './search';
@@ -275,6 +290,14 @@ export interface DemoApi {
   'GET /api/users': UserInfo[];
   'POST /api/users': UserInfo;
   'PATCH /api/users/:id': UserInfo;
+  // ---- personal notifications (routes/notifications.ts) ----
+  'GET /api/notifications': NotificationsResponse;
+  'POST /api/notifications/read': { unread: number };
+  'PUT /api/cards/:id/watch': { watching: boolean };
+  'DELETE /api/cards/:id/watch': { watching: boolean };
+  'GET /api/me/notifications': PersonalNotifySettings;
+  'PUT /api/me/notifications': PersonalNotifySettings;
+  'POST /api/me/notifications/test': PersonalTestResult;
   // ---- the public submit page (routes/submit.ts) ----
   'GET /api/public/submit/:key': PublicSubmitConfig;
   'POST /api/public/submit/:key': SubmitResult;
@@ -321,6 +344,7 @@ const NO_FILES = 'attachments need the server’s file storage';
 const NO_BACKUPS = 'backups and restores work on the server’s database';
 const NO_DISCORD = 'Discord notifications are sent by the server';
 const NO_NOTIFY = 'notifications are sent by the server';
+const NO_PERSONAL = 'personal Discord and ntfy messages are sent by the server';
 
 /** Saves a channel's event choices; an address or secret needs a real server. */
 const saveChannel = (channel: 'ntfy' | 'gotify' | 'webhook') => (ctx: Ctx, req: DemoRequest) => {
@@ -397,6 +421,7 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'GET /api/board': ok(
     (ctx) => {
       runDueTemplates(ctx);
+      pruneNotifications(ctx);
       return getBoard(ctx);
     },
     { writes: true },
@@ -601,6 +626,29 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
       return updateUser(ctx, id(req), patch, password !== undefined);
     }),
   ),
+
+  'GET /api/notifications': ok((ctx, req) => listNotifications(ctx, me(ctx), parse(NotificationsQuery, req.query))),
+  'POST /api/notifications/read': ok((ctx, req) => ({ unread: markNotificationsRead(ctx, me(ctx), parse(MarkNotificationsReadBody, req.body)) })),
+  'PUT /api/cards/:id/watch': ok((ctx, req) => {
+    getCardRow(ctx, id(req));
+    watchCard(ctx, id(req), me(ctx));
+    return { watching: true };
+  }),
+  'DELETE /api/cards/:id/watch': ok((ctx, req) => {
+    getCardRow(ctx, id(req));
+    unwatchCard(ctx, id(req), me(ctx));
+    return { watching: false };
+  }),
+  'GET /api/me/notifications': ok((ctx) => personalNotifySettings(ctx, me(ctx))),
+  // What goes where is saved; a Discord ID or an ntfy topic needs the server, like the install channels' addresses.
+  'PUT /api/me/notifications': ok((ctx, req) => {
+    const body = parse(PersonalNotifyBody, req.body);
+    if (body.discordUserId || body.ntfyTopic) throw notInDemo(NO_PERSONAL);
+    return updatePersonalNotify(ctx, me(ctx), body);
+  }),
+  'POST /api/me/notifications/test': ok(() => {
+    throw notInDemo(NO_PERSONAL);
+  }),
 
   'GET /api/public/submit/:key': ok((ctx, req) => publicSubmitConfig(ctx, req.params.key ?? ''), { public: true }),
   'GET /api/public/status/:id/:sig': ok((ctx, req) => publicStatus(ctx, req.params.id ?? '', req.params.sig ?? ''), { public: true }),

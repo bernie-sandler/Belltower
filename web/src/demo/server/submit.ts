@@ -144,7 +144,7 @@ export function submitTicket(ctx: Ctx, key: string, body: SubmitBody): SubmitRes
       columnId: columnExists ? columnId : getRoleColumn(ctx, 'triage').id,
       labelIds: [...new Set([...(type.typeLabelId !== null ? [type.typeLabelId] : []), ...tags])],
     },
-    { source: 'api', sourceRef: 'submit', via: `submit page${body.name ? ` (${body.name})` : ''}` },
+    { source: 'api', sourceRef: 'submit', via: `submit page${body.name ? ` (${body.name})` : ''}`, external: true },
   );
   return { ticketNo: card.ticketNo, statusPath: statusLink(ctx, card.id).path };
 }

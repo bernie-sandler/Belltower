@@ -6,6 +6,7 @@ import { recordEvent, toActivityEntry, userNamesOf } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorId, nextId, nowIso, type Ctx } from './db';
 import { DemoError, badRequest, conflict, notFound } from './errors';
+import { notifyNoteAdded, notifyNoteEdited } from './notifications';
 import { actorIsAdmin } from './users';
 
 function assertNotFuture(ctx: Ctx, iso: string): void {
@@ -53,6 +54,7 @@ export function addWorklog(ctx: Ctx, cardId: number, input: { bodyMd: string; oc
     tokenId: null,
   });
   touchCard(ctx, cardId);
+  notifyNoteAdded(ctx, cardId, id, input.bodyMd);
   return getActivityEntry(ctx, id);
 }
 
@@ -77,6 +79,7 @@ export function updateWorklog(
     throw conflict('card_deleted', 'This card is in the Trash; restore it before editing');
   }
   const now = nowIso(ctx);
+  const before = row.bodyMd ?? '';
   const body = patch.bodyMd ?? row.bodyMd!;
   const occurred = patch.occurredAt ?? row.occurredAt;
   if (patch.occurredAt) assertNotFuture(ctx, patch.occurredAt);
@@ -97,6 +100,8 @@ export function updateWorklog(
     row.retractedAt = patch.retracted ? now : null;
     recordEvent(ctx, row.cardId, patch.retracted ? 'worklog_retracted' : 'worklog_restored', { entryId: id, text: excerpt(body) });
   }
+  // People newly @mentioned by the edit. A retracted note notifies nobody.
+  if (body !== before && row.retractedAt === null) notifyNoteEdited(ctx, row.cardId, id, before, body);
   touchCard(ctx, row.cardId);
   return getActivityEntry(ctx, id);
 }
