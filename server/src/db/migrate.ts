@@ -1,5 +1,5 @@
 import type { DB } from './connection';
-import { GUARD_TRIGGER_NAMES, GUARDS_SQL, MIGRATIONS, type Migration } from './schema';
+import { GUARD_TRIGGER_NAMES, guardsSql, MIGRATIONS, type Migration } from './schema';
 
 export function schemaVersion(db: DB): number {
   return db.pragma('user_version', { simple: true }) as number;
@@ -29,7 +29,7 @@ export function migrate(db: DB, opts: { to?: number; migrations?: readonly Migra
       db.transaction(() => {
         for (const name of GUARD_TRIGGER_NAMES) db.exec(`DROP TRIGGER IF EXISTS ${name}`);
         db.exec(m.sql);
-        db.exec(GUARDS_SQL);
+        db.exec(guardsSql(m.version));
         const violations = db.pragma('foreign_key_check') as unknown[];
         if (violations.length) {
           throw new Error(`Migration ${m.version} (${m.name}) left ${violations.length} foreign key violation(s)`);
@@ -45,10 +45,10 @@ export function migrate(db: DB, opts: { to?: number; migrations?: readonly Migra
   return applied;
 }
 
-/** Recreates the append-only guards so an existing DB always has the current definitions. */
+/** Recreates the append-only guards so an existing DB always has the current definitions for its schema. */
 export function syncGuards(db: DB): void {
   db.transaction(() => {
     for (const name of GUARD_TRIGGER_NAMES) db.exec(`DROP TRIGGER IF EXISTS ${name}`);
-    db.exec(GUARDS_SQL);
+    db.exec(guardsSql(schemaVersion(db)));
   })();
 }

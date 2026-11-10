@@ -265,6 +265,88 @@ ALTER TABLE checklist_items ADD COLUMN state TEXT NOT NULL DEFAULT 'open' CHECK 
 UPDATE checklist_items SET state = 'done' WHERE checked = 1;
 `;
 
+/** SQLite's own clock, in the same ISO format as ISO_GLOB (only used when a migration has no better time). */
+const SQL_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+
+// 1.5: people. Everything 1.5 needs is in this one migration (assignees, watchers and personal
+// notifications are used by later 1.5 changes), since a shipped migration can't change.
+//  - users: the single 1.4 password becomes the owner account `admin` (created_at from the oldest
+//    column, so it's stable). Roles are checked in code, not here, so a role can be added later
+//    without rebuilding the table.
+//  - who did it: activity.user_id / token_id and activity_revisions.user_id. Nullable, and no
+//    ON DELETE action: a cascade would UPDATE the activity log, which the guards refuse. Users are
+//    deactivated, never deleted.
+//  - existing sessions and API tokens belong to the owner, so nobody is signed out and automations
+//    keep working. The password_hash setting goes (the pre-migration copy keeps it); password_source
+//    stays and now means "the owner's password comes from APP_PASSWORD".
+const v9 = `
+CREATE TABLE users (
+  id              INTEGER PRIMARY KEY,
+  username        TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (
+                    length(username) BETWEEN 2 AND 32
+                    AND username NOT GLOB '*[^a-z0-9._-]*'
+                    AND lower(username) <> 'tower-tracker'),
+  display_name    TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 60),
+  email           TEXT CHECK (email IS NULL OR length(email) BETWEEN 3 AND 254),
+  role            TEXT NOT NULL DEFAULT 'member' CHECK (length(role) BETWEEN 1 AND 20),
+  is_owner        INTEGER NOT NULL DEFAULT 0 CHECK (is_owner IN (0, 1)),
+  password_hash   TEXT,
+  oidc_issuer     TEXT,
+  oidc_subject    TEXT,
+  discord_user_id TEXT CHECK (discord_user_id IS NULL OR (length(discord_user_id) BETWEEN 17 AND 20 AND discord_user_id NOT GLOB '*[^0-9]*')),
+  ntfy_topic      TEXT CHECK (ntfy_topic IS NULL OR (length(ntfy_topic) BETWEEN 1 AND 64 AND ntfy_topic NOT GLOB '*[^A-Za-z0-9_-]*')),
+  notify_prefs    TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(notify_prefs)),
+  ${ts('created_at')},
+  ${tsNull('disabled_at')},
+  CHECK ((oidc_issuer IS NULL) = (oidc_subject IS NULL))
+) STRICT;
+CREATE UNIQUE INDEX ux_users_owner ON users (is_owner) WHERE is_owner = 1;
+CREATE UNIQUE INDEX ux_users_oidc ON users (oidc_issuer, oidc_subject) WHERE oidc_subject IS NOT NULL;
+
+INSERT INTO users (username, display_name, role, is_owner, password_hash, created_at)
+SELECT 'admin', 'Admin', 'admin', 1, value, coalesce((SELECT min(created_at) FROM columns), ${SQL_NOW})
+  FROM settings WHERE key = 'password_hash';
+
+ALTER TABLE sessions ADD COLUMN user_id INTEGER REFERENCES users (id);
+ALTER TABLE api_tokens ADD COLUMN user_id INTEGER REFERENCES users (id);
+ALTER TABLE activity ADD COLUMN user_id INTEGER REFERENCES users (id);
+ALTER TABLE activity ADD COLUMN token_id INTEGER REFERENCES api_tokens (id);
+ALTER TABLE activity_revisions ADD COLUMN user_id INTEGER REFERENCES users (id);
+ALTER TABLE cards ADD COLUMN assignee_id INTEGER REFERENCES users (id);
+
+UPDATE sessions SET user_id = (SELECT id FROM users WHERE is_owner = 1);
+UPDATE api_tokens SET user_id = (SELECT id FROM users WHERE is_owner = 1);
+DELETE FROM sessions WHERE user_id IS NULL;
+DELETE FROM settings WHERE key = 'password_hash';
+
+CREATE INDEX ix_sessions_user ON sessions (user_id);
+CREATE INDEX ix_api_tokens_user ON api_tokens (user_id);
+CREATE INDEX ix_cards_assignee ON cards (assignee_id) WHERE assignee_id IS NOT NULL;
+
+CREATE TABLE card_watchers (
+  card_id INTEGER NOT NULL REFERENCES cards (id),
+  user_id INTEGER NOT NULL REFERENCES users (id),
+  ${ts('created_at')},
+  PRIMARY KEY (card_id, user_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX ix_card_watchers_user ON card_watchers (user_id);
+
+CREATE TABLE notifications (
+  id            INTEGER PRIMARY KEY,
+  user_id       INTEGER NOT NULL REFERENCES users (id),
+  card_id       INTEGER NOT NULL REFERENCES cards (id),
+  activity_id   INTEGER REFERENCES activity (id),
+  type          TEXT NOT NULL CHECK (length(type) BETWEEN 1 AND 40),
+  actor_user_id INTEGER REFERENCES users (id),
+  data          TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(data)),
+  ${ts('created_at')},
+  ${tsNull('read_at')}
+) STRICT;
+CREATE INDEX ix_notifications_user ON notifications (user_id, id);
+CREATE INDEX ix_notifications_unread ON notifications (user_id) WHERE read_at IS NULL;
+CREATE UNIQUE INDEX ux_notifications_once ON notifications (user_id, activity_id, type) WHERE activity_id IS NOT NULL;
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -274,6 +356,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 6, name: 'resolution notes', sql: v6 },
   { version: 7, name: 'read-only API tokens', sql: v7 },
   { version: 8, name: 'checklist item states', sql: v8 },
+  { version: 9, name: 'people', sql: v9 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -291,7 +374,15 @@ export const GUARD_TRIGGER_NAMES = [
   'activity_revisions_no_update',
 ] as const;
 
-export const GUARDS_SQL = `
+/**
+ * The guards for a database at schema `version`. They depend on it: SQLite accepts a trigger that
+ * names a column the table doesn't have yet, and then fails every UPDATE on that table with "no such
+ * column". Upgrades and restores run old migration steps on old tables, so the work-log author
+ * columns (schema 9) are only frozen once they exist.
+ */
+export function guardsSql(version: number): string {
+  const frozen = ['id', 'card_id', 'kind', 'type', 'data', 'created_at', ...(version >= 9 ? ['user_id', 'token_id'] : [])];
+  return `
 CREATE TRIGGER activity_no_delete BEFORE DELETE ON activity
 BEGIN SELECT RAISE(ABORT, 'activity is append-only'); END;
 
@@ -302,12 +393,7 @@ BEGIN SELECT RAISE(ABORT, 'activity is append-only'); END;
 
 CREATE TRIGGER activity_guard_update BEFORE UPDATE ON activity
 WHEN OLD.kind <> 'worklog'
-  OR NEW.id IS NOT OLD.id
-  OR NEW.card_id IS NOT OLD.card_id
-  OR NEW.kind IS NOT OLD.kind
-  OR NEW.type IS NOT OLD.type
-  OR NEW.data IS NOT OLD.data
-  OR NEW.created_at IS NOT OLD.created_at
+${frozen.map((c) => `  OR NEW.${c} IS NOT OLD.${c}`).join('\n')}
 BEGIN SELECT RAISE(ABORT, 'activity is append-only: only a work-log body, time, edit time or retraction may change'); END;
 
 CREATE TRIGGER activity_revisions_no_delete BEFORE DELETE ON activity_revisions
@@ -320,3 +406,4 @@ BEGIN SELECT RAISE(ABORT, 'activity_revisions is append-only'); END;
 CREATE TRIGGER activity_revisions_no_update BEFORE UPDATE ON activity_revisions
 BEGIN SELECT RAISE(ABORT, 'activity_revisions is append-only'); END;
 `;
+}
