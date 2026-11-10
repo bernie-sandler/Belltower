@@ -24,6 +24,10 @@ export function recordEvent(ctx: Ctx, cardId: number, type: ActivityEventType, d
   return id;
 }
 
+/** A person's display name, for who did what (the demo has no API tokens). */
+export const userNameOf = (ctx: Ctx, id: number | null): string | null =>
+  id === null ? null : (ctx.s.users.find((u) => u.id === id)?.displayName ?? null);
+
 export function toActivityEntry(ctx: Ctx, row: ActivityRow): ActivityEntry {
   return {
     id: row.id,
@@ -39,6 +43,8 @@ export function toActivityEntry(ctx: Ctx, row: ActivityRow): ActivityEntry {
     revisionCount: ctx.s.revisions.filter((r) => r.activityId === row.id).length,
     userId: row.userId,
     tokenId: row.tokenId,
+    userName: userNameOf(ctx, row.userId),
+    tokenName: null,
   };
 }
 
