@@ -1,6 +1,6 @@
 // Assignees: who a card's assignee is (from the people directory), and "Take it".
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BoardResponse, CardDetail, CardTile, UpdateCardBody, UserInfo } from '@tt/shared';
 import { toast } from '../lib/toast';
 import { applyCardDetail } from './cards';
@@ -8,18 +8,32 @@ import { api } from './client';
 import { conflictCard, errorMessage } from './errors';
 import { qk } from './keys';
 
-/** One person from the directory (the same query as useUsers), or undefined while loading or unknown. */
+/** The people directory, as useUsers loads it (same key, same request). */
+const usersQuery = {
+  queryKey: qk.users,
+  queryFn: ({ signal }: { signal: AbortSignal }) => api.get<UserInfo[]>('/api/users', signal),
+  staleTime: 60_000,
+};
+
+/** One person from the directory, or undefined while loading or unknown. */
 export function usePerson(id: number | null): UserInfo | undefined {
-  return useQuery({
-    queryKey: qk.users,
-    queryFn: ({ signal }) => api.get<UserInfo[]>('/api/users', signal),
-    staleTime: 60_000,
-    select: (users) => (id === null ? undefined : users.find((u) => u.id === id)),
-  }).data;
+  return useQuery({ ...usersQuery, select: (users) => (id === null ? undefined : users.find((u) => u.id === id)) }).data;
+}
+
+/** A person's name for a message: from the cache, else a fresh directory (they may be new), else null. */
+async function personName(qc: QueryClient, id: number): Promise<string | null> {
+  const cached = qc.getQueryData<UserInfo[]>(qk.users)?.find((u) => u.id === id);
+  if (cached) return cached.displayName;
+  try {
+    const users = await qc.fetchQuery({ ...usersQuery, staleTime: 0 });
+    return users.find((u) => u.id === id)?.displayName ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** The newest version the client knows for a card: the one the next PATCH must name. */
-function knownVersion(qc: ReturnType<typeof useQueryClient>, tile: CardTile): number {
+function knownVersion(qc: QueryClient, tile: CardTile): number {
   const detail = qc.getQueryData<CardDetail>(qk.card(tile.id))?.version ?? -1;
   const onBoard = qc.getQueryData<BoardResponse>(qk.board)?.cards.find((c) => c.id === tile.id)?.version ?? -1;
   return Math.max(detail, onBoard, tile.version);
@@ -44,18 +58,22 @@ export function useTakeCard(tile: CardTile, meId: number) {
       void qc.invalidateQueries({ queryKey: qk.activity(card.id) });
       toast(`You took “${card.title}”`, { kind: 'success', durationMs: 2500 });
     },
-    onError: (err) => {
-      const server = conflictCard(err);
-      if (server) {
-        applyCardDetail(qc, server);
-        const winner = server.assigneeId !== null && server.assigneeId !== meId ? qc.getQueryData<UserInfo[]>(qk.users)?.find((u) => u.id === server.assigneeId) : undefined;
-        if (server.assigneeId === meId) toast(`“${server.title}” is already yours`, { kind: 'info' });
-        else if (server.assigneeId !== null) toast(`Someone else took it${winner ? `: ${winner.displayName}` : ''}`, { kind: 'warning' });
-        else toast(`“${server.title}” changed meanwhile; check it and try again`, { kind: 'warning' });
-      } else {
-        toast(errorMessage(err), { kind: 'error' });
-      }
+    onError: async (err) => {
       void qc.invalidateQueries({ queryKey: qk.board });
+      const server = conflictCard(err);
+      if (!server) {
+        toast(errorMessage(err), { kind: 'error' });
+        return;
+      }
+      applyCardDetail(qc, server);
+      if (server.assigneeId === meId) {
+        toast(`“${server.title}” is already yours`, { kind: 'info' });
+      } else if (server.assigneeId !== null) {
+        const winner = await personName(qc, server.assigneeId);
+        toast(`Someone else took it${winner ? `: ${winner}` : ''}`, { kind: 'warning' });
+      } else {
+        toast(`“${server.title}” changed meanwhile; check it and try again`, { kind: 'warning' });
+      }
     },
   });
 }
