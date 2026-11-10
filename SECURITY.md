@@ -20,6 +20,16 @@ Fixes go into the newest 1.x release.
   - Behind a reverse proxy, the real client address is only used when `TRUST_PROXY` names that proxy.
   - The owner account can't be demoted or deactivated, and `APP_PASSWORD` resets it, so the install can't lock
     itself out.
+- **Single sign-on** ([OIDC](docs/SSO.md), off by default).
+  - Authorization code flow with PKCE (S256), `state` and `nonce`. A short-lived HTTP-only, SameSite=Lax cookie ties
+    the provider's answer to the browser that started the sign-in, and each sign-in works once.
+  - The ID token's signature, issuer, audience, nonce and times are checked (30 seconds of clock tolerance).
+  - Nobody gets an account just by signing in: new accounts are only made when an admin turns that on, and then as
+    members. Linking by email is off by default, needs an email the provider marks verified, never picks an admin, and
+    does nothing when several accounts share the email. The required group is checked at every sign-in.
+  - Deactivated people are refused. Password login always stays available, so a broken provider can't lock you out.
+  - The client secret is never shown again once saved, is never in a backup, and can come from `OIDC_CLIENT_SECRET`
+    instead. Pointing the issuer at another host forgets a saved secret. A plain-HTTP issuer needs an explicit switch.
 - **Roles.** Admins manage people, the install's settings (submit page, notification channels), backups and
   restores; members do the board work and manage their own profile, password and API tokens. The server enforces
   this on every request, and each change is recorded with who made it.
@@ -49,6 +59,8 @@ Fixes go into the newest 1.x release.
     - Redirects aren't followed, so a token can't be passed on to another host.
     - Errors show only the status code, so **Send test** can't be used to read other pages on your network.
     - Text from other people is Markdown-escaped in ntfy and Gotify, so it can't load images or hide links.
+  - With single sign-on on, the server talks to your identity provider (its discovery document, keys, token and
+    userinfo endpoints) to sign people in.
 - **Submit page** (off by default).
   - It's reachable without the password by anyone who has its long random link.
   - It can only file tickets, and shows nothing from the board except your request types and the tags you chose.
@@ -74,7 +86,8 @@ Fixes go into the newest 1.x release.
 - **Sharing the submit page publicly.** Let only `/submit/`, `/api/public/` and `/assets/` past your access
   list. Treat the link like a guest key, and replace it if it ends up somewhere you don't want.
 - **Set `TRUST_PROXY`** only to your proxy's own address, and never to `true`.
-- **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD` and `ANTHROPIC_API_KEY`.
+- **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD`, `ANTHROPIC_API_KEY` and `OIDC_CLIENT_SECRET`.
+- **Use an HTTPS issuer** for single sign-on, and keep the clocks right (NTP) on the server and the provider.
 - **Back up `/data`** (or use the export). The pre-upgrade copies and nightly snapshots live in the same folder,
   so they don't protect against losing the disk.
 - **Keep exports private.** They don't contain passwords, but they do contain people's names and emails, the submit page's link,

@@ -111,6 +111,8 @@ templates and the app itself did.
   people the backup doesn't have are added, and everyone stays signed in. People only in the backup come back without a
   password or single sign-on link until an admin gives them a new password. A `password_hash`, `is_owner`,
   `oidc_issuer` or `oidc_subject` in a backup (say, a hand-edited one) is ignored on restore.
+- **Single sign-on settings** (`oidc_settings`, client secret included). They belong to the install: a restore keeps
+  the live install's, and an `oidc_settings` row in a backup (say, a hand-edited one) is ignored.
 - **Personal notifications** (`notifications`). They're each person's inbox, pruned as they age, not data worth
   restoring.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.

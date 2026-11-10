@@ -27,7 +27,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 - **Bodyless requests** (DELETE, logout, undelete, archive, restore) may still send `Content-Type: application/json`;
   the server ignores the header when there is no body.
 - **No auth needed** for: `GET /health`, `GET /api/auth/status`, `POST /api/auth/login`, `POST /api/auth/setup`,
-  and static files. Everything else returns `401 unauthenticated` without a valid session.
+  `GET /api/auth/oidc/start`, `GET /api/auth/oidc/callback`, and static files. Everything else returns `401 unauthenticated` without a valid session.
 - **Roles** (1.5): every session belongs to a person, an `admin` or a `member`. Routes marked **Admin** below answer
   `403 forbidden` to members: managing people, changing the install's settings (general, submit page and request
   types, resolution reasons, notification channels), backups and restores. Everything else (all board work, card
@@ -41,7 +41,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
-| `GET /api/auth/status` | — | `AuthStatus` | Call on app load to choose between the setup page, the login page, or the app. |
+| `GET /api/auth/status` | — | `AuthStatus` | Call on app load to choose between the setup page, the login page, or the app. `sso` is `{label}` when [single sign-on](#single-sign-on-15) is on and complete (the login page shows “Sign in with &lt;label&gt;”), otherwise `null`. |
 | `POST /api/auth/setup` | `SetupBody {setupCode, username?, displayName?, password}` | `204` + cookie | First run only: creates the owner account (an admin; `username` defaults to `admin`: 2–32 of `a-z 0-9 . _ -`, never `tower-tracker`). The setup code is printed in the container log. `404 setup_not_available` once an account exists. `403 invalid_setup_code`. Password must be at least 12 characters. Logs you in as a remembered device. |
 | `POST /api/auth/login` | `LoginBody {username?, password, remember}` | `204` + cookie | Usernames ignore case. No `username` (or an empty one), and `tower-tracker` (the name password managers saved before 1.5), mean the owner. `401 invalid_password` for a wrong password and equally for an unknown, deactivated or password-less account (same timing too), `429 rate_limited {retryAfterSec}`, `409 setup_required`. `remember: true` gives a 90-day sliding cookie; otherwise the cookie lasts for the browser session with a 12-hour idle timeout. |
 | `POST /api/auth/logout` | — | `204` | Clears the cookie. |
@@ -56,6 +56,22 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 | `GET /api/users` | — | `UserInfo[]` | The directory, for pickers and names in history: `{id, username, displayName, role, disabled, isOwner, email, hasPassword, createdAt, disabledAt}`, active people first. `email` is null except for admins and your own entry. |
 | `POST /api/users` | `CreateUserBody {username, displayName, role?, email?, password}` | `201 UserInfo` | **Admin.** `role` is `admin` or `member` (default). `password` is a temporary one to hand over (12+ characters). `409 username_taken`. |
 | `PATCH /api/users/:id` | `UpdateUserBody {displayName?, email?, role?, disabled?, password?}` | `UserInfo` | **Admin.** `disabled: true` deactivates (signs them out everywhere, their API tokens stop working until re-enabled); people are never deleted. `password` resets someone else's and signs them out; your own needs your current one, so it's `409 use_account_password` here (use `POST /api/auth/password`). `409 owner_protected` (the owner stays an active admin, and only the owner changes the owner's password), `409 last_admin` (one active admin must remain), `409 cannot_disable_self`, `409 managed_by_env`, `409 user_changed` (the id means someone else by now, e.g. after a restore: reload). |
+
+## Single sign-on (1.5)
+
+Optional OIDC sign-in with Authentik, Authelia or another provider; see [SSO.md](SSO.md). Password login always stays.
+`MeResponse.ssoLinked` says whether you're linked. Settings live in the private `oidc_settings` key, which backups
+never contain.
+
+| Method & path | Body | Success | Notes |
+|---|---|---|---|
+| `GET /api/auth/oidc/start` | — | `302` | **No session.** A page load (the login page's link), not a fetch. Redirects to the provider (authorization code, PKCE S256, `state`, `nonce`, `response_mode=query`) and sets an HttpOnly, SameSite=Lax `tt_oidc` cookie (path `/api/auth/oidc`, 10 minutes) holding the flow. On a host other than the app's address (Settings → General) it first redirects to `<appUrl>/api/auth/oidc/start?hop=1`. Not set up → `/login?sso_error=not_configured`; provider unreachable → `/login?sso_error=idp`. |
+| `GET /api/auth/oidc/callback` | — | `302` | **No session.** Where the provider sends people back (the redirect URI `<appUrl>/api/auth/oidc/callback`). Needs the `tt_oidc` cookie of a live flow and its `state` (each flow works once). Exchanges the code with that redirect URI, checks the ID token (30 s clock tolerance), merges the userinfo claims, checks the required group, then signs in the linked account, else the one active non-admin account with the same verified email (if turned on), else a new member (if turned on). Success: a remembered session and `302 /`. Failure: `302 /login?sso_error=<code>`, codes in `SSO_ERROR_CODES`: `not_configured`, `state`, `denied`, `idp`, `clock`, `group`, `no_account`, `link_required`, `disabled`. A link flow goes back to `/account?sso=linked`, or `/account?sso_error=<code>` (also `link_session`, `taken`). |
+| `POST /api/auth/oidc/link` | — | `{url}` | Starts linking the signed-in person (session and CSRF header needed); the page then goes to `url`. `409 sso_off`, `409 wrong_host` (not at the app's address, where the provider sends you back), `409 already_linked`, `502 sso_unreachable` (with a message for people). |
+| `DELETE /api/auth/oidc/link` | — | `204` | Unlinks you. `409 needs_password` for an account without a password (it would have no way in). |
+| `GET /api/settings/oidc` | — | `OidcSettingsInfo` | **Admin.** Never returns the client secret: `secretSet` and `secretFromEnv` (`OIDC_CLIENT_SECRET` / `_FILE`, which wins over a saved one). `redirectUri` is null until the app's address is set; `ready` means on and complete. |
+| `PUT /api/settings/oidc` | `OidcSettingsBody {enabled, preset, buttonLabel?, issuer, clientId, clientSecret?, scopes?, usernameClaim?, groupsClaim?, requiredGroup?, autoCreate?, linkByEmail?, allowHttpIssuer?}` | `OidcSettingsInfo` | **Admin.** `preset` is `authentik`, `authelia` or `custom`; the issuer's trailing slash is normalized for the first two. `clientSecret`: `null` keeps the saved one, `''` removes it; a new issuer on another host forgets it unless one is sent. Clears the discovery cache. `400 insecure_issuer` (`http://` without `allowHttpIssuer`), `400 sso_incomplete` (on without issuer, client ID or secret), `400 app_url_required`. |
+| `POST /api/settings/oidc/test` | `OidcTestBody {preset, issuer, allowHttpIssuer?}` | `OidcTestResult {ok, message, issuer}` | **Admin.** Discovery against the form's issuer (saved or not, never cached), retrying once with the trailing slash flipped. `ok: false` with a message saying what went wrong. |
 
 ## Config
 
