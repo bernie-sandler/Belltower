@@ -9,8 +9,20 @@ async function me(api: Api) {
   return api.call<{ id: number; displayName: string }>('GET', '/api/me');
 }
 
+// The e2e tests share one database: put these cards in the Trash afterwards, so Triage doesn't fill
+// up under the board tests' drags.
+const made: number[] = [];
+async function newCard(api: Api, body: Record<string, unknown>) {
+  const card = await api.createCard(body);
+  made.push(card.id);
+  return card;
+}
+test.afterEach(async ({ api }) => {
+  for (const id of made.splice(0)) await api.call('DELETE', `/api/cards/${id}`);
+});
+
 test('Unassigned → Take it → the card is in Mine, with my initials on the board @mobile', async ({ page, api }) => {
-  const card = await api.createCard({ title: unique('Printer jammed'), priority: 'high' });
+  const card = await newCard(api, { title: unique('Printer jammed'), priority: 'high' });
   const { displayName } = await me(api);
 
   await page.goto('/');
@@ -43,8 +55,8 @@ test('Unassigned → Take it → the card is in Mine, with my initials on the bo
 });
 
 test('assign from the card, filter the board by assignee, and read it in the history', async ({ page, api }) => {
-  const mine = await api.createCard({ title: unique('Swap UPS battery') });
-  const other = await api.createCard({ title: unique('Label the cables') });
+  const mine = await newCard(api, { title: unique('Swap UPS battery') });
+  const other = await newCard(api, { title: unique('Label the cables') });
   const myId = (await me(api)).id;
 
   await page.goto(`/cards/${mine.id}`);
@@ -69,7 +81,7 @@ test('assign from the card, filter the board by assignee, and read it in the his
 });
 
 test('Take it loses a race: someone else took it first', async ({ page, api }) => {
-  const card = await api.createCard({ title: unique('Router reboot loop') });
+  const card = await newCard(api, { title: unique('Router reboot loop') });
   const username = `r${Math.random().toString(36).slice(2, 8)}`;
   const rival = await api.call<{ id: number }>('POST', '/api/users', { username, displayName: 'Robin Rival', role: 'member', password: 'rival password 123' });
 
