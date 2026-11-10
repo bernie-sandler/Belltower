@@ -1,5 +1,5 @@
-// Board filter bar: label, priority, severity, due status and text. Filtering happens in the
-// browser over the cards already loaded; the state lives in the URL (?labels=1,2&prio=critical…),
+// Board filter bar: label, priority, severity, due status, assignee and text. Filtering happens in
+// the browser over the cards already loaded; the state lives in the URL (?labels=1,2&prio=critical…),
 // so it survives a reload and Back. Dragging still works while filtered: a drop is anchored to the
 // card shown above it.
 
@@ -12,10 +12,12 @@ import {
   SEVERITY_LABELS,
   type CardTile,
   type Label,
+  type UserInfo,
 } from '@tt/shared';
 import { Filter, Search, X } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
+import { useMe, useUsers } from '../../api/me';
 import { cls } from '../../lib/cls';
 import { dueStatus } from '../../lib/time';
 import { Popover } from '../common/Popover';
@@ -31,7 +33,11 @@ export interface BoardFilter {
   due: DueFilter[];
   /** 'work' and/or 'ticket'; empty = both. */
   kinds: string[];
+  /** 'me', 'none' (nobody has it) and/or user ids as strings; empty = anyone. */
+  assignees: string[];
 }
+
+export const EMPTY_FILTER: BoardFilter = { text: '', labels: [], priorities: [], severities: [], due: [], kinds: [], assignees: [] };
 
 const DUE_LABELS: Record<DueFilter, string> = {
   overdue: 'Overdue',
@@ -42,39 +48,56 @@ const DUE_LABELS: Record<DueFilter, string> = {
 
 const list = (v: string | null) => (v ? v.split(',').filter(Boolean) : []);
 
+/** The filter in a URL query (?q=…&labels=1,2&prio=…&sev=…&due=…&type=…&assignee=me,none,3). */
+export function parseBoardFilter(params: URLSearchParams): BoardFilter {
+  return {
+    text: params.get('q') ?? '',
+    labels: list(params.get('labels')).map(Number).filter((n) => n > 0),
+    priorities: list(params.get('prio')),
+    severities: list(params.get('sev')),
+    due: list(params.get('due')) as DueFilter[],
+    kinds: list(params.get('type')),
+    assignees: list(params.get('assignee')).filter((a) => a === 'me' || a === 'none' || /^[1-9]\d*$/.test(a)),
+  };
+}
+
+/** `params` with the filter written in (empty groups removed); other parameters are kept. */
+export function writeBoardFilter(params: URLSearchParams, next: BoardFilter): URLSearchParams {
+  const p = new URLSearchParams(params);
+  const put = (k: string, v: string) => (v ? p.set(k, v) : p.delete(k));
+  put('q', next.text);
+  put('labels', next.labels.join(','));
+  put('prio', next.priorities.join(','));
+  put('sev', next.severities.join(','));
+  put('due', next.due.join(','));
+  put('type', next.kinds.join(','));
+  put('assignee', next.assignees.join(','));
+  return p;
+}
+
+const choiceCount = (f: BoardFilter) =>
+  f.labels.length + f.priorities.length + f.severities.length + f.due.length + f.kinds.length + f.assignees.length;
+
 export function useBoardFilter() {
   const [params, setParams] = useSearchParams();
-  const filter: BoardFilter = useMemo(
-    () => ({
-      text: params.get('q') ?? '',
-      labels: list(params.get('labels')).map(Number).filter((n) => n > 0),
-      priorities: list(params.get('prio')),
-      severities: list(params.get('sev')),
-      due: list(params.get('due')) as DueFilter[],
-      kinds: list(params.get('type')),
-    }),
-    [params],
-  );
-  const setFilter = (next: BoardFilter) => {
-    const p = new URLSearchParams(params);
-    const put = (k: string, v: string) => (v ? p.set(k, v) : p.delete(k));
-    put('q', next.text);
-    put('labels', next.labels.join(','));
-    put('prio', next.priorities.join(','));
-    put('sev', next.severities.join(','));
-    put('due', next.due.join(','));
-    put('type', next.kinds.join(','));
-    setParams(p, { replace: true });
-  };
-  const active =
-    filter.text.trim() !== '' ||
-    filter.labels.length + filter.priorities.length + filter.severities.length + filter.due.length + filter.kinds.length > 0;
+  const filter: BoardFilter = useMemo(() => parseBoardFilter(params), [params]);
+  const setFilter = (next: BoardFilter) => setParams(writeBoardFilter(params, next), { replace: true });
+  const active = filter.text.trim() !== '' || choiceCount(filter) > 0;
   return { filter, setFilter, active };
 }
 
-/** Whether a tile passes the filter. Within a group any choice matches; groups combine with AND. */
-export function matchesFilter(tile: CardTile, f: BoardFilter, labelsById: Map<number, Label>, now: number): boolean {
+/**
+ * Whether a tile passes the filter. Within a group any choice matches; groups combine with AND.
+ * `meId` is who "me" means in the assignee group (null: nobody yet, so "me" matches nothing).
+ */
+export function matchesFilter(tile: CardTile, f: BoardFilter, labelsById: Map<number, Label>, now: number, meId: number | null = null): boolean {
   if (f.kinds.length && !f.kinds.includes(tile.kind)) return false;
+  if (f.assignees.length) {
+    const ok = f.assignees.some((a) =>
+      a === 'none' ? tile.assigneeId === null : a === 'me' ? meId !== null && tile.assigneeId === meId : tile.assigneeId === Number(a),
+    );
+    if (!ok) return false;
+  }
   if (f.labels.length && !tile.labelIds.some((id) => f.labels.includes(id))) return false;
   if (f.priorities.length && !f.priorities.includes(tile.priority ?? 'none')) return false;
   if (f.severities.length && !f.severities.includes(tile.severity ?? 'none')) return false;
@@ -93,6 +116,26 @@ export function matchesFilter(tile: CardTile, f: BoardFilter, labelsById: Map<nu
   return true;
 }
 
+/**
+ * The people offered in the Assignee group, besides "Me" and "Unassigned": everyone active, plus
+ * deactivated people who still have cards on the board (so their cards can be found and handed on)
+ * and anyone already in the filter (so a stale ?assignee=<id> can be switched off). Directory order.
+ */
+export function assigneeChoices(
+  users: UserInfo[] | undefined,
+  meId: number | null,
+  assignedIds: ReadonlySet<number>,
+  filter: BoardFilter,
+): { id: number; label: string }[] {
+  const inFilter = new Set(filter.assignees.filter((a) => /^\d+$/.test(a)).map(Number));
+  const listed = (users ?? [])
+    .filter((u) => (u.id !== meId || inFilter.has(u.id)) && (!u.disabled || assignedIds.has(u.id) || inFilter.has(u.id)))
+    .map((u) => ({ id: u.id, label: u.disabled ? `${u.displayName} (deactivated)` : u.displayName }));
+  // Ids nobody in the directory has (a restore, or a hand-edited link), once it has loaded.
+  const unknown = users ? [...inFilter].filter((id) => !users.some((u) => u.id === id)).map((id) => ({ id, label: `Unknown person (#${id})` })) : [];
+  return [...listed, ...unknown];
+}
+
 export function FilterBar({
   labels,
   filter,
@@ -100,6 +143,7 @@ export function FilterBar({
   active,
   shown,
   total,
+  assignedIds,
 }: {
   labels: Label[];
   filter: BoardFilter;
@@ -107,11 +151,15 @@ export function FilterBar({
   active: boolean;
   shown: number;
   total: number;
+  /** Everyone who has at least one card on the board. */
+  assignedIds: ReadonlySet<number>;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const count = filter.labels.length + filter.priorities.length + filter.severities.length + filter.due.length + filter.kinds.length;
+  const count = choiceCount(filter);
+  const meId = useMe().data?.id ?? null;
+  const people = assigneeChoices(useUsers().data, meId, assignedIds, filter);
 
-  function toggle<K extends 'labels' | 'priorities' | 'severities' | 'due' | 'kinds'>(key: K, value: BoardFilter[K][number]) {
+  function toggle<K extends 'labels' | 'priorities' | 'severities' | 'due' | 'kinds' | 'assignees'>(key: K, value: BoardFilter[K][number]) {
     const cur = filter[key] as (typeof value)[];
     const next = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
     setFilter({ ...filter, [key]: next });
@@ -147,7 +195,7 @@ export function FilterBar({
           <button
             type="button"
             className="btn btn-subtle"
-            onClick={() => setFilter({ text: '', labels: [], priorities: [], severities: [], due: [], kinds: [] })}
+            onClick={() => setFilter(EMPTY_FILTER)}
           >
             <X size={14} aria-hidden /> Clear
           </button>
@@ -163,6 +211,19 @@ export function FilterBar({
             <Toggle on={filter.kinds.includes('ticket')} onClick={() => toggle('kinds', 'ticket')}>
               Tickets
             </Toggle>
+          </FilterGroup>
+          <FilterGroup title="Assignee">
+            <Toggle on={filter.assignees.includes('me')} onClick={() => toggle('assignees', 'me')}>
+              Me
+            </Toggle>
+            <Toggle on={filter.assignees.includes('none')} onClick={() => toggle('assignees', 'none')}>
+              Unassigned
+            </Toggle>
+            {people.map((u) => (
+              <Toggle key={u.id} on={filter.assignees.includes(String(u.id))} onClick={() => toggle('assignees', String(u.id))}>
+                {u.label}
+              </Toggle>
+            ))}
           </FilterGroup>
           <FilterGroup title="Labels">
             {labels.map((l) => (

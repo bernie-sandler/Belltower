@@ -18,6 +18,7 @@ describe('first-run setup', () => {
       authenticated: false,
       setupRequired: true,
       passwordManagedByEnv: false,
+      sso: null,
     });
 
     const wrong = await api('POST', '/api/auth/setup', { setupCode: 'AAAAA-AAAAA-AAAAA-AAAAA', password: PASSWORD });
@@ -197,6 +198,7 @@ describe('password management', () => {
       authenticated: false,
       setupRequired: false,
       passwordManagedByEnv: true,
+      sso: null,
     });
     const login = await anon('POST', '/api/auth/login', { password: 'from the environment' });
     expect(login.statusCode).toBe(204);

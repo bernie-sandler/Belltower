@@ -3,7 +3,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { PRIORITY_CODES, PRIORITY_LABELS, SEVERITY_CODES, SEVERITY_LABELS, type CardTile, type Label } from '@tt/shared';
 import { Ban, Clock, Ellipsis, FolderOpen, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
 import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
+import { usePerson } from '../../api/assignees';
 import { useDefaultResolution } from '../../api/board';
+import { initials } from '../../lib/assignees';
 import { cls } from '../../lib/cls';
 import { isDragging as isBoardDragging, justDropped } from '../../lib/dragging';
 import { dueStatus, formatDue, type DueStatus } from '../../lib/time';
@@ -50,7 +52,8 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
     tile.linkCount > 0 ||
     tile.checklistTotal > 0 ||
     tile.priority !== null ||
-    tile.severity !== null;
+    tile.severity !== null ||
+    tile.assigneeId !== null;
 
   return (
     <div
@@ -135,6 +138,7 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
             </span>
           )}
           {tile.checklistTotal > 0 && <ChecklistBadge tile={tile} />}
+          {tile.assigneeId !== null && <AssigneeBadge userId={tile.assigneeId} />}
         </div>
       )}
     </div>
@@ -159,6 +163,18 @@ function ChecklistBadge({ tile }: { tile: CardTile }) {
       <span aria-hidden>
         {done}/{total}
       </span>
+    </span>
+  );
+}
+
+/** The assignee's initials, with their full name for screen readers and on hover (dimmed once deactivated). */
+function AssigneeBadge({ userId }: { userId: number }) {
+  const person = usePerson(userId);
+  const text = `Assigned to ${person?.displayName ?? 'someone'}${person?.disabled ? ' (deactivated)' : ''}`;
+  return (
+    <span className={cls('assignee-badge', person?.disabled && 'is-disabled')} title={text}>
+      <span className="visually-hidden">{text}</span>
+      <span aria-hidden>{person ? initials(person.displayName) : '?'}</span>
     </span>
   );
 }

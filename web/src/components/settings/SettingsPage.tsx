@@ -1,5 +1,5 @@
 // Settings (/settings): general options, people, the submit page and its request types,
-// automation tokens, notifications, and the version. Members see only what's theirs to change
+// automation tokens, notifications, single sign-on, and the version. Members see only what's theirs to change
 // here (appearance); the install's settings are for admins. Your own password and tokens are
 // under Account.
 
@@ -25,6 +25,7 @@ import { RequestTypesEditor } from './RequestTypesEditor';
 import { NotificationsSection } from './NotificationsSection';
 import { PeopleSection } from './PeopleSection';
 import { ResolutionReasonsSection } from './ResolutionReasonsSection';
+import { SsoSection } from './SsoSection';
 import { TokensSection } from './TokensSection';
 
 export function Section({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
@@ -56,6 +57,7 @@ export function SettingsPage() {
       {isAdmin && <SubmitSection s={s} />}
       {isAdmin && <TokensSection />}
       {isAdmin && <NotificationsSection s={s} />}
+      {isAdmin && <SsoSection />}
       <AboutSection />
     </div>
   );

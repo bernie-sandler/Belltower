@@ -18,6 +18,7 @@ import { UpdateBanner } from './UpdateBanner';
 // Code-split: the board loads eagerly; everything opened on demand is its own chunk.
 const CardRoute = lazy(() => import('../card/CardRoute'));
 const CardListPage = lazy(() => import('../lists/CardListPage').then((m) => ({ default: m.CardListPage })));
+const QueuePage = lazy(() => import('../assignees/QueuePage').then((m) => ({ default: m.QueuePage })));
 const CalendarPage = lazy(() => import('../calendar/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const SearchPage = lazy(() => import('../search/SearchPage').then((m) => ({ default: m.SearchPage })));
 const ImportCardsPage = lazy(() => import('../tools/ImportCardsPage').then((m) => ({ default: m.ImportCardsPage })));
@@ -118,6 +119,8 @@ function AppRoutes({ aiEnabled, onNewTicket }: { aiEnabled: boolean; onNewTicket
       <Routes location={background ?? location}>
         <Route path="/" element={<Board />} />
         <Route path="/cards/:id" element={<Board />} />
+        <Route path="/mine" element={<Lazy><QueuePage kind="mine" /></Lazy>} />
+        <Route path="/triage" element={<Lazy><QueuePage kind="unassigned" /></Lazy>} />
         <Route
           path="/archive"
           element={

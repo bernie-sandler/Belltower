@@ -303,7 +303,13 @@ describe('people', () => {
     expect(s.activity.filter((a) => a.type === 'worklog').every((a) => a.userId === owner)).toBe(true);
     const submitted = s.cards.find((c) => c.sourceRef === 'submit')!;
     expect(s.activity.find((a) => a.cardId === submitted.id && a.type === 'created')!.userId).toBeNull();
-    expect(s.cards.every((c) => c.assigneeId === null)).toBe(true);
+    // A few cards are assigned: three to the visitor (so Mine isn't empty), one each to the others.
+    const byUser = (name: string) => s.cards.filter((c) => c.assigneeId === s.users.find((u) => u.username === name)!.id).map((c) => c.title);
+    expect(byUser('admin').sort()).toEqual(['Disk 3 reallocated sectors climbing', 'Test HDR playback on the new version', 'Upgrade Plex']);
+    expect(byUser('alex')).toEqual(['Set up off-site backups for appdata']);
+    expect(byUser('jordan')).toEqual(['Label the patch panel']);
+    const patch = s.cards.find((c) => c.title === 'Label the patch panel')!;
+    expect(s.activity.filter((a) => a.cardId === patch.id && a.type === 'assigned').map((a) => [a.data.toName, a.userId])).toEqual([['Jordan Lee', owner]]);
   });
 
   it('applies the server’s rules to people, and refuses admin routes to members', () => {
@@ -355,6 +361,34 @@ describe('people', () => {
     expect(retracted).toMatchObject({ data: { entryId: own.id, text: 'Jordan’s note, edited' }, userName: 'Admin' });
     const revisions = ok<{ userName: string | null }[]>(call(store, 'GET', `/api/activity/${own.id}/revisions`));
     expect(revisions.map((r) => r.userName)).toEqual(['Jordan Lee']);
+  });
+});
+
+describe('assignees', () => {
+  it('assigns like the server: logged as assigned, deactivated and unknown people refused', () => {
+    const store = makeStore();
+    const users = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
+    const me = users.find((u) => u.username === 'admin')!;
+    const jordan = users.find((u) => u.username === 'jordan')!;
+    const card = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Printer jammed', assigneeId: jordan.id }));
+    expect(card.assigneeId).toBe(jordan.id);
+
+    const taken = ok<CardDetail>(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: me.id, expectedVersion: card.version }));
+    expect(taken).toMatchObject({ assigneeId: me.id, version: card.version + 1 });
+    expect(board(store).cards.find((c) => c.id === card.id)!.assigneeId).toBe(me.id);
+    const history = ok<ActivityEntry[]>(call(store, 'GET', `/api/cards/${card.id}/activity`)).filter((e) => e.type === 'assigned');
+    expect(history.map((e) => [e.data, e.userId])).toEqual([
+      [{ from: jordan.id, to: me.id, fromName: 'Jordan Lee', toName: 'Admin' }, me.id],
+      [{ from: null, to: jordan.id, fromName: null, toName: 'Jordan Lee' }, me.id],
+    ]);
+    // Someone else took it first: the stale version gets a 409.
+    expect(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: jordan.id, expectedVersion: card.version }).status).toBe(409);
+
+    ok(call(store, 'PATCH', `/api/users/${jordan.id}`, { disabled: true }));
+    const refused = call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: jordan.id, expectedVersion: taken.version });
+    expect([refused.status, (refused.body as { error: string }).error]).toEqual([400, 'assignee_disabled']);
+    expect((call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: 999, expectedVersion: taken.version }).body as { error: string }).error).toBe('invalid_assignee');
+    expect(ok<CardDetail>(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: null, expectedVersion: taken.version })).assigneeId).toBeNull();
   });
 });
 

@@ -74,6 +74,7 @@ message that starts "Not available in the demo":
 - Claude drafting (it shows as off, as on an install without `ANTHROPIC_API_KEY`)
 - API tokens and the automation API (`/api/v1`)
 - changing the password (there are none)
+- single sign-on: its settings and linking an account (the login page never offers it)
 
 Card import (JSON) works, all in the browser. Recurring templates run when the board loads instead of on a timer.
 The submit page has no rate limit.

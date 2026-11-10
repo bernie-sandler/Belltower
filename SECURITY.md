@@ -20,6 +20,25 @@ Fixes go into the newest 1.x release.
   - Behind a reverse proxy, the real client address is only used when `TRUST_PROXY` names that proxy.
   - The owner account can't be demoted or deactivated, and `APP_PASSWORD` resets it, so the install can't lock
     itself out.
+- **Single sign-on** ([OIDC](docs/SSO.md), off by default).
+  - Authorization code flow with PKCE (S256), `state` and `nonce`. The sign-in in progress is sealed (AES-256-GCM,
+    with a key made at startup and never stored) into a 10-minute HTTP-only, SameSite=Lax cookie, which ties the
+    provider's answer to the browser that started it. The server keeps nothing per sign-in, so starting many can't
+    push out someone else's; the provider's one-time codes stop a replayed callback.
+  - The ID token's signature is checked against the provider's published keys, along with its issuer, audience,
+    nonce and times (30 seconds of clock tolerance). Tokens signed with the client secret (HS256) are refused.
+  - Nobody gets an account just by signing in: new accounts are only made when an admin turns that on, and then as
+    members. Linking by email is off by default; it needs an email the provider marks verified (the boolean `true`),
+    never picks an admin, and does nothing when several accounts share the email. Turn it on only if people can't
+    change their own email at the provider.
+  - The required group is checked at every sign-in and link. Removing someone from it takes effect at their next
+    sign-in; deactivating them in Belltower ends the sessions they already have.
+  - Deactivated people are refused, including when they come back with a new provider account whose verified email is
+    theirs. Password login always stays available, so a broken provider can't lock you out.
+  - The client secret is never shown again once saved and is never in an export. A saved one is in the database
+    file, so the nightly snapshots and the copies made before upgrades and restores contain it: prefer
+    `OIDC_CLIENT_SECRET`. Pointing the issuer at another host forgets a saved secret, but a secret from
+    `OIDC_CLIENT_SECRET` is sent to whatever issuer is configured. A plain-HTTP issuer needs an explicit switch.
 - **Roles.** Admins manage people (Settings → People), the install's settings (submit page, notification
   channels), backups and restores, and see every API token with whose it is; members do the board work and manage
   their own profile, password and API tokens. The server enforces this on every request, and each change is
@@ -51,6 +70,8 @@ Fixes go into the newest 1.x release.
     - Redirects aren't followed, so a token can't be passed on to another host.
     - Errors show only the status code, so **Send test** can't be used to read other pages on your network.
     - Text from other people is Markdown-escaped in ntfy and Gotify, so it can't load images or hide links.
+  - With single sign-on on, the server talks to your identity provider (its discovery document, keys, token and
+    userinfo endpoints) to sign people in.
 - **Submit page** (off by default).
   - It's reachable without the password by anyone who has its long random link.
   - It can only file tickets, and shows nothing from the board except your request types and the tags you chose.
@@ -76,8 +97,10 @@ Fixes go into the newest 1.x release.
 - **Sharing the submit page publicly.** Let only `/submit/`, `/api/public/` and `/assets/` past your access
   list. Treat the link like a guest key, and replace it if it ends up somewhere you don't want.
 - **Set `TRUST_PROXY`** only to your proxy's own address, and never to `true`.
-- **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD` and `ANTHROPIC_API_KEY`.
+- **Keep secrets in `.env`**, which isn't in git: `APP_PASSWORD`, `ANTHROPIC_API_KEY` and `OIDC_CLIENT_SECRET`.
+- **Use an HTTPS issuer** for single sign-on, and keep the clocks right (NTP) on the server and the provider.
 - **Back up `/data`** (or use the export). The pre-upgrade copies and nightly snapshots live in the same folder,
-  so they don't protect against losing the disk.
+  so they don't protect against losing the disk. They're whole copies of the database, so keep them as private as
+  `/data` itself: unlike an export, they hold password hashes and a saved single sign-on client secret.
 - **Keep exports private.** They don't contain passwords, but they do contain people's names and emails, the submit page's link,
   notification addresses and tokens (Discord, ntfy, Gotify, webhook) and API token hashes. See [docs/BACKUP-FORMAT.md](docs/BACKUP-FORMAT.md).

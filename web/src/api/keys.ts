@@ -18,6 +18,7 @@ export const qk = {
   templates: ['templates'] as const,
   aiStatus: ['aiStatus'] as const,
   settings: ['settings'] as const,
+  oidc: ['oidc'] as const,
   requestTypes: ['requestTypes'] as const,
   tokens: ['tokens'] as const,
   similar: ['similar'] as const,

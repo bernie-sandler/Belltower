@@ -28,6 +28,8 @@ export interface Config {
   anthropicApiKey: string | null;
   /** Claude model used to draft tickets. */
   aiModel: string;
+  /** From OIDC_CLIENT_SECRET / OIDC_CLIENT_SECRET_FILE: the single sign-on client secret, overriding the saved one. */
+  oidcClientSecret: string | null;
 }
 
 export class ConfigError extends Error {}
@@ -143,5 +145,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     appVersion: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev',
     anthropicApiKey: readSecret(env, 'ANTHROPIC_API_KEY'),
     aiModel: env.ANTHROPIC_MODEL?.trim() || 'claude-opus-5-5',
+    oidcClientSecret: readSecret(env, 'OIDC_CLIENT_SECRET'),
   };
 }

@@ -12,6 +12,7 @@ import './styles/board.css';
 import './styles/card.css';
 import './styles/parts.css';
 import './styles/phase3.css';
+import './styles/assignees.css';
 import './styles/tickets.css';
 import './styles/intake.css';
 

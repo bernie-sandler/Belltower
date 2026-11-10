@@ -1,18 +1,30 @@
 import { ChangePasswordBody, LoginBody, SESSION_COOKIE, SetupBody, type AuthStatus } from '@tt/shared';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { AppDeps } from '../../app';
 import { hashPassword, needsRehash, setupCodeMatches, verifyDummy, verifyPassword } from '../../auth/password';
 import { createSession, deleteSessionByToken, deleteUserSessions } from '../../auth/sessions';
 import { setSetting } from '../../db/connection';
 import { AppError, conflict } from '../../errors';
+import { ssoStatus } from '../../services/oidc';
 import { createOwner, findUser, getUser, hasUsers, loginCandidate, replacePasswordHash } from '../../services/users';
 import { clearSessionCookie, resolveSession, setSessionCookie } from '../guard';
 import { parse } from '../util';
 
+/** Signs someone in on this browser: a new session and its cookie (password login, setup, single sign-on). */
+export function startSession(req: FastifyRequest, reply: FastifyReply, deps: AppDeps, userId: number, remember: boolean) {
+  const { token, expiresAt, session } = createSession(req.ctx, { rememberDays: deps.config.sessionDays }, {
+    userId,
+    remember,
+    userAgent: req.headers['user-agent'],
+    ip: req.ip,
+  });
+  setSessionCookie(req, reply, deps, token, remember, expiresAt);
+  return session;
+}
+
 export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
   const { limiter } = deps;
-  const policy = { rememberDays: deps.config.sessionDays };
 
   /** Applies the failed-login limiter before any expensive hashing happens. */
   async function gate(req: FastifyRequest): Promise<void> {
@@ -30,23 +42,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     req.log.warn({ ip: req.ip }, `Failed ${what}`);
   }
 
-  function startSession(req: FastifyRequest, reply: Parameters<typeof setSessionCookie>[1], userId: number, remember: boolean) {
-    const { token, expiresAt, session } = createSession(req.ctx, policy, {
-      userId,
-      remember,
-      userAgent: req.headers['user-agent'],
-      ip: req.ip,
-    });
-    setSessionCookie(req, reply, deps, token, remember, expiresAt);
-    return session;
-  }
-
   app.get('/api/auth/status', async (req, reply): Promise<AuthStatus> => {
     const setUp = hasUsers(req.ctx);
     return {
       authenticated: setUp && resolveSession(req, reply, deps) !== null,
       setupRequired: !setUp,
       passwordManagedByEnv: deps.auth.passwordSource === 'env',
+      sso: setUp ? ssoStatus(req.ctx, deps.config.oidcClientSecret) : null,
     };
   });
 
@@ -68,7 +70,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     deps.auth.setupCode = null;
     deps.auth.passwordSource = 'ui';
     limiter.recordSuccess(req.ip);
-    startSession(req, reply, ownerId, true);
+    startSession(req, reply, deps, ownerId, true);
     req.log.info(`First-run setup complete; created the owner account "${body.username}"`);
     return reply.status(204).send();
   });
@@ -89,7 +91,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
       throw new AppError(401, 'invalid_password', 'Incorrect username or password');
     }
     limiter.recordSuccess(req.ip);
-    startSession(req, reply, now.id, body.remember);
+    startSession(req, reply, deps, now.id, body.remember);
     if (needsRehash(stored!)) {
       const upgraded = await hashPassword(body.password);
       replacePasswordHash(req.ctx, now.id, stored!, upgraded);

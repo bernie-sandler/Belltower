@@ -31,6 +31,8 @@ export type AppEvent = (
       from: { priority: Priority | null; severity: Severity | null };
       to: { priority: Priority | null; severity: Severity | null };
     }
+  /** The assignee changed (user ids, null = nobody). Also sent for a card created with an assignee. */
+  | { type: 'card_assigned'; cardId: number; from: number | null; to: number | null }
 ) & {
   /** Who caused it. Listeners run after the commit on the base context, so the event carries it. */
   actor?: Actor;

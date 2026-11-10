@@ -14,7 +14,7 @@ Moving a card:
   Screen readers announce each step.
 - **Move to…** in the card (or its **⋯** menu) picks a column and puts the card at the top or bottom.
 
-The filter bar narrows the board by text, label, priority, severity or due date.
+The filter bar narrows the board by text, label, priority, severity, due date or assignee.
 
 Done shows the 50 most recently finished cards. Older ones are a click away (**Show N older cards**), and **Archive
 all cards…** in the column menu clears Done out completely. Archived cards stay searchable.
@@ -63,12 +63,29 @@ That note is gold six months later. "How did I fix this last time?" is a search 
 instead, a toast offers **Add resolution**, and a done card's **Resolution** section can be edited any time. The
 board shows a small badge when a card ended as anything other than the default.
 
+## Who has what
+
+A card can be **assigned** to one person: pick them under **Assignee** in the card, or press **Assign to me**. Their
+initials show on the card's tile (hover for the full name). Deactivated people can't be given cards; one who still
+has a card keeps it until someone changes it.
+
+Two pages in the top bar sort out the work:
+
+- **Mine** lists your open cards, most urgent first.
+- **Unassigned** is the queue: every open card nobody has, from any column, most urgent first and then oldest.
+  **Take it** gives the card to you. If someone else took it a moment before you, you're told who, and it stays
+  theirs.
+
+Both leave out finished cards (and, like the board, archived cards and the Trash). On the board, the filter's
+**Assignee** group shows your cards, unassigned ones, or someone else's. It's kept in the address
+(`?assignee=me`), so a bookmark works.
+
 ## History and the work log
 
-Every change to a card is recorded automatically: moves, edits, labels, links, resolutions. The history can't be
-edited or deleted, by design. Each entry says who did it: a person ("Alice"), an API token and the person it acts
-for ("via API token “Kuma” (Alice)"), or how a card came in ("submit page (Sam)", "card import", "recurring").
-Entries from before 1.5 show no name, because nobody was recorded then.
+Every change to a card is recorded automatically: moves, edits, labels, links, assignments, resolutions. The
+history can't be edited or deleted, by design. Each entry says who did it: a person ("Alice"), an API token and the
+person it acts for ("via API token “Kuma” (Alice)"), or how a card came in ("submit page (Sam)", "card import",
+"recurring"). Entries from before 1.5 show no name, because nobody was recorded then.
 
 The **work log** is for your own notes: "Reseated the SATA cable", "Rolled back to 1.32.5". Each entry shows who
 wrote it. You can backdate an entry to when it actually happened, and edit or retract it later. The original stays
@@ -135,7 +152,8 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
 - What can't work isn't offered: the owner can't be demoted or deactivated, you can't deactivate yourself or reset
   your own password there (that's under Account), and the last active admin stays an admin.
 
-**Menu → Account** (everyone): your display name and email, your password (changing it signs you out on your other
+**Menu → Account** (everyone): your display name and email, **Sign-in** (linking your account to
+[single sign-on](SSO.md), when an admin has set it up), your password (changing it signs you out on your other
 devices; the owner's can't be changed here while `APP_PASSWORD` sets it), and **Your tokens**: API tokens that act
 as you. What a token does shows in the history as "via API token" with your name, and it stops working while your
 account is deactivated.
@@ -153,6 +171,7 @@ the rest is for admins.
 - **People:** see [People and your account](#people-and-your-account).
 - **Submit page**, **Automation** tokens (everyone's, with whose each is) and
   **[Notifications](NOTIFICATIONS.md)** (Discord, ntfy, Gotify, webhook).
+- **[Single sign-on](SSO.md):** signing in through Authentik, Authelia or another OIDC provider.
 - The app's version. Your password and your own tokens are under **Account**.
 
 ## Keyboard shortcuts
