@@ -18,6 +18,7 @@ import { getBlockedColumnId, getColumnRow, getRoleColumn, listColumns, type Colu
 import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
 import { reindexCard } from './search';
+import { findUser, type UserRow } from './users';
 import { localDateOf } from '../lib/localdate';
 import { getGeneralSettings, getResolutionReasons } from './settings';
 
@@ -43,6 +44,7 @@ export interface CardRow {
   parent_id: number | null;
   resolution: string | null;
   resolution_md: string;
+  assignee_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -112,6 +114,7 @@ function toTile(r: TileRow): CardTile {
     checklistFailed,
     checklistUnverified,
     blockedBy: r.blocked_by,
+    assigneeId: r.assignee_id,
     version: r.version,
   };
 }
@@ -166,6 +169,21 @@ function visibleSummary(ctx: Ctx, id: number) {
 /** What history stores about the other card in a parent/child event. */
 function familyRef(card: { id: number; ticket_no: string | null; title: string }) {
   return { id: card.id, ticketNo: card.ticket_no, title: card.title };
+}
+
+/** Someone a card can be given to: an existing, active person (400 invalid_assignee / assignee_disabled). */
+function checkAssignee(ctx: Ctx, userId: number): UserRow {
+  const user = findUser(ctx, userId);
+  if (!user) throw badRequest('invalid_assignee', 'That person doesn’t exist (anymore); reload and pick again');
+  if (user.disabled_at) throw badRequest('assignee_disabled', `${user.display_name} is deactivated and can’t be assigned cards`);
+  return user;
+}
+
+/** Logs and announces an assignee change (inside the change's transaction). */
+function recordAssigned(ctx: Ctx, cardId: number, from: number | null, to: UserRow | null): void {
+  const fromName = from !== null ? (findUser(ctx, from)?.display_name ?? null) : null;
+  recordEvent(ctx, cardId, 'assigned', { from, to: to?.id ?? null, fromName, toName: to?.display_name ?? null });
+  ctx.emit?.({ type: 'card_assigned', cardId, from, to: to?.id ?? null, actor: ctx.actor });
 }
 
 /** Checks a card's type and the work card it would be filed under (400 invalid_parent). */
@@ -287,6 +305,8 @@ export interface CreateCardInput {
   kind?: CardKind;
   /** The work card this ticket is part of. */
   parentId?: number | null;
+  /** Who has it (an active person), or nobody. */
+  assigneeId?: number | null;
 }
 
 export interface CreateCardOptions {
@@ -347,6 +367,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
   const kind = input.kind ?? 'ticket';
   return tx(ctx, () => {
     const parent = checkFamily(ctx, kind, input.parentId ?? null, null);
+    const assignee = input.assigneeId != null ? checkAssignee(ctx, input.assigneeId) : null;
     const column = input.columnId !== undefined ? targetColumn(ctx, input.columnId) : getRoleColumn(ctx, 'triage');
     const labels = resolveLabels(ctx, input.labelIds, input.labelNames);
     const now = nowIso(ctx);
@@ -363,8 +384,9 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     const info = stmt(
       ctx.db,
       `INSERT INTO cards (column_id, title, description_md, priority, severity, due_date, due_time, position,
-                          completed_at, source, source_ref, template_id, ticket_no, kind, parent_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                          completed_at, source, source_ref, template_id, ticket_no, kind, parent_id, assignee_id,
+                          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       column.id,
       title,
@@ -381,6 +403,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       ticketNo,
       kind,
       parent?.id ?? null,
+      assignee?.id ?? null,
       now,
       now,
     );
@@ -421,6 +444,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     }
     reindexCard(ctx, id);
     ctx.emit?.({ type: 'card_created', cardId: id, external: opts.external ?? false, ...(opts.via ? { via: opts.via } : {}), actor: ctx.actor });
+    if (assignee) recordAssigned(ctx, id, null, assignee);
     return getCard(ctx, id);
   });
 }
@@ -441,6 +465,8 @@ export interface UpdateCardInput {
   completedAt?: string;
   kind?: CardKind;
   parentId?: number | null;
+  /** An active person, or null for nobody. */
+  assigneeId?: number | null;
   resolution?: { reason: string; note: string } | null;
 }
 
@@ -560,6 +586,15 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       }
     }
 
+    // Unassigning always works; a new assignee must be an active person.
+    let assigned: { from: number | null; to: UserRow | null } | null = null;
+    if (patch.assigneeId !== undefined && patch.assigneeId !== card.assignee_id) {
+      const to = patch.assigneeId !== null ? checkAssignee(ctx, patch.assigneeId) : null;
+      sets.push('assignee_id = ?');
+      params.push(to?.id ?? null);
+      assigned = { from: card.assignee_id, to };
+    }
+
     if (patch.resolution !== undefined) {
       if (!card.completed_at) throw conflict('not_done', 'Only a done card has a resolution');
       setResolution(ctx, getCardRow(ctx, id), patch.resolution);
@@ -585,6 +620,7 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
         id,
       );
       if (reindex) reindexCard(ctx, id);
+      if (assigned) recordAssigned(ctx, id, assigned.from, assigned.to);
       const now = stmt(ctx.db, 'SELECT priority, severity FROM cards WHERE id = ?').get(id) as { priority: Priority | null; severity: Severity | null };
       if (now.priority !== card.priority || now.severity !== card.severity) {
         ctx.emit?.({ type: 'card_raised', cardId: id, from: { priority: card.priority, severity: card.severity }, to: now, actor: ctx.actor });

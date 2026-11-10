@@ -213,7 +213,7 @@ export class Notifier {
           ? message('raised', `Raised to ${levels(to)}`, COLOR.critical)
           : null;
       pick = (e) => (raised && e.critical ? raised : null);
-    } else {
+    } else if (event.type === 'card_blocked') {
       if (card.completed_at) return;
       const blockers = event.blockerIds
         .map((id) => cardInfo(ctx, id))
@@ -222,6 +222,10 @@ export class Notifier {
         .join(', ');
       const blocked = message('blocked', `Blocked by ${blockers || 'an open card'}`, COLOR.blocked);
       pick = (e) => (e.blocked ? blocked : null);
+    } else {
+      // Not for the install's channels (card_assigned is for personal notifications), or a type
+      // this version doesn't know.
+      return;
     }
     await Promise.all(
       targets.map(async (t) => {

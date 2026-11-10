@@ -136,6 +136,8 @@ export interface CardTile {
   checklistUnverified: number;
   /** Open cards blocking this one (not done, not in Trash); it can't be completed while > 0. */
   blockedBy: number;
+  /** The one person this card is assigned to (a user id), or null when nobody has it. */
+  assigneeId: number | null;
   version: number;
 }
 
@@ -284,6 +286,8 @@ export interface LabelRef {
  * - checklist_item_marked: { checklistId, checklist, itemId, text, state: 'failed'|'unverified' }
  * - attachment_added/removed: { attachmentId, name, sizeBytes }
  * - linked/unlinked:     { linkId, direction: LinkDirection, otherId, otherTitle }
+ * - assigned:            { from: userId|null, to: userId|null, fromName: string|null, toName: string|null }
+ *                        (names as they were then; `to` equal to the entry's userId means they took it)
  * - worklog:             {} (the text is bodyMd; occurredAt may be backdated)
  */
 export interface ActivityEntry {
