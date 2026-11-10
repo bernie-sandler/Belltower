@@ -238,7 +238,10 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
         <input type="checkbox" checked={autoCreate} onChange={(e) => setAutoCreate(e.target.checked)} />
         <span>Create accounts on first sign-in</span>
       </label>
-      <p className="field-help">New people become members. Off: an admin adds people first, and they link themselves under Account.</p>
+      <p className="field-help">
+        New people become members. Off: an admin adds people first, and they link themselves under Account. With it on, the
+        provider decides who gets in: remove someone from the required group there to keep them out.
+      </p>
       <label className="checkbox">
         <input type="checkbox" checked={linkByEmail} onChange={(e) => setLinkByEmail(e.target.checked)} />
         <span>Link existing accounts by verified email</span>
@@ -246,6 +249,10 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
       <p className="field-help">
         A first sign-in joins the one active account with the same email, if the provider says it’s verified. Never an admin, and
         not when several accounts share it.
+      </p>
+      <p className="notice notice-warning">
+        Only turn this on if people can’t change their own email at the provider. It trusts the provider’s “email verified”:
+        anyone who can set someone else’s address there could take over that person’s Belltower account.
       </p>
       <label className="checkbox">
         <input type="checkbox" checked={allowHttpIssuer} onChange={(e) => setAllowHttpIssuer(e.target.checked)} />
