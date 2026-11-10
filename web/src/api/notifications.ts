@@ -10,11 +10,10 @@ import { qk } from './keys';
 /** How often the bell asks for news. Background tabs too, so a sound can play while you're elsewhere. */
 export const BELL_POLL_MS = 30_000;
 
-export function useNotifications(enabled = true) {
+export function useNotifications() {
   return useQuery({
     queryKey: qk.notifications,
     queryFn: ({ signal }) => api.get<NotificationsResponse>('/api/notifications?limit=30', signal),
-    enabled,
     refetchInterval: BELL_POLL_MS,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,

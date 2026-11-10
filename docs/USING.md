@@ -94,6 +94,29 @@ it. Only the person who wrote an entry, or an admin, can edit or retract it; ent
 so only admins can change those. Hover over a name to see the username, since two people can share a display
 name.
 
+## Watching, mentions and the bell
+
+**Watch** a card to hear about it: a new note, a move (including done or reopened), or a new assignee. The button is in
+the card's header (the eye on a phone); press it again to stop. You watch a card automatically when you create it in
+the app, are assigned it, are mentioned on it, or write a note on it.
+
+**Mention** someone in a work-log note with `@` and their username: `Swapped the cable, @sam can you test it?`. Type
+`@` and the first letters of a name or username, then pick from the list with the arrow keys and Enter (or tap a
+name). Mentions of people on this install are highlighted, yours in a different colour. The person is told and
+starts watching the card. Editing a note tells only the people it didn't mention before; a retracted note tells
+nobody. `@` in code or an email address isn't a mention.
+
+**The bell** in the top bar shows how many notifications you haven't read: cards assigned to you, mentions, and
+changes on cards you watch. Open the list and pick one to go to its card (that marks it read), or **Mark all read**.
+You're never told about your own changes. The bell checks for news every 30 seconds, also while the tab is in the
+background, and can play a sound when something new comes in: **Off**, **Chime** or **Ping**, chosen per device under
+**Settings → Appearance**, with a **Test** button. With several tabs open, only one plays it. Browsers only allow
+sound once you've clicked or typed on the page.
+
+Under **Account → Notifications** you choose what reaches you and where: in the app, as a Discord mention, or on
+your own ntfy topic, and whether new tickets from outside that nobody has taken should reach you too. See
+[NOTIFICATIONS.md](NOTIFICATIONS.md#personal-notifications) for setting up Discord and ntfy.
+
 ## Finding things
 
 - **Search** (press `/`) looks through titles, descriptions, checklists, work logs and resolution notes, archived
@@ -154,8 +177,9 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
 
 **Menu → Account** (everyone): your display name and email, **Sign-in** (linking your account to
 [single sign-on](SSO.md), when an admin has set it up), your password (changing it signs you out on your other
-devices; the owner's can't be changed here while `APP_PASSWORD` sets it), and **Your tokens**: API tokens that act
-as you. What a token does shows in the history as "via API token" with your name, and it stops working while your
+devices; the owner's can't be changed here while `APP_PASSWORD` sets it), **Notifications** (what reaches you, and
+where: see [Watching, mentions and the bell](#watching-mentions-and-the-bell)), and **Your tokens**: API tokens that
+act as you. What a token does shows in the history as "via API token" with your name, and it stops working while your
 account is deactivated.
 
 ## Settings
@@ -163,8 +187,8 @@ account is deactivated.
 **Menu → Settings** holds everything that isn't about one card. Members only see Appearance and the version;
 the rest is for admins.
 
-- **Appearance:** Light, Dark or System. This is saved per device, so the phone can follow the system while the
-  desktop stays dark.
+- **Appearance:** Light, Dark or System, and the bell's sound (off, chime or ping). These are saved per device, so
+  the phone can follow the system while the desktop stays dark, and the work laptop can stay quiet.
 - **General:** the ticket number format, the app's address (for links in notifications), the Claude model, and where
   blocked cards go.
 - **Resolution reasons:** the list offered on Mark done. The first one is the default.
