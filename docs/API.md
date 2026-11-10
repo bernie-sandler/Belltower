@@ -18,7 +18,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
   |---|---|
   | 400 | `validation` (zod issues in `details`), `anchor_not_found`, `target_required`, `invalid_target` (a column in the body no longer exists: refetch), `bad_request` |
   | 401 | `unauthenticated` (no or expired session → show the login page), `invalid_password` |
-  | 403 | `csrf`, `invalid_setup_code`, `forbidden` (an admin-only route called by a member) |
+  | 403 | `csrf`, `invalid_setup_code`, `forbidden` (an admin-only route called by a member, or someone else's work-log entry) |
   | 404 | `not_found`, `setup_not_available` |
   | 409 | `version_conflict` (body also has `card: CardDetail`, the current server copy), `open_instance`, `duplicate_link`, `not_worklog`, `card_deleted` (card is in the Trash), `card_archived` (card is archived), `not_done` (archive needs the Done column), `role_column`, `duplicate_name`, `managed_by_env`, `setup_required`, `password_changed`, `username_taken`, `owner_protected`, `last_admin`, `cannot_disable_self`, `use_account_password`, `user_changed` |
   | 413 | `too_large` |
@@ -35,7 +35,8 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
   two board actions with install-wide effects, on purpose: choosing where blocked cards go
   (`PUT /api/board/blocked-column`) and deleting a column (`DELETE /api/columns/:id`, which also resets the submit
   page's target column if it was that one). What a request changes is recorded as done by that person
-  (`ActivityEntry.userId`).
+  (`ActivityEntry.userId`, with `userName` for showing it). A work-log entry can only be edited or retracted by the
+  person who wrote it or an admin.
 
 ## Auth
 
@@ -101,7 +102,7 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 | `POST /api/cards/:id/undelete` | — | `CardDetail` | Restores the card from Trash to the bottom of its column. |
 | `POST /api/cards/:id/archive` | — | `CardDetail` | Only allowed for cards in the Done column (`409 not_done`). |
 | `POST /api/cards/:id/restore` | — | `CardDetail` | Un-archives the card to the bottom of its column. |
-| `GET /api/cards/:id/activity` | — | `ActivityEntry[]` | Newest first. |
+| `GET /api/cards/:id/activity` | — | `ActivityEntry[]` | Newest first. Who did it: `userId` (for an API token, its owner) and `tokenId`, both null for entries from before 1.5, the submit page, recurring templates and startup steps. `userName` (the person's display name) and `tokenName` are filled in alongside them (null when there's no person or token), so everyone can show who did what without listing people or tokens. A `created` entry's `data.via` says how a card came in (`submit page (Sam)`, `card import`, `API token “Kuma”`, `Add ticket`). |
 | `GET /api/cards/:id/status-link` | — | `StatusLinkInfo {path, active}` | The ticket's status page path (`/submit/status/<id>/<sig>`). `active` is false while the submit page is off. `409 not_ticket` for work cards, `409 deleted` in the Trash. Creates the signing secret the first time. |
 
 ## Card parts (Phase 2)
@@ -124,8 +125,8 @@ Every route below that changes a card returns the updated `CardDetail`, which no
 | `POST /api/cards/:id/links` | `CreateLinkBody {otherCardId, direction}` | `CardDetail` | `direction` from this card's view: `relates`, `blocks` or `blocked_by`. `409 duplicate_link`. Logged on both cards. |
 | `DELETE /api/cards/:id/links/:linkId` | — | `CardDetail` | Logged on both cards. |
 | `POST /api/cards/:id/worklog` | `WorklogBody {bodyMd, occurredAt?}` | `201 ActivityEntry` | `occurredAt` backdates the entry; it can't be in the future. |
-| `PATCH /api/activity/:id` | `UpdateWorklogBody {bodyMd?, occurredAt?, retracted?}` | `ActivityEntry` | Work-log entries only (`409 not_worklog`). The previous text and time are kept as a revision. |
-| `GET /api/activity/:id/revisions` | — | `ActivityRevision[]` | Oldest first; the first one is the original text. |
+| `PATCH /api/activity/:id` | `UpdateWorklogBody {bodyMd?, occurredAt?, retracted?}` | `ActivityEntry` | Work-log entries only (`409 not_worklog`). The previous text and time are kept as a revision. Only the entry's author (`userId`) or an admin may change it; entries without an author (from before 1.5) are admin-only. Anyone else gets `403 forbidden`. |
+| `GET /api/activity/:id/revisions` | — | `ActivityRevision[]` | Oldest first; the first one is the original text. Each has `userId` and `userName`: who replaced that version (null before 1.5). |
 | `POST /api/cards/:id/attachments` | multipart, one or more `file` fields | `CardDetail` | Up to `MAX_UPLOAD_MB` per file and 10 files per request (`413 too_large`). The kind is detected from the content. |
 | `GET /api/attachments/:id` | — | file | Images and text files are served inline, everything else as a download; `?download=1` always downloads. Sent with a sandboxing CSP. |
 | `GET /api/attachments/:id/text?mode=head\|tail\|full` | — | `TextPreview` | Text files only (`415 not_text`). Previews 256 KB; `full` is limited to 5 MB. |

@@ -20,8 +20,8 @@ Within v1:
 
 ## Authentication
 
-Create a token under **Settings → Automation**. Tokens start with `tt_` and are shown only once. Send one on every
-request:
+Create a token under **Account → Your tokens** (admins also see everyone's under **Settings → Automation**). Tokens
+start with `tt_` and are shown only once. Send one on every request:
 
 ```
 Authorization: Bearer tt_…

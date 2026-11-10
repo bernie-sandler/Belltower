@@ -44,7 +44,7 @@ Open `http://tower:8080` (or `http://<server-ip>:8080`). On the very first run i
 which is printed in the container log: in the Docker tab, click the belltower icon and choose **Logs**, or run
 `docker logs belltower`. Then choose a username (`admin` unless you change it) and a password of at least 12
 characters. This is the **owner** account: an admin that can't be demoted or deactivated, so there's always a way in.
-You can add other people later, as admins or members.
+You can add other people later under **Settings → People**, as admins or members.
 
 If you'd rather skip that step, set `APP_PASSWORD` in `.env` before starting: the owner account is then `admin` with
 that password.
@@ -108,7 +108,8 @@ owner is an active admin again, and signs the owner out on every device (nobody 
 username (`admin` on installs from before 1.5, which also accept the old name `tower-tracker`) or leave the username
 empty. You can remove the line afterwards; the password stays.
 
-Someone else forgot theirs? An admin sets a new password for them; that signs them out everywhere.
+Someone else forgot theirs? An admin opens **Settings → People**, clicks **Edit** next to them and resets their
+password; that signs them out everywhere. They can change it under **Account** after signing in.
 
 ## Troubleshooting
 

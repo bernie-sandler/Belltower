@@ -66,10 +66,14 @@ board shows a small badge when a card ended as anything other than the default.
 ## History and the work log
 
 Every change to a card is recorded automatically: moves, edits, labels, links, resolutions. The history can't be
-edited or deleted, by design.
+edited or deleted, by design. Each entry says who did it: a person ("Alice"), an API token and the person it acts
+for ("via API token “Kuma” (Alice)"), or how a card came in ("submit page (Sam)", "card import", "recurring").
+Entries from before 1.5 show no name, because nobody was recorded then.
 
-The **work log** is for your own notes: "Reseated the SATA cable", "Rolled back to 1.32.5". You can backdate an entry
-to when it actually happened, and edit or retract it later. The original stays in the entry's history.
+The **work log** is for your own notes: "Reseated the SATA cable", "Rolled back to 1.32.5". Each entry shows who
+wrote it. You can backdate an entry to when it actually happened, and edit or retract it later. The original stays
+in the entry's history, which also says who made each edit. Only the person who wrote an entry, or an admin, can
+edit or retract it; entries from before 1.5 have no author, so only admins can change those.
 
 ## Finding things
 
@@ -105,17 +109,49 @@ ticket Claude writes. Without it, [Import from JSON](CARD-IMPORT.md) does someth
 Tickets can also come from other people through the [submit page](SUBMIT-PAGE.md), and from monitoring tools through
 [automation](AUTOMATION.md).
 
+## People and your account
+
+Since 1.5, more than one person can use Belltower, each with their own username and password.
+
+- **Admins** run the install: people, the install's settings, the submit page, notification channels and backups.
+  They do the board work too.
+- **Members** do the board work: cards, columns, labels, templates, card import and the work log. They manage their
+  own account and API tokens.
+
+The **owner** is the account the install was set up with (`admin` after an upgrade from 1.4). It's always an active
+admin, and `APP_PASSWORD` can set its password, so there's always a way back in (see
+[INSTALL.md](INSTALL.md#forgot-the-password)).
+
+**Settings → People** (admins only):
+
+- **Add person**: a username (what they sign in with), a display name (how others see them in history), a role, and
+  a temporary password to hand over. **Generate** makes one up. They can change it under Account.
+- **Edit** someone to change their display name or role, reset their password, or **Deactivate** them. Resetting a
+  password or deactivating someone signs them out everywhere. A deactivated person can't sign in and their API tokens
+  stop working, but they keep their name in the history. **Re-enable** brings them and their tokens back. Nobody is
+  ever deleted.
+- What can't work isn't offered: the owner can't be demoted or deactivated, you can't deactivate yourself or reset
+  your own password there (that's under Account), and the last active admin stays an admin.
+
+**Menu → Account** (everyone): your display name and email, your password (changing it signs you out on your other
+devices; the owner's can't be changed here while `APP_PASSWORD` sets it), and **Your tokens**: API tokens that act
+as you. What a token does shows in the history as "via API token" with your name, and it stops working while your
+account is deactivated.
+
 ## Settings
 
-**Menu → Settings** holds everything that isn't about one card:
+**Menu → Settings** holds everything that isn't about one card. Members only see Appearance and the version;
+the rest is for admins.
 
 - **Appearance:** Light, Dark or System. This is saved per device, so the phone can follow the system while the
   desktop stays dark.
 - **General:** the ticket number format, the app's address (for links in notifications), the Claude model, and where
   blocked cards go.
 - **Resolution reasons:** the list offered on Mark done. The first one is the default.
-- **Submit page**, **Automation** tokens and **[Notifications](NOTIFICATIONS.md)** (Discord, ntfy, Gotify, webhook).
-- **Password** and the app's version.
+- **People:** see [People and your account](#people-and-your-account).
+- **Submit page**, **Automation** tokens (everyone's, with whose each is) and
+  **[Notifications](NOTIFICATIONS.md)** (Discord, ntfy, Gotify, webhook).
+- The app's version. Your password and your own tokens are under **Account**.
 
 ## Keyboard shortcuts
 

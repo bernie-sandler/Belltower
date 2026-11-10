@@ -13,7 +13,9 @@ The exact rules are in [API-V1.md](API-V1.md); this page is the friendly version
 
 ## 1. Create a token
 
-Go to **Settings → Automation**, give the token a name (say "Uptime Kuma"), and create it.
+Go to **Account → Your tokens** (admins can also use **Settings → Automation**), give the token a name (say
+"Uptime Kuma"), and create it. The token acts as you: what it does shows in a card's history as "via API token"
+with your name, and it stops working while your account is deactivated.
 
 - **Copy it straight away.** It's shown once; the app only keeps a hash. It starts with `tt_`.
 - **Tick "Recoveries may mark the ticket done"** if this tool should close its own tickets when things recover.
@@ -132,7 +134,7 @@ Call it from an automation with `service: rest_command.tower_ticket` and `data: 
 `GET /api/v1/summary` answers with ticket counts: open, by state, urgent, overdue, due today, done today and this week,
 and the age of the oldest open ticket. Every field is described in [API-V1.md](API-V1.md#get-apiv1summary).
 
-Create a **read-only** token for it (**Settings → Automation → Only read ticket counts**). The app shows these
+Create a **read-only** token for it (**Account → Your tokens → Only read ticket counts**). The app shows these
 examples with your address and token filled in.
 
 The dashboard has to call Belltower from its own server, not from your browser: Belltower doesn't send CORS headers.

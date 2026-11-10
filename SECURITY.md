@@ -20,9 +20,11 @@ Fixes go into the newest 1.x release.
   - Behind a reverse proxy, the real client address is only used when `TRUST_PROXY` names that proxy.
   - The owner account can't be demoted or deactivated, and `APP_PASSWORD` resets it, so the install can't lock
     itself out.
-- **Roles.** Admins manage people, the install's settings (submit page, notification channels), backups and
-  restores; members do the board work and manage their own profile, password and API tokens. The server enforces
-  this on every request, and each change is recorded with who made it.
+- **Roles.** Admins manage people (Settings → People), the install's settings (submit page, notification
+  channels), backups and restores, and see every API token with whose it is; members do the board work and manage
+  their own profile, password and API tokens. The server enforces this on every request, and each change is
+  recorded with who made it. A work-log entry can only be edited or retracted by the person who wrote it or an
+  admin.
 - **Sessions.**
   - An HTTP-only, SameSite=Lax cookie; only a SHA-256 hash of it is stored.
   - It gets the Secure flag over HTTPS.
