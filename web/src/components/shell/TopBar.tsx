@@ -9,6 +9,7 @@ import { useAiStatus } from '../../api/tickets';
 import { useIsMobile } from '../../lib/useMediaQuery';
 import { BrandMark } from '../common/BrandMark';
 import { Menu, type MenuEntry } from '../common/Menu';
+import { NotificationBell } from './NotificationBell';
 import { useShell } from './ShellContext';
 
 const NAV = [
@@ -144,6 +145,7 @@ export function TopBar() {
           ]}
         />
       )}
+      <NotificationBell />
       <button
         type="button"
         className="icon-btn topbar-menu-btn"
