@@ -56,7 +56,8 @@ function humanize(type: string): string {
  * Who did it, shown beside the entry: "Alice", "via API token “Kuma” (Alice)", and for a new card
  * how it came in: "submit page (Sam)", "card import", "recurring", "Alice via Add ticket". Null
  * when nobody is known: entries from before 1.5, and startup or timer steps. With `names` false
- * (Teams off) people's names are left out and the rest stays: "via API token “Kuma”", "submit page (Sam)".
+ * (Teams off) people are left out, and so is "Add ticket" (how a person made it in the app), as
+ * before 1.5; tokens, the submit page, card import and recurring stay: "via API token “Kuma”".
  */
 export function activityActor(entry: ActivityEntry, { names = true }: { names?: boolean } = {}): string | null {
   const person = names && entry.userId !== null ? str(entry.userName) : null;
@@ -65,7 +66,8 @@ export function activityActor(entry: ActivityEntry, { names = true }: { names?: 
   // when no person started it ("Create now" is a person's).
   let how: string | null = null;
   if (entry.type === 'created') {
-    const via = str(entry.data?.via)?.trim() || null;
+    const madeInApp = entry.data?.source === 'manual';
+    const via = (names || !madeInApp) && (str(entry.data?.via)?.trim() || null);
     if (via) how = token && via.startsWith('API token') ? null : via;
     else if (entry.data?.source === 'recurring' && !person && !token) how = 'recurring';
   }

@@ -126,5 +126,9 @@ describe('activityActor', () => {
     expect(solo({ userId: 2, userName: 'Alice' }, 'created', { via: 'card import' })).toBe('card import');
     expect(solo({}, 'created', { source: 'recurring' })).toBe('recurring');
     expect(solo({ userId: 2, userName: 'Alice' }, 'created', { source: 'recurring' })).toBe('recurring');
+    // "Add ticket" is how a person made it in the app: nothing to say without their name, as in 1.4.
+    expect(by({ userId: 2, userName: 'Alice' }, 'created', { source: 'manual', via: 'Add ticket' })).toBe('Alice via Add ticket');
+    expect(solo({ userId: 2, userName: 'Alice' }, 'created', { source: 'manual', via: 'Add ticket (Claude draft)' })).toBeNull();
+    expect(solo({}, 'created', { source: 'api', via: 'card import' })).toBe('card import');
   });
 });
