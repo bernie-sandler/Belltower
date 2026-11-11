@@ -14,8 +14,9 @@ import {
   type NotifyChannelInfo,
   type SettingsResponse,
   type SubmitSettingsBody,
+  type TeamsSettingsBody,
 } from '@tt/shared';
-import { getSetting, setSetting } from '../db/connection';
+import { getSetting, setSetting, stmt } from '../db/connection';
 import { badRequest } from '../errors';
 import { getBlockedColumnId } from './columns';
 import { nowIso, type Ctx } from './context';
@@ -25,7 +26,11 @@ const KEY = {
   submit: 'submit_settings',
   discord: 'discord_settings',
   channels: 'notify_channels',
+  teams: 'teams_settings',
 } as const;
+
+/** Where the Teams switch is kept (a restore carries it over when the backup has none). */
+export const TEAMS_SETTINGS_KEY = KEY.teams;
 
 /** Every channel that can send, Discord included. */
 export type AnyChannel = 'discord' | NotifyChannel;
@@ -58,6 +63,15 @@ export interface DiscordSettings {
   alertSeverity: 'blocker' | 'major' | 'minor';
 }
 
+/**
+ * The team features: assignees, Mine and Unassigned, watching, @mentions, the bell and personal
+ * notifications. Off by default, so a solo install looks as it did before 1.5. While off, the app
+ * hides them and notifyPeople writes only `submitted` (to admins, in the app); nothing is deleted.
+ */
+export interface TeamsSettings {
+  enabled: boolean;
+}
+
 export interface Delivery {
   at: string;
   ok: boolean;
@@ -72,6 +86,7 @@ const SUBMIT_DEFAULTS: SubmitSettings = {
   intro: 'Tell us what’s wrong and we’ll take a look.',
   key: null,
 };
+const TEAMS_DEFAULTS: TeamsSettings = { enabled: false };
 const DISCORD_DEFAULTS: DiscordSettings = {
   webhookUrl: null,
   events: { external: true, critical: true, digest: false, blocked: false },
@@ -100,6 +115,30 @@ export const getDiscordSettings = (ctx: Ctx) => {
   const d = read(ctx, KEY.discord, DISCORD_DEFAULTS);
   return { ...d, events: { ...DISCORD_DEFAULTS.events, ...d.events } };
 };
+
+/** A restored backup isn't validated, so anything but `true` reads as off. */
+export const getTeamsSettings = (ctx: Ctx): TeamsSettings => ({ enabled: read(ctx, KEY.teams, TEAMS_DEFAULTS).enabled === true });
+export const teamsEnabled = (ctx: Ctx): boolean => getTeamsSettings(ctx).enabled;
+
+export function updateTeamsSettings(ctx: Ctx, body: TeamsSettingsBody): void {
+  write(ctx, KEY.teams, { enabled: body.enabled });
+}
+
+/**
+ * The Teams switch came in 1.5.0, after the team features shipped in 1.5.0-rc.1. A database
+ * without the setting (a new install, an upgrade) gets it once at startup: on when more than one
+ * person is active, so an rc install already working as a team keeps its features; off otherwise
+ * (a fresh install, an upgrade from 1.4). A saved value is never changed. (A restored backup without
+ * it keeps the live install's: see carryOverAccess in backup.ts.) Returns what was written, or null
+ * when there already was one.
+ */
+export function backfillTeamsSetting(ctx: Pick<Ctx, 'db'>): boolean | null {
+  if (getSetting(ctx.db, KEY.teams) !== null) return null;
+  const active = stmt(ctx.db, 'SELECT count(*) FROM users WHERE disabled_at IS NULL').pluck().get() as number;
+  const enabled = active > 1;
+  setSetting(ctx.db, KEY.teams, JSON.stringify({ enabled }));
+  return enabled;
+}
 
 export function updateGeneralSettings(ctx: Ctx, body: GeneralSettingsBody): void {
   write(ctx, KEY.general, { ...getGeneralSettings(ctx), ...body });
@@ -316,5 +355,6 @@ export function settingsResponse(ctx: Ctx, ai: { modelFromEnv: string | null; en
     },
     blockedColumnId: getBlockedColumnId(ctx),
     resolutionReasons: getResolutionReasons(ctx),
+    teams: getTeamsSettings(ctx),
   };
 }

@@ -4,8 +4,11 @@
 // page loaded) it plays the sound chosen for this device and tells screen readers what's new.
 
 import type { NotificationItem, NotificationsResponse } from '@tt/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { Bell, CheckCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useConfig, useTeams } from '../../api/config';
+import { qk } from '../../api/keys';
 import { useMarkNotificationsRead, useNotifications } from '../../api/notifications';
 import { cls } from '../../lib/cls';
 import { useOpenCard } from '../../lib/navigation';
@@ -19,17 +22,21 @@ export const CLAIM_JITTER_MS = 300;
 /**
  * When the unread count rises above the last one seen (and there's a newer notification): plays
  * the sound in one tab only, and calls `onNew` with the new unread items. The first answer only
- * sets the baseline.
+ * sets the baseline, and so does the first after the list was reset or Teams was turned on or off,
+ * here or anywhere else (that changes what the list holds, which isn't news).
  */
 export function useRingOnNew(data: NotificationsResponse | undefined, onNew?: (fresh: NotificationItem[]) => void): void {
-  const baseline = useRef<{ unread: number; latestId: number } | null>(null);
+  const baseline = useRef<{ unread: number; latestId: number; teams: boolean } | null>(null);
   const onNewRef = useRef(onNew);
   onNewRef.current = onNew;
   useEffect(() => {
-    if (!data) return;
+    if (!data) {
+      baseline.current = null;
+      return;
+    }
     const before = baseline.current;
-    baseline.current = { unread: data.unread, latestId: data.latestId };
-    if (!before || data.unread <= before.unread || data.latestId <= before.latestId) return;
+    baseline.current = { unread: data.unread, latestId: data.latestId, teams: data.teams };
+    if (!before || before.teams !== data.teams || data.unread <= before.unread || data.latestId <= before.latestId) return;
     onNewRef.current?.(data.items.filter((n) => n.id > before.latestId && !n.readAt));
     const id = data.latestId;
     // Not cancelled when the data changes meanwhile (marking something read shouldn't swallow it).
@@ -48,8 +55,23 @@ function announce(fresh: NotificationItem[], unread: number): string {
 
 const countText = (n: number) => (n > 99 ? '99+' : String(n));
 
+/**
+ * The bell's poll also says whether Teams is on. When that differs from /api/config (an admin
+ * switched it in another tab or browser), the app shell reloads it, so the nav and the bell follow
+ * within one poll.
+ */
+function useFollowTeams(data: NotificationsResponse | undefined): void {
+  const qc = useQueryClient();
+  const listTeams = data?.teams;
+  const configTeams = useConfig().data?.teams;
+  useEffect(() => {
+    if (listTeams !== undefined && configTeams !== undefined && listTeams !== configTeams) void qc.invalidateQueries({ queryKey: qk.config });
+  }, [listTeams, configTeams, qc]);
+}
+
 export function NotificationBell() {
   const { data } = useNotifications();
+  useFollowTeams(data);
   const [announcement, setAnnouncement] = useState('');
   useRingOnNew(data, (fresh) => setAnnouncement(announce(fresh, data?.unread ?? fresh.length)));
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -84,6 +106,7 @@ function NotificationPanel({ anchor, data, onClose }: { anchor: HTMLElement; dat
   const markRead = useMarkNotificationsRead();
   const openCard = useOpenCard();
   const now = useNow();
+  const teams = useTeams();
   const items = data?.items ?? [];
   const unread = data?.unread ?? 0;
 
@@ -104,7 +127,9 @@ function NotificationPanel({ anchor, data, onClose }: { anchor: HTMLElement; dat
       {!data && <p className="popover-empty muted">Loading…</p>}
       {data && !items.length && (
         <p className="popover-empty muted">
-          Nothing yet. You’ll hear here when you’re assigned a card, @mentioned in a note, or something changes on a card you watch.
+          {teams
+            ? 'Nothing yet. You’ll hear here when you’re assigned a card, @mentioned in a note, or something changes on a card you watch.'
+            : 'Nothing yet. You’ll hear here when a new ticket comes in through the submit page.'}
         </p>
       )}
       {items.length > 0 && (

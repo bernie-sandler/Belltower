@@ -5,6 +5,7 @@ import {
   CSRF_HEADER,
   CSRF_VALUE,
   type ActivityEntry,
+  type AppConfig,
   type BoardResponse,
   type CardDetail,
   type MeResponse,
@@ -27,14 +28,14 @@ function makeStore(storage: Storage = memoryStorage(), now = NOW) {
   return new DemoStore({ storage, timeZone: TZ, now: () => now, seed: (n, tz) => seedDemo(n, tz, { appUrl: 'https://example.test/Belltower/#' }) });
 }
 
-function call(store: DemoStore, method: Method, url: string, body?: unknown): DemoResponse {
+function call(store: DemoStore, method: Method, url: string, body?: unknown, form: FormData | null = null): DemoResponse {
   const u = new URL(url, 'https://example.test');
   return dispatch(store, {
     method,
     path: u.pathname,
     query: Object.fromEntries(u.searchParams),
     body,
-    form: null,
+    form,
     headers: new Headers(method === 'GET' ? {} : { [CSRF_HEADER]: CSRF_VALUE }),
   });
 }
@@ -449,13 +450,16 @@ describe('persistence and reset', () => {
 });
 
 describe('notifications', () => {
-  it('greets the visitor with two unread: a mention and a move on a card they watch', () => {
+  it('greets the visitor with two unread (a mention and a move on a card they watch) over the submit page’s tickets, read', () => {
     const store = makeStore();
     const bell = ok<NotificationsResponse>(call(store, 'GET', '/api/notifications'));
     expect(bell.unread).toBe(2);
-    expect(bell.items.map((n) => [n.type, n.text, n.cardTitle])).toEqual([
-      ['watching', 'Jordan Lee moved this to In Progress', 'Label the patch panel'],
-      ['mentioned', 'Alex Chen mentioned you: “The warranty replacement shipped; tracking says Thursday. @admin can you preclear it when it lands?”', 'Disk 3 reallocated sectors climbing'],
+    expect(bell.items.map((n) => [n.type, n.text, n.cardTitle, n.readAt === null])).toEqual([
+      ['watching', 'Jordan Lee moved this to In Progress', 'Label the patch panel', true],
+      ['mentioned', 'Alex Chen mentioned you: “The warranty replacement shipped; tracking says Thursday. @admin can you preclear it when it lands?”', 'Disk 3 reallocated sectors climbing', true],
+      ['submitted', 'New ticket from submit page (Sam)', 'Plex – The Long Harbor – Audio drifts out of sync', false],
+      ['submitted', 'New ticket from submit page (Priya)', 'Game Servers – Valheim – Can’t join since the update', false],
+      ['submitted', 'New ticket from submit page (Jake)', 'Game Servers – Minecraft – Random disconnects', false],
     ]);
     expect(ok<{ unread: number }>(call(store, 'POST', '/api/notifications/read', { ids: [bell.items[0]!.id] })).unread).toBe(1);
     // Opening the disk 3 card marks its mention read.
@@ -463,6 +467,63 @@ describe('notifications', () => {
     expect(call(store, 'POST', '/api/notifications/read', {}).status).toBe(400);
     expect(ok<{ unread: number }>(call(store, 'POST', '/api/notifications/read', { all: true })).unread).toBe(0);
     expect(ok<NotificationsResponse>(call(store, 'GET', `/api/notifications?after=${bell.latestId}`)).items).toEqual([]);
+  });
+
+  it('starts with Teams on; turned off, it hides the rest of the bell, and a submit-page ticket still rings it', () => {
+    const store = makeStore();
+    expect(ok<AppConfig>(call(store, 'GET', '/api/config'))).toMatchObject({ teams: true, submitPageEnabled: true });
+    const s0 = store.snapshot();
+    const jordan = s0.users.find((u) => u.username === 'jordan')!.id;
+    const assigned = s0.cards.filter((c) => c.assigneeId !== null).map((c) => [c.id, c.assigneeId]);
+    expect(assigned.length).toBeGreaterThan(0);
+
+    expect(ok<SettingsResponse>(call(store, 'PUT', '/api/settings/teams', { enabled: false })).teams).toEqual({ enabled: false });
+    expect(ok<AppConfig>(call(store, 'GET', '/api/config')).teams).toBe(false);
+    const quiet = ok<NotificationsResponse>(call(store, 'GET', '/api/notifications'));
+    expect(quiet.unread).toBe(0);
+    expect(new Set(quiet.items.map((n) => n.type))).toEqual(new Set(['submitted']));
+    // Mark all read leaves the hidden ones alone.
+    ok(call(store, 'POST', '/api/notifications/read', { all: true }));
+
+    expect(quiet.teams).toBe(false);
+    // Nothing but `submitted` is written, and `@name` is plain text: a mention tells nobody, and
+    // only the writer starts watching.
+    const card = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Solo card' }));
+    ok(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: jordan, expectedVersion: card.version }));
+    ok(call(store, 'POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Hey @alex' }));
+    const solo = store.snapshot();
+    expect(solo.notifications.some((n) => n.cardId === card.id)).toBe(false);
+    const alex = solo.users.find((u) => u.username === 'alex')!.id;
+    expect(solo.watchers.filter((w) => w.cardId === card.id).map((w) => w.userId)).not.toContain(alex);
+    // A ticket through the submit page rings the admins' bells, the visitor's included.
+    const settings = ok<SettingsResponse>(call(store, 'GET', '/api/settings'));
+    const type = ok<{ types: { id: number; name: string }[] }>(call(store, 'GET', `/api/public/submit/${settings.submit.key}`)).types.find((t) => t.name === 'General')!;
+    const form = new FormData();
+    form.set('data', JSON.stringify({ typeId: type.id, summary: 'Printer jammed', description: 'Again', name: 'Kim', answers: { where: 'Something else' } }));
+    const sent = call(store, 'POST', `/api/public/submit/${settings.submit.key}`, undefined, form);
+    expect(sent.status, JSON.stringify(sent.body)).toBe(201);
+    const rung = ok<NotificationsResponse>(call(store, 'GET', '/api/notifications'));
+    expect(rung.unread).toBe(1);
+    expect(rung.items[0]).toMatchObject({ type: 'submitted', text: 'New ticket from submit page (Kim)', actorName: 'submit page (Kim)' });
+    const after = store.snapshot();
+    const newest = after.notifications.filter((n) => n.type === 'submitted' && n.cardId === rung.items[0]!.cardId);
+    expect(newest.map((n) => after.users.find((u) => u.id === n.userId)!.username).sort()).toEqual(['admin', 'alex']);
+
+    // Turned back on: the assignments are all there, and the bell has its unread again.
+    ok(call(store, 'PUT', '/api/settings/teams', { enabled: true }));
+    const back = store.snapshot();
+    for (const [id, assignee] of assigned) expect(back.cards.find((c) => c.id === id)!.assigneeId).toBe(assignee);
+    expect(back.cards.find((c) => c.id === card.id)!.assigneeId).toBe(jordan);
+    expect(ok<NotificationsResponse>(call(store, 'GET', '/api/notifications')).unread).toBe(3);
+  });
+
+  it('reads Teams as on in demo data saved before the setting existed', () => {
+    const storage = memoryStorage();
+    makeStore(storage); // seeds and saves it
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY)!) as { settings: { teams?: unknown } };
+    delete saved.settings.teams;
+    storage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    expect(ok<AppConfig>(call(makeStore(storage), 'GET', '/api/config')).teams).toBe(true);
   });
 
   it('watching and mentions work as on the server; personal Discord and ntfy need the server', () => {

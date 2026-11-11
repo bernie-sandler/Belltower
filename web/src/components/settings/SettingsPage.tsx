@@ -1,7 +1,7 @@
-// Settings (/settings): general options, people, the submit page and its request types,
-// automation tokens, notifications, single sign-on, and the version. Members see only what's theirs to change
-// here (appearance); the install's settings are for admins. Your own password and tokens are
-// under Account.
+// Settings (/settings): general options (Teams included), people, the submit page and its request
+// types, automation tokens, notifications, single sign-on, and the version. Members see only what's
+// theirs to change here (appearance); the install's settings are for admins. Your own password and
+// tokens are under Account.
 
 import { DEFAULT_TICKET_FORMAT, type SettingsResponse } from '@tt/shared';
 import { Bot, Copy, Globe, Info, Palette, RefreshCw, Settings as SettingsIcon, UserRound, Volume2 } from 'lucide-react';
@@ -10,11 +10,11 @@ import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { sortedColumns, useBoard } from '../../api/board';
 import { useSetBlockedColumn } from '../../api/columns';
-import { useConfig } from '../../api/config';
+import { useBellShown, useConfig } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { qk } from '../../api/keys';
-import { useIsAdmin } from '../../api/me';
-import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSettings } from '../../api/settings';
+import { useIsAdmin, useMe, useUsers } from '../../api/me';
+import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSaveTeams, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
 import { playSound, setSound, useSound, type SoundChoice } from '../../lib/sound';
 import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
@@ -66,11 +66,12 @@ export function SettingsPage() {
 
 /**
  * Per device (this browser), so a phone can follow the system while the desktop stays dark, and
- * the work laptop can stay quiet while the desktop at home chimes.
+ * the work laptop can stay quiet while the desktop at home chimes. The sound only where there's a bell.
  */
-function AppearanceSection() {
+export function AppearanceSection() {
   const theme = useTheme();
   const sound = useSound();
+  const bell = useBellShown();
   const sounds: [SoundChoice, string][] = [
     ['off', 'Off'],
     ['chime', 'Chime'],
@@ -91,33 +92,37 @@ function AppearanceSection() {
         ))}
       </div>
       <p className="field-help">Saved on this device only. System follows your phone or computer’s light/dark setting.</p>
-      <span className="field-label sound-label">Sound for new notifications</span>
-      <div className="sound-row">
-        <div className="segmented" role="radiogroup" aria-label="Sound for new notifications">
-          {sounds.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={sound === value}
-              className="segmented-item"
-              onClick={() => {
-                setSound(value);
-                playSound(value, true);
-              }}
-            >
-              {label}
+      {bell && (
+        <>
+          <span className="field-label sound-label">Sound for new notifications</span>
+          <div className="sound-row">
+            <div className="segmented" role="radiogroup" aria-label="Sound for new notifications">
+              {sounds.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={sound === value}
+                  className="segmented-item"
+                  onClick={() => {
+                    setSound(value);
+                    playSound(value, true);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn btn-sm" disabled={sound === 'off'} onClick={() => playSound(sound, true)}>
+              <Volume2 size={14} aria-hidden /> Test
             </button>
-          ))}
-        </div>
-        <button type="button" className="btn btn-sm" disabled={sound === 'off'} onClick={() => playSound(sound, true)}>
-          <Volume2 size={14} aria-hidden /> Test
-        </button>
-      </div>
-      <p className="field-help">
-        Saved on this device only. It plays when the bell gets something new, in one open tab, once you’ve clicked or typed
-        on the page (browsers don’t allow sound before that).
-      </p>
+          </div>
+          <p className="field-help">
+            Saved on this device only. It plays when the bell gets something new, in one open tab, once you’ve clicked or typed
+            on the page (browsers don’t allow sound before that).
+          </p>
+        </>
+      )}
     </Section>
   );
 }
@@ -148,6 +153,7 @@ function GeneralSection({ s }: { s: SettingsResponse }) {
 
   return (
     <Section icon={<SettingsIcon size={16} aria-hidden />} title="General">
+      <TeamsSwitch s={s} />
       <label className="field">
         <span className="field-label">Ticket number format</span>
         <input className="input input-mono" value={ticketFormat} onChange={(e) => setTicketFormat(e.target.value)} spellCheck={false} />
@@ -225,6 +231,79 @@ function GeneralSection({ s }: { s: SettingsResponse }) {
         </select>
       </label>
     </Section>
+  );
+}
+
+/** What turning Teams off does to everyone else; `others` null when the people list couldn't load. */
+export function teamsOffMessage(others: number | null): string {
+  const who =
+    others === null ? 'Other people may have accounts here.' : `${others} other ${others === 1 ? 'person has an account' : 'people have accounts'} here.`;
+  return `${who} Turning Teams off hides assignees, Mine, watching and the bell for everyone, and stops their personal Discord and ntfy messages. Nothing is deleted.`;
+}
+
+/**
+ * Teams: assignees, Mine and Unassigned, watching, @mentions and the bell. Saves straight away.
+ * Turning it off while others have accounts asks first (and so does it when the people list
+ * couldn't load); nothing is deleted either way.
+ */
+export function TeamsSwitch({ s }: { s: SettingsResponse }) {
+  const ids = useId();
+  const save = useSaveTeams();
+  const people = useUsers();
+  const users = people.data;
+  const myId = useMe().data?.id;
+  const [confirmOff, setConfirmOff] = useState(false);
+  const others = users ? users.filter((u) => !u.disabled && u.id !== myId).length : null;
+  const enabled = save.isPending && save.variables ? save.variables.enabled : s.teams.enabled;
+
+  function set(next: boolean) {
+    save.mutate(
+      { enabled: next },
+      {
+        onSuccess: () => {
+          setConfirmOff(false);
+          toast(next ? 'Teams turned on' : 'Teams turned off', { kind: 'success', durationMs: 2000 });
+        },
+        onError: (err) => toast(errorMessage(err), { kind: 'error' }),
+      },
+    );
+  }
+
+  return (
+    <div className="field teams-field">
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={enabled}
+          disabled={save.isPending || people.isPending}
+          aria-describedby={`${ids}-help`}
+          onChange={(e) => (e.target.checked ? set(true) : others === 0 ? set(false) : setConfirmOff(true))}
+        />
+        <span>Teams</span>
+      </label>
+      <span className="field-help" id={`${ids}-help`}>
+        Assign cards to people, Mine and Unassigned, watching, @mentions and the notification bell
+      </span>
+      {people.isError && (
+        <p className="form-error" role="alert">
+          Couldn’t load the people list ({errorMessage(people.error)}), so turning Teams off will ask first.{' '}
+          <button type="button" className="link-btn" onClick={() => void people.refetch()}>
+            Retry
+          </button>
+        </p>
+      )}
+      {confirmOff && (
+        <ConfirmDialog
+          title="Turn off Teams?"
+          message={teamsOffMessage(others)}
+          confirmLabel="Turn off Teams"
+          busy={save.isPending}
+          onCancel={() => setConfirmOff(false)}
+          onConfirm={() => set(false)}
+        />
+      )}
+    </div>
   );
 }
 

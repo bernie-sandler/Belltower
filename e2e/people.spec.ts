@@ -3,7 +3,7 @@
 
 import type { Page } from '@playwright/test';
 import { E2E_PASSWORD } from '../playwright.config';
-import { expect, test, unique } from './helpers';
+import { expect, login, test, unique, type Api } from './helpers';
 
 const HEADERS = { 'X-Requested-With': 'tower-tracker' };
 const MEMBER_PASSWORD = 'member password 123';
@@ -63,6 +63,18 @@ test('an admin adds a member on the People screen; the member signs in and sees 
 });
 
 test('a work-log note shows who wrote it, and only its author or an admin can change it', async ({ page, api }) => {
+  // Names in the history are a team feature.
+  const teamsBefore = await api.setTeams(true);
+  try {
+    await worklogAuthors(page, api);
+  } finally {
+    // The page may still be signed in as the member: back to the admin first.
+    await login(page);
+    await api.setTeams(teamsBefore);
+  }
+});
+
+async function worklogAuthors(page: Page, api: Api) {
   const card = await api.createCard({ title: unique('Fans loud') });
   await api.call('POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Admin checked the fans' });
   const username = newUsername();
@@ -92,4 +104,4 @@ test('a work-log note shows who wrote it, and only its author or an admin can ch
   await page.reload();
   await expect(mine.locator('.activity-by')).toHaveText('Sam Ortiz');
   await expect(mine.getByRole('button', { name: /Retract/ })).toBeVisible();
-});
+}

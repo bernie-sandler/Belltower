@@ -571,6 +571,8 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
     key: newSubmitKey(),
   };
   s.settings.general.appUrl = opts.appUrl ?? '';
+  // Off by default on a real install; on here, so visitors see assignees, Mine, watching and the bell.
+  s.settings.teams = { enabled: true };
 
   // ---- history, replayed in time order ----
   const ids = new Map<string, number>();
@@ -663,6 +665,10 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
       clock = st.t;
       st.run();
     });
+
+  // The submit-page tickets are history the owner has already seen; the bell starts with what the
+  // others did (unread) and those (read).
+  for (const n of s.notifications) if (n.type === 'submitted') n.readAt ??= n.createdAt;
 
   // A first-time visitor lands signed in, as the owner.
   s.session = { signedIn: true, userId: owner.id };

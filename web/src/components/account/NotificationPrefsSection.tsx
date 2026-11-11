@@ -28,6 +28,7 @@ const EVENT_LABELS: Record<NotificationType, string> = {
   mentioned: 'You’re @mentioned',
   watching: 'Cards you watch',
   new_unassigned: 'New tickets nobody has',
+  submitted: 'New tickets from the submit page',
 };
 
 const EVENT_HINTS: Record<NotificationType, string> = {
@@ -35,6 +36,7 @@ const EVENT_HINTS: Record<NotificationType, string> = {
   mentioned: 'in a note',
   watching: 'a new note, a move, a new assignee',
   new_unassigned: 'from the submit page or a tool',
+  submitted: 'from people without an account',
 };
 
 const CHANNEL_LABELS: Record<PersonalChannel, string> = { inApp: 'In the app', discord: 'Discord', ntfy: 'ntfy' };

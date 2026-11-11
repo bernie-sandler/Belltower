@@ -16,6 +16,7 @@ import { createLogger } from '../src/logger';
 import type { TicketDrafter } from '../src/services/aiDraft';
 import type { Notifier } from '../src/services/notify';
 import type { Ctx } from '../src/services/context';
+import { backfillTeamsSetting, updateTeamsSettings } from '../src/services/settings';
 
 setScryptCostForTests(10);
 
@@ -29,7 +30,11 @@ export function makeCtx(opts: { now?: string; tz?: string; seed?: boolean } = {}
   migrate(db);
   const clock = fixedClock(opts.now ?? T0);
   const ctx: Ctx = { db, clock, tz: opts.tz ?? 'America/Chicago' };
-  if (opts.seed !== false) seedDefaults(ctx);
+  if (opts.seed !== false) {
+    seedDefaults(ctx);
+    // As startup does on a new install, before anyone has an account: Teams starts off.
+    backfillTeamsSetting(ctx);
+  }
   return {
     ctx,
     clock,
@@ -145,4 +150,9 @@ export async function addPerson(
   const res = await client(t.app, adminCookie)('POST', '/api/users', { username, displayName: username, role, password });
   if (res.statusCode !== 201) throw new Error(`adding ${username} failed: ${res.statusCode} ${res.body}`);
   return { id: res.json().id as number, cookie: await loginAs(t, username, password) };
+}
+
+/** Turns on Settings → General → Teams (off by default), for tests of the team features. */
+export function enableTeams(ctx: Ctx): void {
+  updateTeamsSettings(ctx, { enabled: true });
 }

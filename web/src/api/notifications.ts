@@ -11,8 +11,10 @@ import { qk } from './keys';
 /** How often the bell asks for news. Background tabs too, so a sound can play while you're elsewhere. */
 export const BELL_POLL_MS = 30_000;
 
-export function useNotifications() {
+/** `enabled`: false where there's no bell (Teams off, see useBellShown), so nothing polls. */
+export function useNotifications(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: qk.notifications,
     queryFn: ({ signal }) => api.get<NotificationsResponse>('/api/notifications?limit=30', signal),
     refetchInterval: BELL_POLL_MS,
@@ -56,10 +58,10 @@ export function useMarkNotificationsRead() {
 /**
  * Opening a card marks your notifications about it read. Asks the server only when there may be
  * some: an unread one about this card in the bell's list, or more unread than the list shows.
- * Once per card opened (not again while it stays open).
+ * Once per card opened (not again while it stays open). Not where there's no bell (`enabled`).
  */
-export function useMarkCardSeen(cardId: number) {
-  const { data } = useNotifications();
+export function useMarkCardSeen(cardId: number, enabled = true) {
+  const { data } = useNotifications(enabled);
   const markRead = useMarkNotificationsRead();
   const done = useRef<number | null>(null);
   const { mutate } = markRead;

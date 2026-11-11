@@ -62,6 +62,10 @@ them. The banner's switch is:
 The demo always signs in the owner, so it never shows the app as a member sees it. Adding people and changing their
 role or name works in the browser; a password given to someone new is checked and then forgotten.
 
+**Teams** (Settings → General) is on in the demo, unlike a fresh install, so visitors see assignees, watching and the
+bell; turning it off shows Belltower as a solo install sees it. Demo data saved before the setting existed reads as
+on too, so it didn't need a new `DEMO_SCHEMA_VERSION`.
+
 ### What the demo can't do
 
 These need the server. They answer `400` with the code `demo_unavailable`, so the app shows its usual error with a
@@ -73,7 +77,7 @@ message that starts "Not available in the demo":
   alert levels, summary time and each channel's checkboxes can still be changed. Under Account → Notifications, a
   personal Discord user ID or ntfy topic and **Send me a test** need the server too; what goes where is saved. The
   bell, watching, @mentions and the sound work in the demo (it starts with two unread notifications from the other
-  demo people).
+  demo people, above the submit page's tickets, which are already read).
 - Claude drafting (it shows as off, as on an install without `ANTHROPIC_API_KEY`)
 - API tokens and the automation API (`/api/v1`)
 - changing the password (there are none)

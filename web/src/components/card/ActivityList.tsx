@@ -2,11 +2,15 @@
 // with quick backdating and @ autocomplete, and per-entry edit (old versions kept and viewable)
 // and retract. Each entry says who did it; only a work-log entry's author or an admin can edit or
 // retract it. @mentions of people are highlighted, and notify them (the server decides who).
+// People's names, assignments, @ autocomplete and mention highlighting are team features: with
+// Teams off an entry shows only how it came in (an API token, the submit page…), assignment
+// entries aren't listed, and `@name` is plain text.
 
 import type { ActivityEntry } from '@tt/shared';
 import { History, NotebookPen, Pencil, RotateCcw, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useCardActivity } from '../../api/cards';
+import { useTeams } from '../../api/config';
 import { useRevisions, useWorklogActions } from '../../api/cardParts';
 import { errorMessage } from '../../api/errors';
 import { useMe, useMentionPeople, useUsers } from '../../api/me';
@@ -34,10 +38,13 @@ export function ActivityList({
 }) {
   const { data, error, isPending, refetch } = useCardActivity(cardId);
   const { data: me } = useMe();
-  const people = useMentionPeople();
+  const teams = useTeams();
+  const mentionPeople = useMentionPeople();
+  const people = teams ? mentionPeople : undefined;
   const now = useNow();
   const [filter, setFilter] = useState<Filter>('all');
-  const entries = (data ?? []).filter((e) => filter === 'all' || e.kind === 'worklog');
+  // Assignments are a team feature: with Teams off their entries stay in the history, unshown.
+  const entries = (data ?? []).filter((e) => (filter === 'all' || e.kind === 'worklog') && (teams || e.type !== 'assigned'));
 
   return (
     <section className="card-section" aria-labelledby="card-activity-heading">
@@ -90,13 +97,14 @@ export function ActivityList({
                 cardId={cardId}
                 now={now}
                 people={people}
+                names={teams}
                 readOnly={readOnly || !mayChangeWorklog(entry, me)}
               />
             ) : (
               <li key={entry.id} className="activity-item">
                 <div className="activity-line">
                   <span className="activity-text">{activityText(entry)}</span>
-                  <ActivityBy entry={entry} />
+                  <ActivityBy entry={entry} names={teams} />
                   <time className="activity-time" dateTime={entry.occurredAt}>
                     {formatDateTime(entry.occurredAt, now)}
                   </time>
@@ -116,18 +124,21 @@ function mayChangeWorklog(entry: ActivityEntry, me: { id: number; role: string }
   return me.role === 'admin' || (entry.userId !== null && entry.userId === me.id);
 }
 
-/** Who did it, beside the time ("Alice", "via API token “Kuma” (Alice)", "submit page (Sam)"). */
-function ActivityBy({ entry }: { entry: ActivityEntry }) {
-  const by = activityActor(entry);
+/** Who did it, beside the time ("Alice", "via API token “Kuma” (Alice)", "submit page (Sam)"). `names`: people's (Teams on). */
+function ActivityBy({ entry, names }: { entry: ActivityEntry; names: boolean }) {
+  const by = activityActor(entry, { names });
   // Display names aren't unique; the username tells two Alexes apart.
   return by ? (
-    <span className="activity-by" title={entry.userUsername ? `@${entry.userUsername}` : undefined}>
+    <span className="activity-by" title={names && entry.userUsername ? `@${entry.userUsername}` : undefined}>
       {by}
     </span>
   ) : null;
 }
 
 // ---- composer ----
+
+/** No @ suggestions (Teams off). */
+const NOBODY: never[] = [];
 
 type When = 'now' | '1h' | 'morning' | 'yesterday' | 'custom';
 
@@ -163,6 +174,7 @@ function WorklogComposer({ cardId, focusRequest }: { cardId: number; focusReques
   const draftKey = `card:${cardId}:worklog`;
   const { add } = useWorklogActions(cardId);
   const { data: users } = useUsers();
+  const teams = useTeams();
   const now = useNow();
   const [body, setBody] = useState(() => loadDraft(draftKey, true) ?? '');
   const [when, setWhen] = useState<When>('now');
@@ -211,10 +223,10 @@ function WorklogComposer({ cardId, focusRequest }: { cardId: number; focusReques
         ref={ref}
         className="input"
         aria-label="Log work"
-        placeholder="Log work… e.g. Swapped SATA power cable to drive 3 (Markdown OK, @name to mention someone)"
+        placeholder={`Log work… e.g. Swapped SATA power cable to drive 3 (Markdown OK${teams ? ', @name to mention someone' : ''})`}
         rows={2}
         value={body}
-        people={users ?? []}
+        people={teams ? (users ?? []) : NOBODY}
         onValueChange={(v) => {
           setBody(v);
           saveDraft(draftKey, v, true);
@@ -282,12 +294,16 @@ function WorklogEntry({
   cardId,
   now,
   people,
+  names,
   readOnly,
 }: {
   entry: ActivityEntry;
   cardId: number;
   now: number;
+  /** Highlight @mentions of these (undefined with Teams off). */
   people: MentionPeople | undefined;
+  /** Show people's names (Teams on). */
+  names: boolean;
   readOnly: boolean;
 }) {
   const { update } = useWorklogActions(cardId);
@@ -323,7 +339,7 @@ function WorklogEntry({
             </button>
           )}
         </span>
-        <ActivityBy entry={entry} />
+        <ActivityBy entry={entry} names={names} />
         <time className="activity-time" dateTime={entry.occurredAt} title={entry.createdAt !== entry.occurredAt ? `Written ${formatDateTime(entry.createdAt, now)}` : undefined}>
           {formatDateTime(entry.occurredAt, now)}
         </time>
@@ -336,7 +352,7 @@ function WorklogEntry({
             aria-label="Edit work-log entry"
             value={body}
             rows={2}
-            people={users ?? []}
+            people={names ? (users ?? []) : NOBODY}
             onValueChange={setBody}
             autoFocus
           />
@@ -393,12 +409,12 @@ function WorklogEntry({
         </div>
       )}
 
-      {showHistory && <RevisionList activityId={entry.id} now={now} people={people} />}
+      {showHistory && <RevisionList activityId={entry.id} now={now} people={people} names={names} />}
     </li>
   );
 }
 
-function RevisionList({ activityId, now, people }: { activityId: number; now: number; people: MentionPeople | undefined }) {
+function RevisionList({ activityId, now, people, names }: { activityId: number; now: number; people: MentionPeople | undefined; names: boolean }) {
   const { data, isPending } = useRevisions(activityId, true);
   if (isPending) return <Spinner label="Loading history…" size={16} />;
   if (!data?.length) return null;
@@ -409,7 +425,7 @@ function RevisionList({ activityId, now, people }: { activityId: number; now: nu
           <p className="muted small">
             {i === 0 ? 'Original' : `Version ${i + 1}`} · for {formatDateTime(r.occurredAt, now)} · replaced{' '}
             {formatDateTime(r.revisedAt, now)}
-            {r.userName && (
+            {names && r.userName && (
               <>
                 {' by '}
                 <span title={r.userUsername ? `@${r.userUsername}` : undefined}>{r.userName}</span>

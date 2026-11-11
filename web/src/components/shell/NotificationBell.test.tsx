@@ -3,12 +3,12 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { NotificationItem, NotificationsResponse } from '@tt/shared';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BELL_POLL_MS, useMarkCardSeen } from '../../api/notifications';
 import { canPlay, CLAIM_STALE_MS, LAST_ID_KEY, playSound, resetSoundForTests, setSound } from '../../lib/sound';
-import { CLAIM_JITTER_MS, NotificationBell } from './NotificationBell';
+import { CLAIM_JITTER_MS, NotificationBell, useRingOnNew } from './NotificationBell';
 
 vi.mock('../../lib/sound', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/sound')>();
@@ -32,6 +32,7 @@ const answer = (items: NotificationItem[]): NotificationsResponse => ({
   items,
   unread: items.filter((n) => !n.readAt).length,
   latestId: Math.max(0, ...items.map((n) => n.id)),
+  teams: true,
 });
 
 let polls: NotificationsResponse[];
@@ -231,5 +232,35 @@ describe('NotificationBell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
     expect(screen.getByText(/Nothing yet/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Mark all read' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('useRingOnNew', () => {
+  it('starts over after the list is reset (Teams turned on or off), so what it holds then doesn’t ring', async () => {
+    const { rerender } = renderHook(({ data }: { data: NotificationsResponse | undefined }) => useRingOnNew(data), {
+      initialProps: { data: answer([item(1)]) as NotificationsResponse | undefined },
+    });
+    rerender({ data: undefined }); // reset: the list is being fetched again
+    rerender({ data: answer([item(5), item(4), item(1)]) });
+    await advance(CLAIM_JITTER_MS);
+    expect(playSound).not.toHaveBeenCalled();
+    // Something new after that still rings.
+    rerender({ data: answer([item(6), item(5), item(4), item(1)]) });
+    await advance(CLAIM_JITTER_MS);
+    expect(playSound).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts over when Teams was turned on elsewhere, so the notifications it brings back don’t ring', async () => {
+    const solo = { ...answer([item(2, { type: 'submitted', text: 'New ticket from submit page (Sam)' })]), teams: false };
+    const { rerender } = renderHook(({ data }: { data: NotificationsResponse | undefined }) => useRingOnNew(data), {
+      initialProps: { data: solo as NotificationsResponse | undefined },
+    });
+    // The next poll, after another tab turned Teams on: older unread ones are back, and they aren't news.
+    rerender({ data: answer([item(9), item(7), item(2)]) });
+    await advance(CLAIM_JITTER_MS);
+    expect(playSound).not.toHaveBeenCalled();
+    rerender({ data: answer([item(10), item(9), item(7), item(2)]) });
+    await advance(CLAIM_JITTER_MS);
+    expect(playSound).toHaveBeenCalledTimes(1);
   });
 });

@@ -116,4 +116,19 @@ describe('activityActor', () => {
     expect(by({ userId: null, tokenId: null, userName: null, tokenName: null }, 'worklog')).toBeNull();
     expect(by({}, 'created', { column: { name: 'Triage' }, source: 'manual' })).toBeNull();
   });
+
+  it('leaves people’s names out with Teams off, keeping tokens and how a card came in', () => {
+    const solo = (fields: Partial<ActivityEntry>, type: ActivityEntry['type'] = 'moved', data: Record<string, unknown> = {}) =>
+      activityActor({ ...entry(type, data), ...fields }, { names: false });
+    expect(solo({ userId: 2, userName: 'Alice' })).toBeNull();
+    expect(solo({ userId: 2, userName: 'Alice', tokenId: 5, tokenName: 'Kuma' })).toBe('via API token “Kuma”');
+    expect(solo({}, 'created', { via: 'submit page (Sam)' })).toBe('submit page (Sam)');
+    expect(solo({ userId: 2, userName: 'Alice' }, 'created', { via: 'card import' })).toBe('card import');
+    expect(solo({}, 'created', { source: 'recurring' })).toBe('recurring');
+    expect(solo({ userId: 2, userName: 'Alice' }, 'created', { source: 'recurring' })).toBe('recurring');
+    // "Add ticket" is how a person made it in the app: nothing to say without their name, as in 1.4.
+    expect(by({ userId: 2, userName: 'Alice' }, 'created', { source: 'manual', via: 'Add ticket' })).toBe('Alice via Add ticket');
+    expect(solo({ userId: 2, userName: 'Alice' }, 'created', { source: 'manual', via: 'Add ticket (Claude draft)' })).toBeNull();
+    expect(solo({}, 'created', { source: 'api', via: 'card import' })).toBe('card import');
+  });
 });

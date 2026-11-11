@@ -50,6 +50,7 @@ import {
   SimilarQuery,
   SubmitBody,
   SubmitSettingsBody,
+  TeamsSettingsBody,
   TemplateBody,
   UpdateCardBody,
   UpdateChecklistItemBody,
@@ -150,8 +151,10 @@ import {
   updateChannelEvents,
   updateDiscordSettings,
   updateGeneralSettings,
+  teamsEnabled,
   updateRequestType,
   updateSubmitSettings,
+  updateTeamsSettings,
 } from './settings';
 import { checkSubmitKey, MAX_UPLOAD_BYTES, publicSubmitConfig, submitTicket } from './submit';
 import { actorIsAdmin, createUser, getOwner, listUsers, meResponse, updateMe, updateUser } from './users';
@@ -259,6 +262,7 @@ export interface DemoApi {
   // ---- settings, request types, tokens (routes/settings.ts) ----
   'GET /api/settings': SettingsResponse;
   'PUT /api/settings/general': SettingsResponse;
+  'PUT /api/settings/teams': SettingsResponse;
   'PUT /api/settings/submit': SettingsResponse;
   'PUT /api/settings/resolutions': SettingsResponse;
   'POST /api/settings/submit/new-link': SettingsResponse;
@@ -417,6 +421,8 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     timeZone: ctx.tz,
     maxUploadBytes: MAX_UPLOAD_BYTES,
     passwordManagedByEnv: false,
+    teams: teamsEnabled(ctx),
+    submitPageEnabled: ctx.s.settings.submit.enabled,
   })),
   'GET /api/board': ok(
     (ctx) => {
@@ -551,6 +557,10 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'GET /api/settings': ok((ctx) => settingsResponse(ctx)),
   'PUT /api/settings/general': admin(ok((ctx, req) => {
     updateGeneralSettings(ctx, parse(GeneralSettingsBody, req.body));
+    return settingsResponse(ctx);
+  })),
+  'PUT /api/settings/teams': admin(ok((ctx, req) => {
+    updateTeamsSettings(ctx, parse(TeamsSettingsBody, req.body));
     return settingsResponse(ctx);
   })),
   'PUT /api/settings/submit': admin(ok((ctx, req) => {

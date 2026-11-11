@@ -36,6 +36,12 @@ Applied database migration(s): 6
 - `APP_PASSWORD`, if you use it, now manages the owner's password only. "Set `APP_PASSWORD` and restart" still gets you
   back in.
 - History from before 1.5 doesn't say who did what; everything from now on does.
+- The team features (assignees, Mine and Unassigned, watching, @mentions, the bell and names in the history) stay
+  hidden until an admin turns on **Settings → General → Teams**, so a solo install looks as it did. New tickets from
+  the submit page still ring the bell for admins while Teams is off. See [USING.md](USING.md#teams).
+- Coming from 1.5.0-rc.1 with more than one active person, Teams starts on, so a team keeps its features. That's
+  decided once, the first time 1.5.0 starts; after that only an admin changes it (restoring an older backup keeps the
+  setting you have).
 
 ## Picking a version
 

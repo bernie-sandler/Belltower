@@ -12,7 +12,8 @@
 // Discord message that mentions the person, or a message to their own ntfy topic on the install's
 // ntfy server with the install's token. Several changes for one person within COALESCE_MS go out as
 // one message per channel, so a bulk move doesn't hit Discord's 30-a-minute webhook limit. They
-// don't touch the install channels' "last delivery" shown in Settings.
+// don't touch the install channels' "last delivery" shown in Settings, and they're only sent while
+// Teams (Settings → General) is on.
 
 import {
   PRIORITIES,
@@ -21,6 +22,7 @@ import {
   SEVERITIES,
   SEVERITY_CODES,
   SEVERITY_LABELS,
+  picksFor,
   type Priority,
   type Severity,
 } from '@tt/shared';
@@ -39,6 +41,7 @@ import {
   getDiscordSettings,
   getGeneralSettings,
   recordDelivery,
+  teamsEnabled,
   type AlertSettings,
   type AnyChannel,
   type ChannelEvents,
@@ -382,9 +385,11 @@ export class Notifier {
 
     const user = findUser(ctx, userId);
     if (!user || user.disabled_at) return;
-    const prefs = prefsOf(user.notify_prefs);
+    // Teams turned off while these waited: personal channels are part of it.
+    if (!teamsEnabled(ctx)) return;
+    const prefs = prefsOf(user.notify_prefs, user.role);
     const items = notificationsById(ctx, waiting.ids).filter((n) => n.userId === userId);
-    const pick = (channel: 'discord' | 'ntfy') => items.filter((n) => prefs[n.type]?.[channel]);
+    const pick = (channel: 'discord' | 'ntfy') => items.filter((n) => prefs[n.type] && picksFor(prefs, n.type)[channel]);
     const link = this.cardLink(ctx);
     const sends: Promise<void>[] = [];
 

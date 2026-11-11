@@ -9,7 +9,7 @@ import { withActor, type AppEvent } from '../src/services/context';
 import { Notifier } from '../src/services/notify';
 import { getChannelSettings, updateChannelSettings, updateDiscordSettings } from '../src/services/settings';
 import { createUser } from '../src/services/users';
-import { addPerson, client, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
+import { addPerson, client, enableTeams, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
 
 describe('assigning cards (service)', () => {
   let t: ReturnType<typeof makeCtx>;
@@ -74,6 +74,7 @@ describe('assigning cards (service)', () => {
   });
 
   it('creates a card with an assignee, logged like an assignment', () => {
+    enableTeams(t.ctx); // personal notifications are a team feature
     const card = createCard(withActor(t.ctx, { kind: 'user', userId: alice }), { title: 'Replace UPS battery', assigneeId: bob });
     expect(getCard(t.ctx, card.id).assigneeId).toBe(bob);
     expect(assignedEntries(card.id)).toMatchObject([{ data: { from: null, to: bob, toName: 'Bob' }, userId: alice }]);

@@ -5,6 +5,7 @@ import { Ban, Clock, Ellipsis, FolderOpen, Link2, Paperclip, SquareCheckBig } fr
 import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { usePerson } from '../../api/assignees';
 import { useDefaultResolution } from '../../api/board';
+import { useTeams } from '../../api/config';
 import { initials } from '../../lib/assignees';
 import { cls } from '../../lib/cls';
 import { isDragging as isBoardDragging, justDropped } from '../../lib/dragging';
@@ -43,6 +44,8 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
   // "Fixed" is the usual outcome; only the others (Won't fix, Duplicate…) are worth a badge.
   const defaultResolution = useDefaultResolution();
   const resolution = tile.completedAt && tile.resolution && tile.resolution !== defaultResolution ? tile.resolution : null;
+  // Assignees are a team feature: the badge only shows with Teams on (the assignment is kept either way).
+  const assigned = useTeams() && tile.assigneeId !== null;
   const hasFooter =
     isWork ||
     resolution !== null ||
@@ -53,7 +56,7 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
     tile.checklistTotal > 0 ||
     tile.priority !== null ||
     tile.severity !== null ||
-    tile.assigneeId !== null;
+    assigned;
 
   return (
     <div
@@ -138,7 +141,7 @@ export function TileView({ tile, labelsById, now, pending, overlay, hasMenu }: T
             </span>
           )}
           {tile.checklistTotal > 0 && <ChecklistBadge tile={tile} />}
-          {tile.assigneeId !== null && <AssigneeBadge userId={tile.assigneeId} />}
+          {assigned && <AssigneeBadge userId={tile.assigneeId!} />}
         </div>
       )}
     </div>

@@ -4,8 +4,11 @@
 
 import { z } from 'zod';
 
-/** What can notify a person. */
-export const NOTIFICATION_TYPES = ['assigned', 'mentioned', 'watching', 'new_unassigned'] as const;
+/**
+ * What can notify a person. `submitted`: a new ticket from the public submit page (not API tokens
+ * or monitors). It's the one event that still reaches admins while Teams is off.
+ */
+export const NOTIFICATION_TYPES = ['assigned', 'mentioned', 'watching', 'new_unassigned', 'submitted'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /** Where: the bell in the app, a Discord mention in the install's channel, the person's own ntfy topic. */
@@ -21,31 +24,58 @@ export const NotifyPrefs = z.object({
   mentioned: ChannelPicks,
   watching: ChannelPicks,
   new_unassigned: ChannelPicks,
+  submitted: ChannelPicks,
 });
 export type NotifyPrefs = z.infer<typeof NotifyPrefs>;
 
-/** In the app for your own cards; personal channels and new outside tickets are opt-in. */
+/**
+ * A member's defaults: in the app for your own cards; personal channels and new outside tickets
+ * are opt-in. Admins also get new submit-page tickets in the app (defaultNotifyPrefs).
+ */
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
   assigned: { inApp: true, discord: false, ntfy: false },
   mentioned: { inApp: true, discord: false, ntfy: false },
   watching: { inApp: true, discord: false, ntfy: false },
   new_unassigned: { inApp: false, discord: false, ntfy: false },
+  submitted: { inApp: false, discord: false, ntfy: false },
 };
 
+/** The defaults for someone with this role: admins hear about new submit-page tickets in the app. */
+export function defaultNotifyPrefs(role: 'admin' | 'member'): NotifyPrefs {
+  const prefs = Object.fromEntries(NOTIFICATION_TYPES.map((t) => [t, { ...DEFAULT_NOTIFY_PREFS[t] }])) as NotifyPrefs;
+  if (role === 'admin') prefs.submitted.inApp = true;
+  return prefs;
+}
+
 /**
- * Stored prefs with the defaults filled in. Anything missing or not a boolean takes the default,
- * so prefs saved by an older version (or `{}`, the column's default) still read correctly.
+ * Stored prefs with the defaults for the person's role filled in. Anything missing or not a
+ * boolean takes the default, so prefs saved by an older version (or `{}`, the column's default),
+ * which have no `submitted`, still read correctly.
  */
-export function notifyPrefsFrom(raw: unknown): NotifyPrefs {
+export function notifyPrefsFrom(raw: unknown, role: 'admin' | 'member' = 'member'): NotifyPrefs {
   const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const defaults = defaultNotifyPrefs(role);
   const out = {} as NotifyPrefs;
   for (const type of NOTIFICATION_TYPES) {
     const saved = src[type] && typeof src[type] === 'object' ? (src[type] as Record<string, unknown>) : {};
-    const picks = { ...DEFAULT_NOTIFY_PREFS[type] };
+    const picks = { ...defaults[type] };
     for (const channel of PERSONAL_CHANNELS) if (typeof saved[channel] === 'boolean') picks[channel] = saved[channel];
     out[type] = picks;
   }
   return out;
+}
+
+/**
+ * Where a notification of this type goes for someone with these prefs. A submit-page ticket is also
+ * a new ticket nobody has: someone who wants `submitted` anywhere is told once, as `submitted`, on
+ * every channel either event asks for (so a Discord ping for new unassigned tickets isn't lost).
+ * Someone who wants only `new_unassigned` gets that instead (notifyNewUnassigned).
+ */
+export function picksFor(prefs: NotifyPrefs, type: NotificationType): ChannelPicks {
+  const picks = prefs[type];
+  if (type !== 'submitted' || (!picks.inApp && !picks.discord && !picks.ntfy)) return picks;
+  const also = prefs.new_unassigned;
+  return { inApp: picks.inApp || also.inApp, discord: picks.discord || also.discord, ntfy: picks.ntfy || also.ntfy };
 }
 
 /** A Discord user ID (a "snowflake"): Developer Mode → right-click yourself → Copy User ID. */
@@ -61,11 +91,14 @@ export const NtfyTopic = z
   .trim()
   .regex(/^belltower-[A-Za-z0-9_-]{1,54}$/, 'Start it with belltower-, then up to 54 letters, digits, dashes and underscores');
 
-/** PUT /api/me/notifications. null clears the Discord ID or the topic. */
+/**
+ * PUT /api/me/notifications. null clears the Discord ID or the topic. `prefs.submitted` may be
+ * left out (a tab still on a bundle from before it existed): the saved choice is kept.
+ */
 export const PersonalNotifyBody = z.object({
   discordUserId: DiscordUserId.nullable(),
   ntfyTopic: NtfyTopic.nullable(),
-  prefs: NotifyPrefs,
+  prefs: NotifyPrefs.extend({ submitted: ChannelPicks.optional() }),
 });
 export type PersonalNotifyBody = z.infer<typeof PersonalNotifyBody>;
 
@@ -169,7 +202,7 @@ export interface NotificationData {
   hidden?: boolean;
   /** mentioned, and watching a note: the note's start. */
   excerpt?: string;
-  /** new_unassigned: where it came from ("submit page (Sam)"). */
+  /** new_unassigned and submitted: where it came from ("submit page (Sam)"). */
   via?: string;
   /** watching: what changed. */
   what?: 'note' | 'moved' | 'assigned';
@@ -203,6 +236,8 @@ export function notificationText(type: NotificationType | string, data: Notifica
       return data.excerpt ? `${who} mentioned you: “${data.excerpt}”` : `${who} mentioned you`;
     case 'new_unassigned':
       return data.via ? `New ticket from ${data.via}, not assigned yet` : 'New ticket, not assigned yet';
+    case 'submitted':
+      return `New ticket from ${data.via || 'the submit page'}`;
     case 'watching':
       switch (data.what) {
         case 'note':

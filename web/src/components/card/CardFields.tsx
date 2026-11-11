@@ -1,6 +1,6 @@
-// Assignee, priority (P0–P3, with an impact × urgency helper), severity (S1–S4), due date (+
-// optional time) and completion date. Each control saves on its own as soon as it changes; native
-// inputs keep it quick on a phone (iOS shows its own pickers).
+// Assignee (with Teams on), priority (P0–P3, with an impact × urgency helper), severity (S1–S4),
+// due date (+ optional time) and completion date. Each control saves on its own as soon as it
+// changes; native inputs keep it quick on a phone (iOS shows its own pickers).
 
 import {
   LEVELS,
@@ -17,6 +17,7 @@ import {
 import { CircleCheck, Clock, Flag, Grid3x3, OctagonAlert, UserRound, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { usePerson } from '../../api/assignees';
+import { useTeams } from '../../api/config';
 import { useUpdateCard, type CardPatch } from '../../api/cards';
 import { useMe, useUsers } from '../../api/me';
 import { cls } from '../../lib/cls';
@@ -30,6 +31,7 @@ export function CardFields({ card, readOnly }: { card: CardDetail; readOnly: boo
   const update = useUpdateCard(card.id);
   const now = useNow();
   const due = dueStatus(card, now);
+  const teams = useTeams();
 
   // useUpdateCard reports failures itself (conflicts, Trash, errors).
   function save(patch: CardPatch, done?: string) {
@@ -38,9 +40,11 @@ export function CardFields({ card, readOnly }: { card: CardDetail; readOnly: boo
 
   return (
     <section className="card-section card-fields" aria-label="Details">
-      <div className="field-row">
-        <AssigneeField card={card} readOnly={readOnly} onSave={save} />
-      </div>
+      {teams && (
+        <div className="field-row">
+          <AssigneeField card={card} readOnly={readOnly} onSave={save} />
+        </div>
+      )}
       <div className="field-row">
         <div className="field-inline">
           <span className="field-inline-label" id={`prio-${card.id}`}>

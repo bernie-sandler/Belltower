@@ -29,7 +29,7 @@ import { byPosition, nextId, nowIso, type CardRow, type ColumnRow, type Ctx, typ
 import { badRequest, conflict, notFound } from './errors';
 import { labelIdsOf, listLabels, resolveLabels } from './labels';
 import { localDateOf } from './lib';
-import { isWatching, notifyAssigned, notifyMoved, notifyNewUnassigned, watchOwnNewCard } from './notifications';
+import { isWatching, notifyAssigned, notifyMoved, notifyNewUnassigned, notifySubmitted, watchOwnNewCard } from './notifications';
 import { getResolutionReasons } from './settings';
 
 const visible = (c: CardRow) => !c.deletedAt && !c.archivedAt;
@@ -224,6 +224,8 @@ export interface CreateCardOptions {
   via?: string;
   /** From the submit page: may notify people who asked about new unassigned tickets. */
   external?: boolean;
+  /** From the submit page: tells admins (`submitted`), with Teams on or off. */
+  submitPage?: boolean;
 }
 
 /** Someone a card can be given to: an existing, active person (400 invalid_assignee / assignee_disabled). */
@@ -342,8 +344,10 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     touchCard(ctx, parent.id);
   }
   if ((opts.source ?? 'manual') === 'manual' && !opts.external) watchOwnNewCard(ctx, id);
+  // A submit-page ticket rings once per person: "submitted" wins over "new_unassigned".
+  const submittedTold = opts.submitPage ? notifySubmitted(ctx, id, createdId, opts.via) : undefined;
   if (assignee) recordAssigned(ctx, id, null, assignee);
-  else if (opts.external) notifyNewUnassigned(ctx, id, createdId, opts.via);
+  else if (opts.external) notifyNewUnassigned(ctx, id, createdId, opts.via, submittedTold);
   return getCard(ctx, id);
 }
 

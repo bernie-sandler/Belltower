@@ -7,6 +7,7 @@
 import { CreateUserBody, PASSWORD_MIN_LENGTH, type MeResponse, type UserInfo, type UserRole } from '@tt/shared';
 import { Dices, Eye, EyeOff, KeyRound, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
+import { useTeams } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { useMe, useUsers } from '../../api/me';
 import { peopleErrorMessage, useCreateUser, useUpdateUser } from '../../api/people';
@@ -24,6 +25,8 @@ export function PeopleSection() {
   const [editing, setEditing] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const activeAdmins = users?.filter((u) => u.role === 'admin' && !u.disabled).length ?? 0;
+  const teams = useTeams();
+  const active = users?.filter((u) => !u.disabled).length ?? 0;
 
   return (
     <Section icon={<Users size={16} aria-hidden />} title="People">
@@ -31,6 +34,11 @@ export function PeopleSection() {
         Admins run this install: people, settings and backups. Members do the board work and manage their own account and
         tokens. People are deactivated rather than deleted, so the history keeps their names.
       </p>
+      {!teams && active > 1 && (
+        <p className="notice people-teams-hint" role="note">
+          Turn on Teams in General to assign cards to people
+        </p>
+      )}
       {isPending && <Spinner label="Loading people…" />}
       {!isPending && !users && (
         <p className="muted">

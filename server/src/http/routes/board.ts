@@ -33,6 +33,7 @@ import {
 } from '../../services/cards';
 import { createColumn, deleteColumn, renameColumn, reorderColumns, setBlockedColumn } from '../../services/columns';
 import { createLabel, deleteLabel, reorderLabels, updateLabel } from '../../services/labels';
+import { getSubmitSettings, teamsEnabled } from '../../services/settings';
 import { statusLink } from '../../services/status';
 import { idParam, parse } from '../util';
 
@@ -56,6 +57,9 @@ export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
     maxUploadBytes: config.maxUploadBytes,
     // APP_PASSWORD only manages the owner's password.
     passwordManagedByEnv: deps.auth.passwordSource === 'env' && req.user?.isOwner === true,
+    // What the app shell shows (the nav, the bell), without loading every setting.
+    teams: teamsEnabled(req.ctx),
+    submitPageEnabled: getSubmitSettings(req.ctx).enabled === true,
   }));
 
   app.get('/api/board', async (req) => getBoard(req.ctx));

@@ -43,7 +43,8 @@ edited to show a different ticket.
 
 On your side it's a normal card in Triage (or the column you choose). Their answers are added below the description,
 the title follows the type's pattern (say "Plex – Interstellar – stutters"), and the history notes
-"submit page (*their name*)". With [notifications](NOTIFICATIONS.md) set up, you get a message for each one.
+"submit page (*their name*)". Each one rings the bell for admins, with [Teams](USING.md#teams) on or off, and with
+[notifications](NOTIFICATIONS.md) set up you also get a message for each one.
 
 ## Request types
 
