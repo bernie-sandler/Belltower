@@ -24,6 +24,7 @@ import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useCard, useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
+import { useBellShown, useTeams } from '../../api/config';
 import { useMarkCardSeen, useWatchCard } from '../../api/notifications';
 import { isApiError } from '../../api/client';
 import { errorMessage } from '../../api/errors';
@@ -60,7 +61,7 @@ interface Props {
 
 export function CardDetailModal({ cardId, onClose }: Props) {
   const { data: card, error, isPending } = useCard(cardId);
-  useMarkCardSeen(cardId);
+  useMarkCardSeen(cardId, useBellShown());
   const { data: board } = useBoard();
   const titleId = useId();
   const dirty = useRef({ title: false, description: false });
@@ -200,6 +201,7 @@ function CardDetailBody({
 }: BodyProps) {
   const shell = useShell();
   const now = useNow();
+  const teams = useTeams();
   const { data: board } = useBoard();
   const deleteCard = useDeleteCard();
   const undelete = useRestoreCard('undelete');
@@ -263,7 +265,7 @@ function CardDetailBody({
             )}
           </p>
         </div>
-        {!deleted && <WatchButton card={card} />}
+        {!deleted && teams && <WatchButton card={card} />}
         {!deleted && (
           <button type="button" className="btn btn-sm card-log-btn" onClick={() => setLogRequest((n) => n + 1)}>
             <NotebookPen size={16} aria-hidden /> <span className="card-log-label">Log work</span>

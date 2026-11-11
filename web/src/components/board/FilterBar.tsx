@@ -17,6 +17,7 @@ import {
 import { Filter, Search, X } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
+import { useTeams } from '../../api/config';
 import { useMe, useUsers } from '../../api/me';
 import { cls } from '../../lib/cls';
 import { dueStatus } from '../../lib/time';
@@ -48,8 +49,11 @@ const DUE_LABELS: Record<DueFilter, string> = {
 
 const list = (v: string | null) => (v ? v.split(',').filter(Boolean) : []);
 
-/** The filter in a URL query (?q=…&labels=1,2&prio=…&sev=…&due=…&type=…&assignee=me,none,3). */
-export function parseBoardFilter(params: URLSearchParams): BoardFilter {
+/**
+ * The filter in a URL query (?q=…&labels=1,2&prio=…&sev=…&due=…&type=…&assignee=me,none,3).
+ * With Teams off (`teams` false) a leftover `assignee=` is ignored.
+ */
+export function parseBoardFilter(params: URLSearchParams, teams = true): BoardFilter {
   return {
     text: params.get('q') ?? '',
     labels: list(params.get('labels')).map(Number).filter((n) => n > 0),
@@ -57,7 +61,7 @@ export function parseBoardFilter(params: URLSearchParams): BoardFilter {
     severities: list(params.get('sev')),
     due: list(params.get('due')) as DueFilter[],
     kinds: list(params.get('type')),
-    assignees: list(params.get('assignee')).filter((a) => a === 'me' || a === 'none' || /^[1-9]\d*$/.test(a)),
+    assignees: teams ? list(params.get('assignee')).filter((a) => a === 'me' || a === 'none' || /^[1-9]\d*$/.test(a)) : [],
   };
 }
 
@@ -80,7 +84,8 @@ const choiceCount = (f: BoardFilter) =>
 
 export function useBoardFilter() {
   const [params, setParams] = useSearchParams();
-  const filter: BoardFilter = useMemo(() => parseBoardFilter(params), [params]);
+  const teams = useTeams();
+  const filter: BoardFilter = useMemo(() => parseBoardFilter(params, teams), [params, teams]);
   const setFilter = (next: BoardFilter) => setParams(writeBoardFilter(params, next), { replace: true });
   const active = filter.text.trim() !== '' || choiceCount(filter) > 0;
   return { filter, setFilter, active };
@@ -158,6 +163,7 @@ export function FilterBar({
   const count = choiceCount(filter);
   const meId = useMe().data?.id ?? null;
   const people = assigneeChoices(useUsers().data, meId, assignedIds, filter);
+  const teams = useTeams();
 
   function toggle<K extends 'labels' | 'priorities' | 'severities' | 'due' | 'kinds' | 'assignees'>(key: K, value: BoardFilter[K][number]) {
     const cur = filter[key] as (typeof value)[];
@@ -212,19 +218,21 @@ export function FilterBar({
               Tickets
             </Toggle>
           </FilterGroup>
-          <FilterGroup title="Assignee">
-            <Toggle on={filter.assignees.includes('me')} onClick={() => toggle('assignees', 'me')}>
-              Me
-            </Toggle>
-            <Toggle on={filter.assignees.includes('none')} onClick={() => toggle('assignees', 'none')}>
-              Unassigned
-            </Toggle>
-            {people.map((u) => (
-              <Toggle key={u.id} on={filter.assignees.includes(String(u.id))} onClick={() => toggle('assignees', String(u.id))}>
-                {u.label}
+          {teams && (
+            <FilterGroup title="Assignee">
+              <Toggle on={filter.assignees.includes('me')} onClick={() => toggle('assignees', 'me')}>
+                Me
               </Toggle>
-            ))}
-          </FilterGroup>
+              <Toggle on={filter.assignees.includes('none')} onClick={() => toggle('assignees', 'none')}>
+                Unassigned
+              </Toggle>
+              {people.map((u) => (
+                <Toggle key={u.id} on={filter.assignees.includes(String(u.id))} onClick={() => toggle('assignees', String(u.id))}>
+                  {u.label}
+                </Toggle>
+              ))}
+            </FilterGroup>
+          )}
           <FilterGroup title="Labels">
             {labels.map((l) => (
               <Toggle key={l.id} on={filter.labels.includes(l.id)} onClick={() => toggle('labels', l.id)}>

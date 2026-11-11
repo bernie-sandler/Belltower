@@ -14,6 +14,7 @@ import type {
   RequestTypeBody,
   SettingsResponse,
   SubmitSettingsBody,
+  TeamsSettingsBody,
 } from '@tt/shared';
 import { api } from './client';
 import { qk } from './keys';
@@ -34,11 +35,28 @@ function useSettingsMutation<V>(method: 'put' | 'post', path: string) {
       void qc.invalidateQueries({ queryKey: qk.board });
       // Turning the submit page on or off, or resetting links, changes cards' status links.
       void qc.invalidateQueries({ queryKey: qk.statusLinks });
+      // Whether the submit page is on decides, with Teams off, whether there's a bell.
+      void qc.invalidateQueries({ queryKey: qk.config });
     },
   });
 }
 
 export const useSaveGeneral = () => useSettingsMutation<GeneralSettingsBody>('put', '/api/settings/general');
+
+/** Settings → General → Teams: on or off. */
+export function useSaveTeams() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TeamsSettingsBody) => api.put<SettingsResponse>('/api/settings/teams', body),
+    meta: { errorToast: false },
+    onSuccess: (s) => {
+      qc.setQueryData(qk.settings, s);
+      // What the app shell shows (the nav, the bell), and what the bell lists.
+      void qc.invalidateQueries({ queryKey: qk.config });
+      void qc.invalidateQueries({ queryKey: qk.notifications });
+    },
+  });
+}
 export const useSaveSubmit = () => useSettingsMutation<SubmitSettingsBody>('put', '/api/settings/submit');
 export const useNewSubmitLink = () => useSettingsMutation<void>('post', '/api/settings/submit/new-link');
 /** Cuts off every ticket status link handed out so far. */

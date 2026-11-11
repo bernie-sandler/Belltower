@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
+import { useTeams } from '../../api/config';
 import { useDeleteCard, useCompleteCard,
   useMoveCard, useMoveCards, useRestoreCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
@@ -56,9 +57,10 @@ const NO_TILES: CardTile[] = [];
 export function Board() {
   const { data: board, error, isPending, refetch } = useBoard();
   const me = useMe();
+  const teams = useTeams();
   const [params] = useSearchParams();
   // "Assigned to me" means nothing until we know who that is: no empty board meanwhile.
-  const waitingForMe = me.isPending && parseBoardFilter(params).assignees.includes('me');
+  const waitingForMe = me.isPending && parseBoardFilter(params, teams).assignees.includes('me');
   if (isPending || waitingForMe) return <LoadingScreen label="Loading board…" />;
   if (!board) {
     return <ErrorScreen title="Couldn't load the board" message={errorMessage(error)} onRetry={() => void refetch()} />;

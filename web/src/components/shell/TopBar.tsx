@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
 import { useState } from 'react';
 import { useLogout } from '../../api/auth';
+import { useBellShown, useTeams } from '../../api/config';
 import { useIsAdmin } from '../../api/me';
 import { useAiStatus } from '../../api/tickets';
 import { useIsMobile } from '../../lib/useMediaQuery';
@@ -21,6 +22,9 @@ const NAV = [
   { to: '/search', label: 'Search', icon: Search },
   { to: '/templates', label: 'Recurring', icon: Repeat },
 ] as const;
+
+/** Team pages, only while Teams is on (Settings → General). */
+const TEAM_PAGES: ReadonlySet<string> = new Set(['/mine', '/triage']);
 
 /**
  * On phones these are in the ☰ menu instead, so the rest of the nav fits (CSS hides them there
@@ -49,6 +53,9 @@ export function TopBar() {
   const navigate = useNavigate();
   const page = (backgroundOf(location) ?? location).pathname;
   const isMobile = useIsMobile();
+  const teams = useTeams();
+  const bell = useBellShown();
+  const nav = teams ? NAV : NAV.filter((n) => !TEAM_PAGES.has(n.to));
   const phonePages: MenuEntry[] = isMobile
     ? [
         ...NAV.filter((n) => PHONE_MENU_PAGES.has(n.to)).map(({ to, label, icon: Icon }) => ({
@@ -68,7 +75,7 @@ export function TopBar() {
         <span className="topbar-name">Belltower</span>
       </div>
       <nav className="topnav" aria-label="Main">
-        {NAV.map(({ to, label, icon: Icon }) => {
+        {nav.map(({ to, label, icon: Icon }) => {
           const current = to === '/' ? page === '/' || page.startsWith('/cards') : page.startsWith(to);
           return (
             <Link
@@ -145,7 +152,7 @@ export function TopBar() {
           ]}
         />
       )}
-      <NotificationBell />
+      {bell && <NotificationBell />}
       <button
         type="button"
         className="icon-btn topbar-menu-btn"

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { useShortcut } from '../../lib/keyboard';
-import { useConfig } from '../../api/config';
+import { useConfig, useTeams } from '../../api/config';
 import { useIsAdmin, useMe } from '../../api/me';
 import { useAiStatus } from '../../api/tickets';
 import { errorMessage } from '../../api/errors';
@@ -113,14 +113,16 @@ function AppRoutes({ aiEnabled, onNewTicket }: { aiEnabled: boolean; onNewTicket
   useShortcut('N', onNewTicket);
   const background = backgroundOf(location);
   const isAdmin = useIsAdmin();
+  const teams = useTeams();
 
   return (
     <>
       <Routes location={background ?? location}>
         <Route path="/" element={<Board />} />
         <Route path="/cards/:id" element={<Board />} />
-        <Route path="/mine" element={<Lazy><QueuePage kind="mine" /></Lazy>} />
-        <Route path="/triage" element={<Lazy><QueuePage kind="unassigned" /></Lazy>} />
+        {/* Mine and Unassigned are team pages (Settings → General → Teams). */}
+        <Route path="/mine" element={teams ? <Lazy><QueuePage kind="mine" /></Lazy> : <Navigate to="/" replace />} />
+        <Route path="/triage" element={teams ? <Lazy><QueuePage kind="unassigned" /></Lazy> : <Navigate to="/" replace />} />
         <Route
           path="/archive"
           element={

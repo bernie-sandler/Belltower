@@ -6,6 +6,7 @@
 import type { NotificationItem, NotificationsResponse } from '@tt/shared';
 import { Bell, CheckCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTeams } from '../../api/config';
 import { useMarkNotificationsRead, useNotifications } from '../../api/notifications';
 import { cls } from '../../lib/cls';
 import { useOpenCard } from '../../lib/navigation';
@@ -84,6 +85,7 @@ function NotificationPanel({ anchor, data, onClose }: { anchor: HTMLElement; dat
   const markRead = useMarkNotificationsRead();
   const openCard = useOpenCard();
   const now = useNow();
+  const teams = useTeams();
   const items = data?.items ?? [];
   const unread = data?.unread ?? 0;
 
@@ -104,7 +106,9 @@ function NotificationPanel({ anchor, data, onClose }: { anchor: HTMLElement; dat
       {!data && <p className="popover-empty muted">Loading…</p>}
       {data && !items.length && (
         <p className="popover-empty muted">
-          Nothing yet. You’ll hear here when you’re assigned a card, @mentioned in a note, or something changes on a card you watch.
+          {teams
+            ? 'Nothing yet. You’ll hear here when you’re assigned a card, @mentioned in a note, or something changes on a card you watch.'
+            : 'Nothing yet. You’ll hear here when a new ticket comes in through the submit page.'}
         </p>
       )}
       {items.length > 0 && (

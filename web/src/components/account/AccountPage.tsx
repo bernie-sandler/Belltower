@@ -1,9 +1,10 @@
-// Account (/account): your own profile, sign-in, password, notifications and API tokens. Every
-// person has one, admins and members alike. Each part is its own section component.
+// Account (/account): your own profile, sign-in, password, notifications (with Teams on) and API
+// tokens. Every person has one, admins and members alike. Each part is its own section component.
 
 import type { MeResponse } from '@tt/shared';
 import { IdCard, Lock, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTeams } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { useMe, useUpdateMe } from '../../api/me';
 import { toast } from '../../lib/toast';
@@ -16,6 +17,7 @@ import { SignInSection } from './SignInSection';
 
 export function AccountPage() {
   const me = useMe();
+  const teams = useTeams();
   if (me.isPending) return <LoadingScreen />;
   if (!me.data) return <ErrorScreen title="Can't load your account" message={errorMessage(me.error)} onRetry={() => void me.refetch()} />;
   return (
@@ -26,7 +28,7 @@ export function AccountPage() {
       <ProfileSection me={me.data} />
       <SignInSection me={me.data} />
       <PasswordSection me={me.data} />
-      <NotificationPrefsSection />
+      {teams && <NotificationPrefsSection />}
       <TokensSection mine />
     </div>
   );

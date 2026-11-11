@@ -55,10 +55,11 @@ function humanize(type: string): string {
 /**
  * Who did it, shown beside the entry: "Alice", "via API token “Kuma” (Alice)", and for a new card
  * how it came in: "submit page (Sam)", "card import", "recurring", "Alice via Add ticket". Null
- * when nobody is known: entries from before 1.5, and startup or timer steps.
+ * when nobody is known: entries from before 1.5, and startup or timer steps. With `names` false
+ * (Teams off) people's names are left out and the rest stays: "via API token “Kuma”", "submit page (Sam)".
  */
-export function activityActor(entry: ActivityEntry): string | null {
-  const person = entry.userId !== null ? str(entry.userName) : null;
+export function activityActor(entry: ActivityEntry, { names = true }: { names?: boolean } = {}): string | null {
+  const person = names && entry.userId !== null ? str(entry.userName) : null;
   const token = entry.tokenId !== null ? `API token “${str(entry.tokenName) ?? '…'}”${person ? ` (${person})` : ''}` : null;
   // How a card arrived. A token's own name is already in `token`; a recurring run says so only
   // when no person started it ("Create now" is a person's).
