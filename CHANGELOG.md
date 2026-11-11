@@ -40,6 +40,8 @@ the container log on start, and in every backup export.
   [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md#personal-notifications).
 - **Single sign-on (optional).** Sign in through Authentik, Authelia or another OpenID Connect provider. Signing in with
   a password always stays available. See [docs/SSO.md](docs/SSO.md).
+  - With a required group set, Belltower also asks for the `groups` scope when the provider offers one (VoidAuth and
+    Pocket ID send groups only then), and the log says why someone failed the group check.
 - **API tokens belong to a person.** Members see their own under **Account**, and admins see everyone's under
   **Settings → Automation**. A token stops working while its owner is deactivated. The automation API itself hasn't
   changed.

@@ -10,6 +10,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { withGroupsScope } from '../src/auth/oidc';
+import { describeGroupMiss, type OidcSettings } from '../src/services/oidc';
 import { PASSWORD, addPerson, client, loginAs, makeApp, setupAndLogin, type TestApp } from './helpers';
 
 const APP_HOST = 'belltower.test';
@@ -28,7 +30,7 @@ interface IdpUser {
 const b64url = (buf: Buffer) => buf.toString('base64url');
 
 class MockIdp {
-  readonly codes = new Map<string, { user: IdpUser; nonce: string; challenge: string; redirectUri: string }>();
+  readonly codes = new Map<string, { user: IdpUser; nonce: string; challenge: string; redirectUri: string; scope: string }>();
   readonly tokens = new Map<string, IdpUser>();
   discoveryHits = 0;
   /** Seconds the provider's clock is ahead (+) or behind (−). */
@@ -43,6 +45,12 @@ class MockIdp {
   signing: 'good' | 'wrong-key' | 'hs256' = 'good';
   /** What discovery lists in id_token_signing_alg_values_supported. */
   algs = ['RS256'];
+  /** What discovery lists in scopes_supported; null leaves it out. */
+  scopesSupported: string[] | null = null;
+  /** VoidAuth's way: the groups claim is sent only when the `groups` scope was asked for. */
+  groupsNeedScope = false;
+  /** The scope of the last authorize request. */
+  lastScope: string | null = null;
 
   private constructor(
     private readonly server: Server,
@@ -101,6 +109,7 @@ class MockIdp {
           id_token_signing_alg_values_supported: this.algs,
           code_challenge_methods_supported: ['S256'],
           token_endpoint_auth_methods_supported: ['client_secret_basic'],
+          ...(this.scopesSupported ? { scopes_supported: this.scopesSupported } : {}),
         },
       };
     }
@@ -129,11 +138,12 @@ class MockIdp {
     if (b64url(createHash('sha256').update(form.get('code_verifier') ?? '').digest()) !== entry.challenge) {
       return { status: 400, body: { error: 'invalid_grant', error_description: 'PKCE' } };
     }
+    const user = this.visible(entry.user, entry.scope);
     const now = Math.floor(Date.now() / 1000) + this.clockOffsetSec;
-    const jwt = new SignJWT({ nonce: entry.nonce, ...entry.user.id })
+    const jwt = new SignJWT({ nonce: entry.nonce, ...user.id })
       .setProtectedHeader(this.signing === 'hs256' ? { alg: 'HS256' } : { alg: 'RS256', kid: 'k1' })
       .setIssuer(this.issuer)
-      .setSubject(entry.user.sub)
+      .setSubject(user.sub)
       .setAudience(CLIENT_ID)
       .setIssuedAt(now)
       .setNotBefore(now)
@@ -143,8 +153,15 @@ class MockIdp {
         ? await jwt.sign(new TextEncoder().encode(this.clientSecret))
         : await jwt.sign(this.signing === 'wrong-key' ? this.otherKey : this.key);
     const accessToken = b64url(randomBytes(16));
-    this.tokens.set(accessToken, entry.user);
+    this.tokens.set(accessToken, user);
     return { status: 200, body: { access_token: accessToken, token_type: 'Bearer', expires_in: 60, id_token: idToken } };
+  }
+
+  /** The user's claims as this scope shows them: without `groups` unless asked for, when groupsNeedScope is on. */
+  private visible(user: IdpUser, scope: string): IdpUser {
+    if (!this.groupsNeedScope || scope.split(' ').includes('groups')) return user;
+    const drop = (claims?: Record<string, unknown>) => (claims ? Object.fromEntries(Object.entries(claims).filter(([k]) => k !== 'groups')) : claims);
+    return { ...user, id: drop(user.id), userinfo: drop(user.userinfo) };
   }
 
   /** The provider's login page: checks the request and returns the callback address with a fresh code. */
@@ -160,7 +177,8 @@ class MockIdp {
     expect(p.get('state')).toBeTruthy();
     expect(p.get('nonce')).toBeTruthy();
     const code = b64url(randomBytes(12));
-    this.codes.set(code, { user, nonce: p.get('nonce')!, challenge: p.get('code_challenge')!, redirectUri: p.get('redirect_uri')! });
+    this.lastScope = p.get('scope');
+    this.codes.set(code, { user, nonce: p.get('nonce')!, challenge: p.get('code_challenge')!, redirectUri: p.get('redirect_uri')!, scope: this.lastScope ?? '' });
     const back = new URL(p.get('redirect_uri')!);
     back.searchParams.set('code', code);
     back.searchParams.set('state', p.get('state')!);
@@ -564,6 +582,86 @@ describe('signing in with single sign-on', () => {
     expect((await ssoLogin(t, i, { ...alice, id: { ...alice.id, roles: 'belltower' } })).location).toBe('/');
   });
 
+  it('asks for the groups scope with a required group when the provider lists it (VoidAuth)', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    i.groupsNeedScope = true;
+    i.scopesSupported = ['openid', 'profile', 'email', 'groups'];
+    const member: IdpUser = { ...alice, userinfo: { groups: ['users', 'belltower'] } };
+    const save = (extra: Record<string, unknown>) =>
+      client(t.app, admin)('PUT', '/api/settings/oidc', settingsBody(i, { preset: 'custom', autoCreate: true, clientSecret: null, ...extra }));
+
+    // Without a required group, nothing extra is asked for.
+    await enableSso(t, admin, i, { preset: 'custom', autoCreate: true });
+    expect((await ssoLogin(t, i, member)).location).toBe('/');
+    expect(i.lastScope).toBe('openid profile email');
+
+    // With one, `groups` is added, so the provider sends them.
+    await save({ requiredGroup: 'belltower' });
+    expect((await ssoLogin(t, i, member)).location).toBe('/');
+    expect(i.lastScope).toBe('openid profile email groups');
+
+    // Typed scopes get it too, and never twice.
+    await save({ requiredGroup: 'belltower', scopes: 'openid email' });
+    expect((await ssoLogin(t, i, member)).location).toBe('/');
+    expect(i.lastScope).toBe('openid email groups');
+    await save({ requiredGroup: 'belltower', scopes: 'openid groups email' });
+    expect((await ssoLogin(t, i, member)).location).toBe('/');
+    expect(i.lastScope).toBe('openid groups email');
+
+    // Not when the group comes from another claim: that scope may not be allowed for the client.
+    await save({ requiredGroup: 'belltower', groupsClaim: 'roles' });
+    expect((await ssoLogin(t, i, { ...alice, id: { ...alice.id, roles: ['belltower'] } })).location).toBe('/');
+    expect(i.lastScope).toBe('openid profile email');
+  });
+
+  it('asks for no groups scope the provider doesn’t list, and the log says why the group check failed', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    i.groupsNeedScope = true;
+    await enableSso(t, admin, i, { preset: 'custom', autoCreate: true, requiredGroup: 'belltower' });
+    const member: IdpUser = { ...alice, userinfo: { groups: ['belltower'] } };
+
+    t.logLines.length = 0;
+    expect((await ssoLogin(t, i, member)).location).toBe('/login?sso_error=group');
+    expect(i.lastScope).toBe('openid profile email');
+    const missing = t.logLines.join('\n');
+    expect(missing).toContain('no "groups" claim');
+    expect(missing).toContain('preferred_username'); // the claims it did send, by name
+    expect(missing).not.toContain('alice@example.com'); // never their values
+    expect(missing).toContain('Scopes');
+
+    // Groups that don't include the required one are listed.
+    i.groupsNeedScope = false;
+    t.logLines.length = 0;
+    expect((await ssoLogin(t, i, { ...alice, userinfo: { groups: ['users', 'Belltower'] } })).location).toBe('/login?sso_error=group');
+    expect(t.logLines.join('\n')).toContain('"groups" holds "users", "Belltower"; it needs "belltower"');
+  });
+
+  it('describes a failed group check briefly, quoting and capping what the provider sent', () => {
+    const s = { groupsClaim: 'groups', requiredGroup: ' belltower ' } as OidcSettings;
+    expect(describeGroupMiss(s, { sub: 'x', email: 'a@b.c' })).toBe(
+      'the provider sent no "groups" claim (it sent: "email", "sub"). Check that Scopes includes "groups" (Belltower adds it ' +
+        'itself when the provider lists it); some providers also leave the claim out for someone in no groups.',
+    );
+    expect(describeGroupMiss(s, { groups: [] })).toBe('"groups" holds no groups; it needs "belltower" (exact, case-sensitive).');
+    expect(describeGroupMiss(s, { groups: [{ name: 'belltower' }] })).toMatch(/^"groups" isn't a name or a list of names \(it's a list of other values\)/);
+    expect(describeGroupMiss(s, { groups: 7 })).toMatch(/\(it's a number\)/);
+    // Inherited names don't count as sent.
+    expect(describeGroupMiss({ ...s, groupsClaim: 'constructor' }, { sub: 'x' })).toMatch(/^the provider sent no "constructor" claim/);
+    // Line breaks and quotes from the provider can't fake a log line.
+    const sneaky = describeGroupMiss(s, { groups: ['ops"\nWARN  forged line'], 'x\ny': 1 });
+    expect(sneaky).not.toContain('\n');
+    expect(sneaky).toContain('"ops\\"\\nWARN  forged line"');
+    const many = Array.from({ length: 25 }, (_, n) => `g${n}`);
+    expect(describeGroupMiss(s, { groups: many })).toMatch(/"g19", and 5 more; it needs "belltower"/);
+    const claimNames = Object.fromEntries(Array.from({ length: 45 }, (_, n) => [`c${String(n).padStart(2, '0')}`, 1]));
+    expect(describeGroupMiss(s, claimNames)).toContain('"c39", and 5 more)');
+    expect(withGroupsScope('openid profile', ['openid', 'groups'])).toBe('openid profile groups');
+    expect(withGroupsScope('openid profile', ['openid'])).toBe('openid profile');
+    expect(withGroupsScope('openid profile', undefined)).toBe('openid profile');
+  });
+
   it('merges userinfo claims (email and name only there)', async () => {
     const { t, admin } = await app();
     const i = await idp('');
@@ -791,6 +889,26 @@ describe('linking your own account', () => {
     const unlink = await client(t.app, created.session!)('DELETE', '/api/auth/oidc/link');
     expect(unlink.statusCode).toBe(409);
     expect(unlink.json().error).toBe('needs_password');
+  });
+
+  it('refuses linking outside the required group, and logs why', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { requiredGroup: 'belltower' });
+    const sam = await addPerson(t, admin, 'sam');
+    t.logLines.length = 0;
+    const { callback, flow } = await linkFlow(t, i, sam.cookie, alice);
+    expect((await browser(t, callback, [flow, sam.cookie])).headers.location).toBe('/account?sso_error=group');
+    expect(t.logLines.join('\n')).toMatch(/link refused \(group\) for "sam": the provider sent no "groups" claim/);
+    expect((await client(t.app, sam.cookie)('GET', '/api/me')).json().ssoLinked).toBe(false);
+
+    // A provider that sends groups only for the scope: linking asks for it too, and then works.
+    i.groupsNeedScope = true;
+    i.scopesSupported = ['openid', 'profile', 'email', 'groups'];
+    await client(t.app, admin)('PUT', '/api/settings/oidc', settingsBody(i, { requiredGroup: 'belltower', clientSecret: null })); // rediscover
+    const member = await linkFlow(t, i, sam.cookie, { ...alice, userinfo: { groups: ['belltower'] } });
+    expect(i.lastScope).toBe('openid profile email groups');
+    expect((await browser(t, member.callback, [member.flow, sam.cookie])).headers.location).toBe('/account?sso=linked');
   });
 
   it('answers 409 when single sign-on is off', async () => {

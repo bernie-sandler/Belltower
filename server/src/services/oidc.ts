@@ -211,6 +211,36 @@ export function hasRequiredGroup(s: OidcSettings, claims: Record<string, unknown
   return !required || groupsOf(claims, s.groupsClaim).includes(required);
 }
 
+/** Up to `max` items, each cut to `len` characters and JSON-quoted (escapes quotes and line breaks), then "and N more". */
+function quotedList(items: string[], max: number, len: number): string {
+  const shown = items.slice(0, max).map((i) => JSON.stringify(i.slice(0, len)));
+  if (items.length > shown.length) shown.push(`and ${items.length - shown.length} more`);
+  return shown.join(', ');
+}
+
+/**
+ * For the log when the group check fails: whether the groups claim came at all (else the names of
+ * the claims that did, never their values), or which groups it held. Everything from the provider
+ * is quoted and capped, so it can't forge log lines.
+ */
+export function describeGroupMiss(s: OidcSettings, claims: Record<string, unknown>): string {
+  const claim = JSON.stringify(s.groupsClaim);
+  const needs = `it needs ${JSON.stringify(s.requiredGroup.trim())} (exact, case-sensitive)`;
+  if (!Object.hasOwn(claims, s.groupsClaim)) {
+    const names = quotedList(Object.keys(claims).sort(), 40, 64);
+    return (
+      `the provider sent no ${claim} claim (it sent: ${names}). Check that Scopes includes "groups" (Belltower adds it ` +
+      'itself when the provider lists it); some providers also leave the claim out for someone in no groups.'
+    );
+  }
+  const v = claims[s.groupsClaim];
+  if (typeof v !== 'string' && !(Array.isArray(v) && v.every((g) => typeof g === 'string'))) {
+    return `${claim} isn't a name or a list of names (it's ${Array.isArray(v) ? 'a list of other values' : v === null ? 'null' : `a ${typeof v}`}); ${needs}.`;
+  }
+  const groups = groupsOf(claims, s.groupsClaim);
+  return `${claim} holds ${groups.length ? quotedList(groups, 20, 100) : 'no groups'}; ${needs}.`;
+}
+
 /** A plain address: something@something, without spaces or control characters. */
 const EMAIL_SHAPE = /^[^\s@\p{Cc}]+@[^\s@\p{Cc}]+$/u;
 
