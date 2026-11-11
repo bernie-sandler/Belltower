@@ -485,10 +485,16 @@ describe('notifications', () => {
     // Mark all read leaves the hidden ones alone.
     ok(call(store, 'POST', '/api/notifications/read', { all: true }));
 
-    // Nothing but `submitted` is written: a mention tells nobody.
-    const card = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Solo card', assigneeId: jordan }));
-    ok(call(store, 'POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Hey @jordan' }));
-    expect(store.snapshot().notifications.some((n) => n.cardId === card.id)).toBe(false);
+    expect(quiet.teams).toBe(false);
+    // Nothing but `submitted` is written, and `@name` is plain text: a mention tells nobody, and
+    // only the writer starts watching.
+    const card = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Solo card' }));
+    ok(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: jordan, expectedVersion: card.version }));
+    ok(call(store, 'POST', `/api/cards/${card.id}/worklog`, { bodyMd: 'Hey @alex' }));
+    const solo = store.snapshot();
+    expect(solo.notifications.some((n) => n.cardId === card.id)).toBe(false);
+    const alex = solo.users.find((u) => u.username === 'alex')!.id;
+    expect(solo.watchers.filter((w) => w.cardId === card.id).map((w) => w.userId)).not.toContain(alex);
     // A ticket through the submit page rings the admins' bells, the visitor's included.
     const settings = ok<SettingsResponse>(call(store, 'GET', '/api/settings'));
     const type = ok<{ types: { id: number; name: string }[] }>(call(store, 'GET', `/api/public/submit/${settings.submit.key}`)).types.find((t) => t.name === 'General')!;

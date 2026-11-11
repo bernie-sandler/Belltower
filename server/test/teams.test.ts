@@ -5,7 +5,12 @@
 
 import { DEFAULT_NOTIFY_PREFS, SubmitBody, type NotifyPrefs } from '@tt/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { exportData } from '../src/services/backup';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { prepareData } from '../src/db/prepare';
+import { openDatabase } from '../src/db/connection';
+import { buildRestoreDb, exportData } from '../src/services/backup';
 import { createCard, getCard, moveCard, updateCard } from '../src/services/cards';
 import { withActor, type AppEvent, type Ctx } from '../src/services/context';
 import { intakeCard } from '../src/services/intake';
@@ -17,9 +22,11 @@ import {
   updatePersonalNotify,
   watchCard,
 } from '../src/services/notifications';
+import { addWorklog, updateWorklog } from '../src/services/worklog';
 import { Notifier } from '../src/services/notify';
 import { listRequestTypes } from '../src/services/requestTypes';
 import {
+  backfillTeamsSetting,
   getSubmitSettings,
   getTeamsSettings,
   teamsEnabled,
@@ -31,7 +38,6 @@ import {
 import { submitTicket } from '../src/services/submit';
 import { createToken } from '../src/services/tokens';
 import { createUser } from '../src/services/users';
-import { addWorklog } from '../src/services/worklog';
 import { addPerson, client, columnId, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
 
 let t: ReturnType<typeof makeCtx>;
@@ -66,6 +72,9 @@ const rows = (name: string) =>
 /** What the bell shows someone: "type: text", newest first. */
 const bell = (name: string) => listNotifications(t.ctx, people[name]!, { limit: 100 }).items.map((n) => `${n.type}: ${n.text}`);
 const unread = (name: string) => listNotifications(t.ctx, people[name]!, { limit: 1 }).unread;
+const watchers = (cardId: number) =>
+  t.ctx.db.prepare('SELECT u.username FROM card_watchers w JOIN users u ON u.id = w.user_id WHERE card_id = ? ORDER BY u.username').pluck().all(cardId) as string[];
+const teamsRow = (db = t.ctx.db) => db.prepare(`SELECT value FROM settings WHERE key = 'teams_settings'`).pluck().get() as string | undefined;
 
 /** A ticket through the submit page, as someone without an account sends it. Returns the card id. */
 function submit(name = 'Sam'): number {
@@ -103,6 +112,61 @@ describe('the setting', () => {
     expect(teamsEnabled(t.ctx)).toBe(false);
     t.ctx.db.prepare(`UPDATE settings SET value = 'not json' WHERE key = 'teams_settings'`).run();
     expect(teamsEnabled(t.ctx)).toBe(false);
+  });
+
+  it('gets its first value once at startup: on only where more than one person is already active', () => {
+    // As if this database came from before the setting existed: owner, Alex and Jordan are active.
+    expect(teamsRow()).toBe('{"enabled":false}'); // makeCtx sets up a new install, with nobody yet
+    t.ctx.db.prepare(`DELETE FROM settings WHERE key = 'teams_settings'`).run();
+    expect(teamsEnabled(t.ctx)).toBe(false); // missing reads as off
+    expect(prepareData(t.ctx).teams).toBe(true); // a 1.5.0-rc install already working as a team
+    expect(teamsEnabled(t.ctx)).toBe(true);
+    // Never again: a saved value (an admin's choice) stays.
+    teams(false);
+    expect(prepareData(t.ctx).teams).toBeNull();
+    expect(backfillTeamsSetting(t.ctx)).toBeNull();
+    expect(teamsEnabled(t.ctx)).toBe(false);
+
+    // One active person (a 1.4 upgrade's owner): off. Deactivated people don't count.
+    const solo = makeCtx();
+    try {
+      solo.ctx.db.prepare(`DELETE FROM settings WHERE key = 'teams_settings'`).run();
+      createUser(solo.ctx, { username: 'admin', displayName: 'Admin', role: 'admin' }, 'hash');
+      const gone = createUser(solo.ctx, { username: 'kim', displayName: 'Kim', role: 'member' }, 'hash').id;
+      solo.ctx.db.prepare('UPDATE users SET disabled_at = ? WHERE id = ?').run('2026-10-01T00:00:00.000Z', gone);
+      expect(prepareData(solo.ctx).teams).toBe(false);
+      expect(teamsRow(solo.ctx.db)).toBe('{"enabled":false}');
+      // A second person later doesn't change it: that's the admin's call.
+      createUser(solo.ctx, { username: 'sam', displayName: 'Sam', role: 'member' }, 'hash');
+      expect(prepareData(solo.ctx).teams).toBeNull();
+      expect(teamsEnabled(solo.ctx)).toBe(false);
+    } finally {
+      solo.close();
+    }
+  });
+
+  it('a restored backup from before the setting gets the same first value; one with it keeps it', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'tt-teams-'));
+    try {
+      const restored = (name: string, data: ReturnType<typeof exportData>) => {
+        const file = path.join(dir, `${name}.db`);
+        buildRestoreDb(data, file, t.ctx.tz, t.clock);
+        const db = openDatabase(file);
+        try {
+          return teamsRow(db);
+        } finally {
+          db.close();
+        }
+      };
+      t.ctx.db.prepare(`DELETE FROM settings WHERE key = 'teams_settings'`).run();
+      const rc = exportData(t.ctx, '1.5.0-rc.1'); // no teams_settings yet, three active people
+      expect((rc.tables.settings as { key: string }[]).some((r) => r.key === 'teams_settings')).toBe(false);
+      expect(restored('rc', rc)).toBe('{"enabled":true}');
+      teams(false);
+      expect(restored('final', exportData(t.ctx, '1.5.0'))).toBe('{"enabled":false}');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('goes into backups like the other settings', () => {
@@ -161,6 +225,7 @@ describe('with Teams off', () => {
     teams(false);
     expect(bell('owner')).toEqual([]);
     expect(unread('owner')).toBe(0);
+    expect(listNotifications(t.ctx, people.owner!, { limit: 1 }).teams).toBe(false);
     const submitted = submit();
     expect(bell('owner')).toEqual(['submitted: New ticket from submit page (Sam)']);
     expect(markNotificationsRead(t.ctx, people.owner!, { all: true })).toBe(0);
@@ -171,6 +236,19 @@ describe('with Teams off', () => {
     teams(true);
     expect(bell('owner')).toEqual(['submitted: New ticket from submit page (Sam)', 'assigned: Alex assigned this to you']);
     expect(unread('owner')).toBe(1); // the assignment is still unread
+  });
+
+  it('@name is plain text: a note makes only its writer watch, editing it in mentions nobody', () => {
+    const card = createCard(t.ctx, { title: 'Garage door sensor' });
+    const note = addWorklog(as('owner'), card.id, { bodyMd: 'Swapped the battery, @alex can you check?' });
+    expect(watchers(card.id)).toEqual(['owner']);
+    updateWorklog(as('owner'), note.id, { bodyMd: 'Swapped the battery, @alex @jordan can you check?' });
+    expect(watchers(card.id)).toEqual(['owner']);
+    expect(rows('alex')).toEqual([]);
+    // With Teams on, a mention makes them watch.
+    teams(true);
+    addWorklog(as('owner'), card.id, { bodyMd: 'Still beeping, @jordan' });
+    expect(watchers(card.id)).toEqual(['jordan', 'owner']);
   });
 
   it('assignments and watchers are kept, and work through the services, across switching it off and on', () => {
@@ -207,13 +285,15 @@ describe('with Teams on', () => {
     expect(rows('riley')).toEqual(['submitted']);
   });
 
-  it('a submit-page ticket rings once per person: `submitted` wins over `new_unassigned`', () => {
+  it('a submit-page ticket rings once per person: `submitted` wins over `new_unassigned`, on the channels of both', () => {
     setPrefs('owner', { new_unassigned: inApp }); // both apply: only submitted
-    setPrefs('alex', { submitted: { inApp: false, discord: true, ntfy: false }, new_unassigned: inApp }); // still told it was submitted (on Discord)
+    // Submitted only on Discord, new unassigned tickets in the app: one row, in the bell (and on Discord).
+    setPrefs('alex', { submitted: { inApp: false, discord: true, ntfy: false }, new_unassigned: inApp });
     setPrefs('jordan', { new_unassigned: inApp }); // a member: submitted is off, so new_unassigned
     submit();
     expect(rows('owner')).toEqual(['submitted']);
-    expect(rows('alex')).toEqual(['submitted (hidden)']);
+    expect(rows('alex')).toEqual(['submitted']);
+    expect(bell('alex')).toEqual(['submitted: New ticket from submit page (Sam)']);
     expect(rows('jordan')).toEqual(['new_unassigned']);
     // A monitor's ticket isn't `submitted` (a token's owner is told too).
     fromMonitor('NAS offline');
@@ -275,6 +355,23 @@ describe('personal channels', () => {
     // Only the install's own announcement (an embed, mentioning nobody).
     expect(sent).toEqual([{ url: WEBHOOK, text: '' }]);
     expect(rows('owner')).toEqual(['submitted']);
+  });
+
+  it('a Discord ping for new unassigned tickets still comes for a submit-page ticket: one bell row, one message', async () => {
+    teams(true);
+    const ALEX_DISCORD = '223456789012345678';
+    // An rc.1 admin: Discord for "New tickets nobody has", "submit page" left at its default (in the app).
+    t.ctx.db
+      .prepare('UPDATE users SET discord_user_id = ?, notify_prefs = ? WHERE id = ?')
+      .run(ALEX_DISCORD, JSON.stringify({ new_unassigned: { inApp: false, discord: true, ntfy: false } }), people.alex!);
+    submit('Sam');
+    await deliver();
+    expect(rows('alex')).toEqual(['submitted']);
+    expect(bell('alex')).toEqual(['submitted: New ticket from submit page (Sam)']);
+    const toAlex = sent.filter((m) => m.text.includes(`<@${ALEX_DISCORD}>`));
+    expect(toAlex).toHaveLength(1);
+    expect(toAlex[0]!.url).toBe(WEBHOOK);
+    expect(toAlex[0]!.text).toContain('New ticket from submit page (Sam)');
   });
 
   it('with Teams on they do; turned off before they go out, they don’t', async () => {

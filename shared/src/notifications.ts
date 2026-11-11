@@ -65,6 +65,19 @@ export function notifyPrefsFrom(raw: unknown, role: 'admin' | 'member' = 'member
   return out;
 }
 
+/**
+ * Where a notification of this type goes for someone with these prefs. A submit-page ticket is also
+ * a new ticket nobody has: someone who wants `submitted` anywhere is told once, as `submitted`, on
+ * every channel either event asks for (so a Discord ping for new unassigned tickets isn't lost).
+ * Someone who wants only `new_unassigned` gets that instead (notifyNewUnassigned).
+ */
+export function picksFor(prefs: NotifyPrefs, type: NotificationType): ChannelPicks {
+  const picks = prefs[type];
+  if (type !== 'submitted' || (!picks.inApp && !picks.discord && !picks.ntfy)) return picks;
+  const also = prefs.new_unassigned;
+  return { inApp: picks.inApp || also.inApp, discord: picks.discord || also.discord, ntfy: picks.ntfy || also.ntfy };
+}
+
 /** A Discord user ID (a "snowflake"): Developer Mode → right-click yourself → Copy User ID. */
 export const DiscordUserId = z.string().trim().regex(/^\d{17,20}$/, 'A Discord user ID is 17 to 20 digits (Copy User ID in Discord)');
 /**

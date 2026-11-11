@@ -22,6 +22,7 @@ import {
   SEVERITIES,
   SEVERITY_CODES,
   SEVERITY_LABELS,
+  picksFor,
   type Priority,
   type Severity,
 } from '@tt/shared';
@@ -388,7 +389,7 @@ export class Notifier {
     if (!teamsEnabled(ctx)) return;
     const prefs = prefsOf(user.notify_prefs, user.role);
     const items = notificationsById(ctx, waiting.ids).filter((n) => n.userId === userId);
-    const pick = (channel: 'discord' | 'ntfy') => items.filter((n) => prefs[n.type]?.[channel]);
+    const pick = (channel: 'discord' | 'ntfy') => items.filter((n) => prefs[n.type] && picksFor(prefs, n.type)[channel]);
     const link = this.cardLink(ctx);
     const sends: Promise<void>[] = [];
 

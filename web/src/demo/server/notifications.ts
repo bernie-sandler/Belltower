@@ -7,6 +7,7 @@ import {
   noteExcerpt,
   notificationText,
   notifyPrefsFrom,
+  picksFor,
   type MarkNotificationsReadBody,
   type NotificationData,
   type NotificationItem,
@@ -52,7 +53,7 @@ export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId
   const out: { id: number; userId: number }[] = [];
   for (const p of activePeople(ctx).filter((u) => ids.has(u.id))) {
     if (!teams && p.role !== 'admin') continue;
-    const picks = teams ? notifyPrefsFrom(p.notifyPrefs, p.role)[input.type] : SOLO_PICKS;
+    const picks = teams ? picksFor(notifyPrefsFrom(p.notifyPrefs, p.role), input.type) : SOLO_PICKS;
     if (!picks.inApp && !picks.discord && !picks.ntfy) continue;
     // The unique (user, activity, type) index.
     if (ctx.s.notifications.some((n) => n.userId === p.id && n.activityId === input.activityId && n.type === input.type)) continue;
@@ -131,9 +132,11 @@ function mentionedPeople(ctx: Ctx, md: string): number[] {
   return findMentions(md, new Set(byName.keys())).map((n) => byName.get(n)!);
 }
 
+/** With Teams off `@name` is plain text: only the writer starts watching. */
 export function notifyNoteAdded(ctx: Ctx, cardId: number, entryId: number, md: string): void {
   const me = actorId(ctx);
   if (me !== null) watchCard(ctx, cardId, me);
+  if (!teamsEnabled(ctx)) return;
   const mentioned = mentionedPeople(ctx, md);
   for (const id of mentioned) watchCard(ctx, cardId, id);
   const excerpt = noteExcerpt(md);
@@ -148,6 +151,7 @@ export function notifyNoteAdded(ctx: Ctx, cardId: number, entryId: number, md: s
 }
 
 export function notifyNoteEdited(ctx: Ctx, cardId: number, entryId: number, before: string, after: string): void {
+  if (!teamsEnabled(ctx)) return; // `@name` is plain text with Teams off
   const earlier = new Set(mentionedPeople(ctx, before));
   const added = mentionedPeople(ctx, after).filter((id) => !earlier.has(id));
   if (!added.length) return;
@@ -208,6 +212,7 @@ export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuer
       .map((n) => toItem(ctx, n)),
     unread: mine.filter((n) => n.readAt === null).length,
     latestId: mine[0]?.id ?? 0,
+    teams: teamsEnabled(ctx),
   };
 }
 

@@ -42,19 +42,22 @@ interface Setup {
   teams: boolean;
   submitPageEnabled?: boolean;
   me?: UserInfo;
-  users?: UserInfo[];
+  /** null: not loaded (a test fetches it). */
+  users?: UserInfo[] | null;
+  /** What the bell's last poll said about Teams (default: the same as /api/config). */
+  bellTeams?: boolean;
   activity?: ActivityEntry[];
 }
 
 /** Everything the components read, already in the cache (nothing is fetched). */
-function client({ teams, submitPageEnabled = false, me = ADMIN, users = [ADMIN, ALEX, JORDAN], activity = [] }: Setup): QueryClient {
+function client({ teams, submitPageEnabled = false, me = ADMIN, users = [ADMIN, ALEX, JORDAN], activity = [], bellTeams = teams }: Setup): QueryClient {
   const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
   const config: AppConfig = { appVersion: '1.5.0', timeZone: 'America/Chicago', maxUploadBytes: 1, passwordManagedByEnv: false, teams, submitPageEnabled };
   const meResponse: MeResponse = { ...me, passwordManagedByEnv: false, ssoLinked: false };
-  const bell: NotificationsResponse = { items: [], unread: 0, latestId: 0 };
+  const bell: NotificationsResponse = { items: [], unread: 0, latestId: 0, teams: bellTeams };
   qc.setQueryData(qk.config, config);
   qc.setQueryData(qk.me, meResponse);
-  qc.setQueryData(qk.users, users);
+  if (users) qc.setQueryData(qk.users, users);
   qc.setQueryData(qk.aiStatus, { enabled: false, model: null });
   qc.setQueryData(qk.notifications, bell);
   qc.setQueryData(qk.board, board([]));
@@ -111,6 +114,25 @@ describe('the top bar', () => {
     // A member never gets submit-page notifications, so there's nothing for a bell to hold.
     show({ teams: false, submitPageEnabled: true, me: JORDAN }, <TopBar />);
     expect(bell()).toBeNull();
+  });
+});
+
+describe('Teams switched somewhere else', () => {
+  it('reaches this tab with the bell’s next poll: the app shell reloads /api/config', async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        fetched.push(url);
+        if (url !== '/api/config') throw new Error(`unexpected fetch ${url}`);
+        const config: AppConfig = { appVersion: '1.5.0', timeZone: 'America/Chicago', maxUploadBytes: 1, passwordManagedByEnv: false, teams: true, submitPageEnabled: true };
+        return new Response(JSON.stringify(config), { status: 200, headers: { 'content-type': 'application/json' } });
+      }),
+    );
+    // This tab still thinks Teams is off; the bell's poll says another admin turned it on.
+    show({ teams: false, submitPageEnabled: true, bellTeams: true }, <TopBar />);
+    await waitFor(() => expect(navNames()).toEqual(['Board', 'Mine', 'Unassigned', 'Calendar', 'Search', 'Recurring']));
+    expect(fetched).toEqual(['/api/config']);
   });
 });
 
@@ -221,7 +243,9 @@ describe('Settings → General → Teams', () => {
     show({ teams: true }, <TeamsSwitch s={settings(true)} />);
     fireEvent.click(teamsSwitch());
     const dialog = screen.getByRole('dialog', { name: 'Turn off Teams?' });
-    expect(dialog.textContent).toContain('2 other people use this board; their assignments and watches are kept but hidden.');
+    expect(dialog.textContent).toContain(
+      '2 other people have accounts here. Turning Teams off hides assignees, Mine, watching and the bell for everyone, and stops their personal Discord and ntfy messages. Nothing is deleted.',
+    );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(puts).toEqual([]);
@@ -229,6 +253,28 @@ describe('Settings → General → Teams', () => {
 
     fireEvent.click(teamsSwitch());
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Turn off Teams?' })).getByRole('button', { name: 'Turn off Teams' }));
+    await waitFor(() => expect(puts).toEqual([{ enabled: false }]));
+  });
+
+  it('says so when the people list can’t load, and asks before turning off anyway', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/users') return new Response(JSON.stringify({ error: 'internal', message: 'Database is locked' }), { status: 500, headers: { 'content-type': 'application/json' } });
+        if (url === '/api/settings/teams' && init?.method === 'PUT') {
+          puts.push(JSON.parse(String(init.body)));
+          return new Response(JSON.stringify(settings(false)), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      }),
+    );
+    show({ teams: true, users: null }, <TeamsSwitch s={settings(true)} />);
+    expect((await screen.findByRole('alert')).textContent).toContain('Couldn’t load the people list');
+    expect(teamsSwitch()).toHaveProperty('disabled', false);
+    fireEvent.click(teamsSwitch());
+    const dialog = screen.getByRole('dialog', { name: 'Turn off Teams?' });
+    expect(dialog.textContent).toContain('Other people may have accounts here.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Turn off Teams' }));
     await waitFor(() => expect(puts).toEqual([{ enabled: false }]));
   });
 

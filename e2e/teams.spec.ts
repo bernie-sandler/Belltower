@@ -177,7 +177,9 @@ test('the Teams switch brings the team features back, and asks before hiding the
 
     await teams.click();
     const dialog = page.getByRole('dialog', { name: 'Turn off Teams?' });
-    await expect(dialog).toContainText(/\d+ other (person uses|people use) this board; their assignments and watches are kept but hidden\./);
+    await expect(dialog).toContainText(
+      /\d+ other (person has an account|people have accounts) here\. Turning Teams off hides assignees, Mine, watching and the bell for everyone, and stops their personal Discord and ntfy messages\. Nothing is deleted\./,
+    );
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(teams).toBeChecked();
     await teams.click();

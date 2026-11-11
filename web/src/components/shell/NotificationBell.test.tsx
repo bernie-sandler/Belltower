@@ -32,6 +32,7 @@ const answer = (items: NotificationItem[]): NotificationsResponse => ({
   items,
   unread: items.filter((n) => !n.readAt).length,
   latestId: Math.max(0, ...items.map((n) => n.id)),
+  teams: true,
 });
 
 let polls: NotificationsResponse[];
@@ -245,6 +246,20 @@ describe('useRingOnNew', () => {
     expect(playSound).not.toHaveBeenCalled();
     // Something new after that still rings.
     rerender({ data: answer([item(6), item(5), item(4), item(1)]) });
+    await advance(CLAIM_JITTER_MS);
+    expect(playSound).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts over when Teams was turned on elsewhere, so the notifications it brings back don’t ring', async () => {
+    const solo = { ...answer([item(2, { type: 'submitted', text: 'New ticket from submit page (Sam)' })]), teams: false };
+    const { rerender } = renderHook(({ data }: { data: NotificationsResponse | undefined }) => useRingOnNew(data), {
+      initialProps: { data: solo as NotificationsResponse | undefined },
+    });
+    // The next poll, after another tab turned Teams on: older unread ones are back, and they aren't news.
+    rerender({ data: answer([item(9), item(7), item(2)]) });
+    await advance(CLAIM_JITTER_MS);
+    expect(playSound).not.toHaveBeenCalled();
+    rerender({ data: answer([item(10), item(9), item(7), item(2)]) });
     await advance(CLAIM_JITTER_MS);
     expect(playSound).toHaveBeenCalledTimes(1);
   });

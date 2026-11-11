@@ -12,7 +12,7 @@
 //    assignee change;
 //  - new_unassigned: everyone who opted in, when an outside ticket arrives with no assignee;
 //  - submitted: a new ticket from the submit page; admins by default. Someone told about it isn't
-//    also told new_unassigned for the same ticket.
+//    also told new_unassigned for the same ticket, and is told on the channels of both (picksFor).
 // Never the person acting (a token acts for its owner, who *is* told), never deactivated people, and
 // once per person and change (a unique index). Someone told they were mentioned or assigned isn't
 // also told as a watcher; someone who turned those off still hears it as a watcher.
@@ -31,6 +31,7 @@ import {
   noteExcerpt,
   notificationText,
   notifyPrefsFrom,
+  picksFor,
   type MarkNotificationsReadBody,
   type NotificationData,
   type NotificationItem,
@@ -122,7 +123,7 @@ export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId
   const written: { id: number; userId: number }[] = [];
   for (const p of people) {
     if (!teams && p.role !== 'admin') continue;
-    const picks = teams ? prefsOf(p.notify_prefs, p.role)[input.type] : SOLO_PICKS;
+    const picks = teams ? picksFor(prefsOf(p.notify_prefs, p.role), input.type) : SOLO_PICKS;
     if (!picks.inApp && !picks.discord && !picks.ntfy) continue;
     const row = picks.inApp ? data : { ...data, hidden: true };
     const info = insert.run(p.id, input.cardId, input.activityId, input.type, actorUserId(ctx), JSON.stringify(row), now, picks.inApp ? null : now);
@@ -212,10 +213,12 @@ function mentionedPeople(ctx: Ctx, md: string): { id: number; username: string }
 
 /**
  * A new note: the people it mentions (who watch the card from now on), then the other watchers.
- * The person writing it watches the card too.
+ * The person writing it watches the card too. With Teams off `@name` is plain text: it mentions
+ * (and makes watch) nobody.
  */
 export function notifyNoteAdded(ctx: Ctx, cardId: number, entryId: number, md: string): void {
   if (ctx.actor?.kind === 'user') watchCard(ctx, cardId, ctx.actor.userId);
+  if (!teamsEnabled(ctx)) return;
   const mentioned = mentionedPeople(ctx, md).map((u) => u.id);
   for (const id of mentioned) watchCard(ctx, cardId, id);
   const excerpt = noteExcerpt(md);
@@ -231,6 +234,7 @@ export function notifyNoteAdded(ctx: Ctx, cardId: number, entryId: number, md: s
 
 /** An edited note: only the people it didn't mention before. (A retracted note notifies nobody; the caller checks.) */
 export function notifyNoteEdited(ctx: Ctx, cardId: number, entryId: number, before: string, after: string): void {
+  if (!teamsEnabled(ctx)) return; // `@name` is plain text with Teams off
   const earlier = new Set(mentionedPeople(ctx, before).map((u) => u.id));
   const added = mentionedPeople(ctx, after)
     .map((u) => u.id)
@@ -309,6 +313,7 @@ export function toItem(r: ItemRow): NotificationItem {
 }
 
 export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuery): NotificationsResponse {
+  const teams = teamsEnabled(ctx);
   const where = inBell(ctx);
   const rows = stmt(ctx.db, `${ITEM_SELECT} WHERE n.user_id = ? AND n.id > ? AND ${where} ORDER BY n.id DESC LIMIT ?`).all(
     userId,
@@ -320,7 +325,7 @@ export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuer
     `SELECT count(*) FILTER (WHERE n.read_at IS NULL) AS unread, coalesce(max(n.id), 0) AS latest
        FROM notifications n WHERE n.user_id = ? AND ${where}`,
   ).get(userId) as { unread: number; latest: number };
-  return { items: rows.map(toItem), unread: counts.unread, latestId: counts.latest };
+  return { items: rows.map(toItem), unread: counts.unread, latestId: counts.latest, teams };
 }
 
 /**

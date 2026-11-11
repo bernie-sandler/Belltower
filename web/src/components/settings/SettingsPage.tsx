@@ -234,17 +234,26 @@ function GeneralSection({ s }: { s: SettingsResponse }) {
   );
 }
 
+/** What turning Teams off does to everyone else; `others` null when the people list couldn't load. */
+export function teamsOffMessage(others: number | null): string {
+  const who =
+    others === null ? 'Other people may have accounts here.' : `${others} other ${others === 1 ? 'person has an account' : 'people have accounts'} here.`;
+  return `${who} Turning Teams off hides assignees, Mine, watching and the bell for everyone, and stops their personal Discord and ntfy messages. Nothing is deleted.`;
+}
+
 /**
  * Teams: assignees, Mine and Unassigned, watching, @mentions and the bell. Saves straight away.
- * Turning it off while others use the board asks first; nothing is deleted either way.
+ * Turning it off while others have accounts asks first (and so does it when the people list
+ * couldn't load); nothing is deleted either way.
  */
 export function TeamsSwitch({ s }: { s: SettingsResponse }) {
   const ids = useId();
   const save = useSaveTeams();
-  const { data: users } = useUsers();
+  const people = useUsers();
+  const users = people.data;
   const myId = useMe().data?.id;
   const [confirmOff, setConfirmOff] = useState(false);
-  const others = (users ?? []).filter((u) => !u.disabled && u.id !== myId).length;
+  const others = users ? users.filter((u) => !u.disabled && u.id !== myId).length : null;
   const enabled = save.isPending && save.variables ? save.variables.enabled : s.teams.enabled;
 
   function set(next: boolean) {
@@ -267,19 +276,27 @@ export function TeamsSwitch({ s }: { s: SettingsResponse }) {
           type="checkbox"
           role="switch"
           checked={enabled}
-          disabled={save.isPending || !users}
+          disabled={save.isPending || people.isPending}
           aria-describedby={`${ids}-help`}
-          onChange={(e) => (e.target.checked ? set(true) : others > 0 ? setConfirmOff(true) : set(false))}
+          onChange={(e) => (e.target.checked ? set(true) : others === 0 ? set(false) : setConfirmOff(true))}
         />
         <span>Teams</span>
       </label>
       <span className="field-help" id={`${ids}-help`}>
         Assign cards to people, Mine and Unassigned, watching, @mentions and the notification bell
       </span>
+      {people.isError && (
+        <p className="form-error" role="alert">
+          Couldn’t load the people list ({errorMessage(people.error)}), so turning Teams off will ask first.{' '}
+          <button type="button" className="link-btn" onClick={() => void people.refetch()}>
+            Retry
+          </button>
+        </p>
+      )}
       {confirmOff && (
         <ConfirmDialog
           title="Turn off Teams?"
-          message={`${others} other ${others === 1 ? 'person uses' : 'people use'} this board; their assignments and watches are kept but hidden.`}
+          message={teamsOffMessage(others)}
           confirmLabel="Turn off Teams"
           busy={save.isPending}
           onCancel={() => setConfirmOff(false)}

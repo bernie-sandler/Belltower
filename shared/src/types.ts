@@ -710,6 +710,11 @@ export interface NotificationsResponse {
   unread: number;
   /** The newest notification's id (0 when there are none), for `?after=`. */
   latestId: number;
+  /**
+   * Whether Teams is on (it decides what the list holds). A tab that sees it change starts its
+   * "what's new" count over and reloads /api/config, so the switch reaches every open tab.
+   */
+  teams: boolean;
 }
 
 /** GET/PUT /api/me/notifications: your personal channels and what goes where. */
