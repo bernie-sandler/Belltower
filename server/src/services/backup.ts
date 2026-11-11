@@ -31,6 +31,7 @@ import { assignTicketNumbers } from './cards';
 import type { UserRow } from './users';
 import { seedRequestTypes } from './requestTypes';
 import { rebuildSearch } from './search';
+import { backfillTeamsSetting } from './settings';
 
 /** Keeps the app's old name: it's frozen (docs/BACKUP-FORMAT.md), and every existing backup carries it. */
 export const BACKUP_FORMAT = 'tower-tracker-backup';
@@ -233,6 +234,7 @@ export function buildRestoreDb(data: BackupData, dbPath: string, tz: string, clo
     db.prepare(`INSERT INTO settings (key, value) VALUES ('seeded', '1') ON CONFLICT(key) DO NOTHING`).run();
     assignTicketNumbers({ db, clock, tz }); // backups from before 0.6 have none
     rebuildSearch({ db, clock, tz });
+    backfillTeamsSetting({ db }); // backups from before the Teams switch have none
     return counts;
   } finally {
     db.close();

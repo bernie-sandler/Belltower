@@ -312,6 +312,9 @@ describe('upgrading a database left by an older version', () => {
     // Nothing from before says who did what.
     expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(0);
     expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(0);
+    // One person: Teams starts off, so the board looks as before.
+    expect(prepared.teams).toBe(false);
+    expect(db.prepare(`SELECT value FROM settings WHERE key = 'teams_settings'`).pluck().get()).toBe('{"enabled":false}');
     checkWorks(ctx, marksAt(v));
   });
 });
@@ -321,7 +324,9 @@ describe('a database at the current schema', () => {
     const db = oldDatabase(LATEST_SCHEMA_VERSION);
     expect(migrate(db)).toEqual([]);
     const ctx: Ctx = { db, clock, tz: TZ };
-    prepareData(ctx);
+    // A 1.5.0-rc install with two active people keeps its team features: Teams starts on, once.
+    expect(prepareData(ctx).teams).toBe(true);
+    expect(prepareData(ctx).teams).toBeNull();
     expect(count(db, 'users')).toBe(3);
     const sam = db.prepare(`SELECT id FROM users WHERE username = 'sam'`).pluck().get();
     const disk = db.prepare(`SELECT id, assignee_id FROM cards WHERE title = 'Drive 3 CRC errors'`).get() as { id: number; assignee_id: number };

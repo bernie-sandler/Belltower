@@ -16,7 +16,7 @@ import {
   type SubmitSettingsBody,
   type TeamsSettingsBody,
 } from '@tt/shared';
-import { getSetting, setSetting } from '../db/connection';
+import { getSetting, setSetting, stmt } from '../db/connection';
 import { badRequest } from '../errors';
 import { getBlockedColumnId } from './columns';
 import { nowIso, type Ctx } from './context';
@@ -119,6 +119,21 @@ export const teamsEnabled = (ctx: Ctx): boolean => getTeamsSettings(ctx).enabled
 
 export function updateTeamsSettings(ctx: Ctx, body: TeamsSettingsBody): void {
   write(ctx, KEY.teams, { enabled: body.enabled });
+}
+
+/**
+ * The Teams switch came in 1.5.0, after the team features shipped in 1.5.0-rc.1. A database
+ * without the setting (a new install, an upgrade, a restored backup) gets it once: on when more
+ * than one person is active, so an rc install already working as a team keeps its features; off
+ * otherwise (a fresh install, an upgrade from 1.4). A saved value is never changed. Returns what
+ * was written, or null when there already was one.
+ */
+export function backfillTeamsSetting(ctx: Pick<Ctx, 'db'>): boolean | null {
+  if (getSetting(ctx.db, KEY.teams) !== null) return null;
+  const active = stmt(ctx.db, 'SELECT count(*) FROM users WHERE disabled_at IS NULL').pluck().get() as number;
+  const enabled = active > 1;
+  setSetting(ctx.db, KEY.teams, JSON.stringify({ enabled }));
+  return enabled;
 }
 
 export function updateGeneralSettings(ctx: Ctx, body: GeneralSettingsBody): void {

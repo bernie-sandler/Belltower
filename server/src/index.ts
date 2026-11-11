@@ -73,6 +73,7 @@ async function main(): Promise<void> {
   if (prepared.seeded) log.info('Seeded default columns, labels and maintenance templates');
   if (prepared.numbered) log.info(`Gave ticket numbers to ${prepared.numbered} existing card(s)`);
   if (prepared.reindexed !== null) log.info(`Rebuilt search index (${prepared.reindexed} cards)`);
+  if (prepared.teams) log.info('Teams is on: this install already has several people (Settings → General → Teams)');
 
   const auth: AuthState = await bootstrapAuth(ctx, config.appPassword, log);
   const limiter = new LoginRateLimiter(systemClock);
