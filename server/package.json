@@ -11,10 +11,10 @@
     "seed:perf": "tsx scripts/seed-perf.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.4.0",
+    "@anthropic-ai/sdk": "^1.6.0",
     "@fastify/cookie": "^11.1.5",
-    "@fastify/multipart": "^10.1.7",
-    "@fastify/static": "^10.1.8",
+    "@fastify/multipart": "^10.1.8",
+    "@fastify/static": "^10.1.10",
     "better-sqlite3": "^13.0.3",
     "content-disposition": "^3.0.0",
     "fastify": "^5.12.8",
