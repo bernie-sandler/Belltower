@@ -30,6 +30,18 @@ export interface PendingFlow {
   createdAt: number;
 }
 
+/**
+ * The scopes plus `groups` when the provider lists that scope in its discovery document. Used only
+ * with a required group read from the `groups` claim: VoidAuth, Pocket ID and Authelia send it only
+ * when it's asked for, and a provider that doesn't list it never gets it (some refuse a scope they
+ * don't know).
+ */
+export function withGroupsScope(scopes: string, supported: unknown): string {
+  const words = scopes.split(/\s+/).filter(Boolean);
+  if (words.includes('groups') || !Array.isArray(supported) || !supported.includes('groups')) return scopes;
+  return [...words, 'groups'].join(' ');
+}
+
 /** How long someone has to get through the provider's login page. Also the flow cookie's lifetime. */
 export const FLOW_TTL_MS = 10 * 60 * 1000;
 /** A discovered provider is trusted this long before discovery runs again. */
@@ -231,9 +243,13 @@ export class OidcRuntime {
     return discovery;
   }
 
-  /** Starts a sign-in: returns the sealed flow (the cookie's value) and the provider's address. */
+  /**
+   * Starts a sign-in: returns the sealed flow (the cookie's value) and the provider's address.
+   * `groupsScope` (a required group read from the `groups` claim) also asks for `groups` when the
+   * provider lists it.
+   */
   async begin(
-    s: OidcClientSettings & { scopes: string },
+    s: OidcClientSettings & { scopes: string; groupsScope: boolean },
     flow: { mode: PendingFlow['mode']; userId: number | null; redirectUri: string },
   ): Promise<{ cookie: string; url: URL }> {
     const config = await this.configuration(s);
@@ -244,7 +260,7 @@ export class OidcRuntime {
       redirect_uri: flow.redirectUri,
       response_type: 'code',
       response_mode: 'query',
-      scope: s.scopes,
+      scope: s.groupsScope ? withGroupsScope(s.scopes, config.serverMetadata().scopes_supported) : s.scopes,
       code_challenge: await client.calculatePKCECodeChallenge(codeVerifier),
       code_challenge_method: 'S256',
       state,

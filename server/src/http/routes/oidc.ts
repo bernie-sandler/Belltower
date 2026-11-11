@@ -11,6 +11,7 @@ import type { Ctx } from '../../services/context';
 import {
   checkIssuer,
   clientSecretOf,
+  describeGroupMiss,
   effectiveScopes,
   getOidcSettings,
   hasRequiredGroup,
@@ -39,7 +40,7 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
   const envSecret = deps.config.oidcClientSecret;
 
   /** Settings and the redirect URI, when single sign-on is on and complete; null otherwise. */
-  function ready(ctx: Ctx): { settings: OidcClientSettings & { scopes: string }; appUrl: string; redirectUri: string } | null {
+  function ready(ctx: Ctx): { settings: OidcClientSettings & { scopes: string; groupsScope: boolean }; appUrl: string; redirectUri: string } | null {
     const s = getOidcSettings(ctx);
     if (!oidcReady(ctx, s, envSecret)) return null;
     const appUrl = getGeneralSettings(ctx).appUrl;
@@ -51,6 +52,9 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
         clientSecret: clientSecretOf(s, envSecret)!,
         allowHttpIssuer: s.allowHttpIssuer,
         scopes: effectiveScopes(s),
+        // Only for the claim the `groups` scope sends: another claim name may come from a scope
+        // the client isn't allowed, which some providers refuse outright.
+        groupsScope: s.requiredGroup.trim() !== '' && s.groupsClaim === 'groups',
       },
       appUrl,
       redirectUri: redirectUriFor(appUrl)!,
@@ -129,7 +133,10 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
         const session = resolveSession(req, reply, deps);
         if (!session || session.user.id !== flow.userId) return failed(reply, 'link_session', 'link');
         // The required group applies to linking too.
-        if (!hasRequiredGroup(s, identity.claims)) return failed(reply, 'group', 'link');
+        if (!hasRequiredGroup(s, identity.claims)) {
+          req.log.warn(`Single sign-on link refused (group) for "${session.user.username}": ${describeGroupMiss(s, identity.claims)}`);
+          return failed(reply, 'group', 'link');
+        }
         if (linkIdentity(req.ctx, session.user.id, identity) === 'taken') return failed(reply, 'taken', 'link');
         req.log.info(`Single sign-on linked to "${session.user.username}"`);
         return reply.redirect('/account?sso=linked');
@@ -137,7 +144,8 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
 
       const outcome = resolveSignIn(req.ctx, s, identity);
       if (!outcome.ok) {
-        req.log.warn(`Single sign-on refused (${outcome.code}) for subject ${identity.subject}`);
+        const why = outcome.code === 'group' ? `: ${describeGroupMiss(s, identity.claims)}` : '';
+        req.log.warn(`Single sign-on refused (${outcome.code}) for subject ${identity.subject}${why}`);
         return failed(reply, outcome.code);
       }
       startSession(req, reply, deps, outcome.user.id, true);
