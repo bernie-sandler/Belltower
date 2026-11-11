@@ -5,12 +5,8 @@
 
 import { DEFAULT_NOTIFY_PREFS, SubmitBody, type NotifyPrefs } from '@tt/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { prepareData } from '../src/db/prepare';
-import { openDatabase } from '../src/db/connection';
-import { buildRestoreDb, exportData } from '../src/services/backup';
+import { exportData, type BackupData } from '../src/services/backup';
 import { createCard, getCard, moveCard, updateCard } from '../src/services/cards';
 import { withActor, type AppEvent, type Ctx } from '../src/services/context';
 import { intakeCard } from '../src/services/intake';
@@ -142,30 +138,6 @@ describe('the setting', () => {
       expect(teamsEnabled(solo.ctx)).toBe(false);
     } finally {
       solo.close();
-    }
-  });
-
-  it('a restored backup from before the setting gets the same first value; one with it keeps it', () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'tt-teams-'));
-    try {
-      const restored = (name: string, data: ReturnType<typeof exportData>) => {
-        const file = path.join(dir, `${name}.db`);
-        buildRestoreDb(data, file, t.ctx.tz, t.clock);
-        const db = openDatabase(file);
-        try {
-          return teamsRow(db);
-        } finally {
-          db.close();
-        }
-      };
-      t.ctx.db.prepare(`DELETE FROM settings WHERE key = 'teams_settings'`).run();
-      const rc = exportData(t.ctx, '1.5.0-rc.1'); // no teams_settings yet, three active people
-      expect((rc.tables.settings as { key: string }[]).some((r) => r.key === 'teams_settings')).toBe(false);
-      expect(restored('rc', rc)).toBe('{"enabled":true}');
-      teams(false);
-      expect(restored('final', exportData(t.ctx, '1.5.0'))).toBe('{"enabled":false}');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
     }
   });
 
@@ -395,6 +367,75 @@ describe('personal channels', () => {
     teams(false);
     await notifier.flushPersonal(t.ctx);
     expect(sent).toEqual([]);
+  });
+});
+
+describe('restoring a backup', () => {
+  const apps: TestApp[] = [];
+  afterEach(async () => {
+    for (const a of apps.splice(0)) await a.shutdown();
+  });
+  async function install() {
+    const a = await makeApp();
+    apps.push(a);
+    return { a, admin: await setupAndLogin(a) };
+  }
+  /** Uploads a JSON export and confirms it, as Backup & restore does. */
+  async function restore(a: TestApp, cookie: string, data: BackupData) {
+    const boundary = `----ttteams${Math.random().toString(16).slice(2)}`;
+    const preview = await a.app.inject({
+      method: 'POST',
+      url: '/api/backup/restore',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, cookie, 'x-requested-with': 'tower-tracker' },
+      payload: `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="backup.json"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${boundary}--\r\n`,
+    });
+    expect(preview.statusCode, preview.body).toBe(200);
+    const done = await client(a.app, cookie)('POST', `/api/backup/restore/${preview.json().token}/confirm`, { confirm: 'RESTORE' });
+    expect(done.statusCode, done.body).toBe(200);
+  }
+  /** The export without its teams_settings row, as 1.4 and 1.5.0-rc wrote them. */
+  const fromBeforeTheSwitch = (data: BackupData): BackupData => ({
+    ...data,
+    tables: { ...data.tables, settings: (data.tables.settings as { key: string }[]).filter((r) => r.key !== 'teams_settings') },
+  });
+  const liveTeams = (a: TestApp) => teamsRow(a.ctx.db);
+
+  it('one from before the switch keeps the live install’s setting: a team restoring a 1.4 backup stays on', async () => {
+    // A 1.4-style backup: no teams_settings, and nobody in it.
+    const { a: old } = await install();
+    const data = fromBeforeTheSwitch(exportData(old.ctx, '1.4.0'));
+    data.tables.users = [];
+
+    const { a: live, admin } = await install();
+    await addPerson(live, admin, 'sam');
+    updateTeamsSettings(live.ctx, { enabled: true });
+    await restore(live, admin, data);
+    expect(liveTeams(live)).toBe('{"enabled":true}');
+  });
+
+  it('with no setting on either side, it’s decided from who is active after the restore', async () => {
+    // An rc.1 backup with two active people, into an install with one person and no setting yet.
+    const { a: rc, admin: rcAdmin } = await install();
+    await addPerson(rc, rcAdmin, 'sam');
+    const data = fromBeforeTheSwitch(exportData(rc.ctx, '1.5.0-rc.1'));
+
+    const { a: live, admin } = await install();
+    live.ctx.db.prepare(`DELETE FROM settings WHERE key = 'teams_settings'`).run();
+    expect(teamsEnabled(live.ctx)).toBe(false);
+    await restore(live, admin, data);
+    expect(liveTeams(live)).toBe('{"enabled":true}');
+  });
+
+  it('one from 1.5.0 or later keeps its own setting', async () => {
+    const { a: src } = await install();
+    const data = exportData(src.ctx, '1.5.0'); // Teams off in it
+    expect((data.tables.settings as { key: string; value: string }[]).find((r) => r.key === 'teams_settings')?.value).toBe('{"enabled":false}');
+
+    const { a: live, admin } = await install();
+    await addPerson(live, admin, 'sam');
+    updateTeamsSettings(live.ctx, { enabled: true });
+    await restore(live, admin, data);
+    expect(liveTeams(live)).toBe('{"enabled":false}');
   });
 });
 

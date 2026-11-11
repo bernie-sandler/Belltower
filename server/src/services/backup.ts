@@ -31,7 +31,7 @@ import { assignTicketNumbers } from './cards';
 import type { UserRow } from './users';
 import { seedRequestTypes } from './requestTypes';
 import { rebuildSearch } from './search';
-import { backfillTeamsSetting } from './settings';
+import { backfillTeamsSetting, TEAMS_SETTINGS_KEY } from './settings';
 
 /** Keeps the app's old name: it's frozen (docs/BACKUP-FORMAT.md), and every existing backup carries it. */
 export const BACKUP_FORMAT = 'tower-tracker-backup';
@@ -234,7 +234,6 @@ export function buildRestoreDb(data: BackupData, dbPath: string, tz: string, clo
     db.prepare(`INSERT INTO settings (key, value) VALUES ('seeded', '1') ON CONFLICT(key) DO NOTHING`).run();
     assignTicketNumbers({ db, clock, tz }); // backups from before 0.6 have none
     rebuildSearch({ db, clock, tz });
-    backfillTeamsSetting({ db }); // backups from before the Teams switch have none
     return counts;
   } finally {
     db.close();
@@ -369,7 +368,10 @@ type LiveUser = Omit<UserRow, 'is_owner'> & { is_owner: number };
  *  - the live owner's match becomes the owner;
  *  - live sessions move over to the matching people (any that can't be matched end);
  *  - API tokens nobody owns (backups from before 1.5) go to the owner;
- *  - the install's private settings (where the owner's password comes from, single sign-on) are kept.
+ *  - the install's private settings (where the owner's password comes from, single sign-on) are kept;
+ *  - a backup from before the Teams switch (1.4, 1.5.0-rc) has no teams_settings: the live install's
+ *    is kept, so a team restoring an old backup doesn't find Teams quietly off. Only if the live
+ *    install has none either is it decided from who's active once the live people are in.
  */
 function carryOverAccess(live: DB, next: DB): void {
   const users = live.prepare('SELECT * FROM users ORDER BY id').all() as LiveUser[];
@@ -377,6 +379,8 @@ function carryOverAccess(live: DB, next: DB): void {
   const privateSettings = (live.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]).filter((r) =>
     PRIVATE_SETTINGS.has(r.key),
   );
+  const settingOf = (db: DB, key: string) => (db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get(key) as string | undefined) ?? null;
+  const liveTeams = settingOf(live, TEAMS_SETTINGS_KEY);
   next.transaction(() => {
     const restoredId = new Map<number, number>();
     for (const u of users) {
@@ -421,6 +425,10 @@ function carryOverAccess(live: DB, next: DB): void {
 
     next.prepare(`DELETE FROM settings WHERE key IN (${[...PRIVATE_SETTINGS].map(() => '?').join(', ')})`).run(...PRIVATE_SETTINGS);
     for (const k of privateSettings) next.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(k.key, k.value);
+    if (settingOf(next, TEAMS_SETTINGS_KEY) === null) {
+      if (liveTeams !== null) next.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(TEAMS_SETTINGS_KEY, liveTeams);
+      else backfillTeamsSetting({ db: next });
+    }
 
     const fk = next.pragma('foreign_key_check') as unknown[];
     if (fk.length) throw new AppError(500, 'restore_failed', `The restored database has ${fk.length} broken reference(s); nothing was changed`);

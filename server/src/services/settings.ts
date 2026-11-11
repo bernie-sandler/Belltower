@@ -29,6 +29,9 @@ const KEY = {
   teams: 'teams_settings',
 } as const;
 
+/** Where the Teams switch is kept (a restore carries it over when the backup has none). */
+export const TEAMS_SETTINGS_KEY = KEY.teams;
+
 /** Every channel that can send, Discord included. */
 export type AnyChannel = 'discord' | NotifyChannel;
 /** `discord_last_delivery`, `ntfy_last_delivery`… (Discord's key predates the others). */
@@ -123,10 +126,11 @@ export function updateTeamsSettings(ctx: Ctx, body: TeamsSettingsBody): void {
 
 /**
  * The Teams switch came in 1.5.0, after the team features shipped in 1.5.0-rc.1. A database
- * without the setting (a new install, an upgrade, a restored backup) gets it once: on when more
- * than one person is active, so an rc install already working as a team keeps its features; off
- * otherwise (a fresh install, an upgrade from 1.4). A saved value is never changed. Returns what
- * was written, or null when there already was one.
+ * without the setting (a new install, an upgrade) gets it once at startup: on when more than one
+ * person is active, so an rc install already working as a team keeps its features; off otherwise
+ * (a fresh install, an upgrade from 1.4). A saved value is never changed. (A restored backup without
+ * it keeps the live install's: see carryOverAccess in backup.ts.) Returns what was written, or null
+ * when there already was one.
  */
 export function backfillTeamsSetting(ctx: Pick<Ctx, 'db'>): boolean | null {
   if (getSetting(ctx.db, KEY.teams) !== null) return null;

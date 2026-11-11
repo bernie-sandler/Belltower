@@ -40,8 +40,8 @@ Applied database migration(s): 6
   hidden until an admin turns on **Settings → General → Teams**, so a solo install looks as it did. New tickets from
   the submit page still ring the bell for admins while Teams is off. See [USING.md](USING.md#teams).
 - Coming from 1.5.0-rc.1 with more than one active person, Teams starts on, so a team keeps its features. That's
-  decided once, the first time 1.5.0 starts (and for a restored backup from before the switch); after that only an
-  admin changes it.
+  decided once, the first time 1.5.0 starts; after that only an admin changes it (restoring an older backup keeps the
+  setting you have).
 
 ## Picking a version
 

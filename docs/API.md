@@ -110,8 +110,8 @@ days, any after 90; they aren't in backups.
 in the app only, whatever their prefs; no `people_notified` event is emitted, and the Notifier sends nothing personal
 (it also drops what was waiting when Teams went off). A note's `@name` mentions nobody and makes nobody watch; the
 writer still starts watching, and watching, assigning and the routes above keep working. A database without
-`teams_settings` (a new install, an upgrade, a restored backup) gets it once at startup or restore: on when more than
-one person is active, off otherwise.
+`teams_settings` (a new install, an upgrade) gets it once at startup: on when more than one person is active, off
+otherwise. Restoring a backup without it keeps the live install's setting.
 
 ## Config
 
