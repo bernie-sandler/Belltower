@@ -14,7 +14,7 @@ Moving a card:
   Screen readers announce each step.
 - **Move to…** in the card (or its **⋯** menu) picks a column and puts the card at the top or bottom.
 
-The filter bar narrows the board by text, label, priority, severity, due date or assignee.
+The filter bar narrows the board by text, label, priority, severity, due date or (with [Teams](#teams) on) assignee.
 
 Done shows the 50 most recently finished cards. Older ones are a click away (**Show N older cards**), and **Archive
 all cards…** in the column menu clears Done out completely. Archived cards stay searchable.
@@ -63,11 +63,32 @@ That note is gold six months later. "How did I fix this last time?" is a search 
 instead, a toast offers **Add resolution**, and a done card's **Resolution** section can be edited any time. The
 board shows a small badge when a card ended as anything other than the default.
 
+## Teams
+
+Belltower works for one person or for several. The features for working together are behind one switch,
+**Settings → General → Teams**, which is off until an admin turns it on, so a solo install looks as it always did:
+
+- **assignees**: the Assignee field on cards, initials on tiles, the filter's Assignee group, and the **Mine** and
+  **Unassigned** pages (see [Who has what](#who-has-what));
+- **watching**, **@mentions** and **the bell** (see [Watching, mentions and the bell](#watching-mentions-and-the-bell)),
+  with its sound under Settings → Appearance and **Account → Notifications**;
+- **people's names in the history** and on work-log notes.
+
+With Teams off all of that is hidden, and nothing is deleted: assignments, watches and notifications are kept (the API
+can still set them), and turning Teams back on brings everything back as it was. Turning it off while other people are
+active asks first. Accounts, signing in, **Settings → People**, your **Account** (profile, password, tokens, sign-in)
+and [single sign-on](SSO.md) work either way. Entries in the history still say when something came through an API
+token, the submit page, a recurring template or card import, just without the person's name.
+
+**One thing still notifies with Teams off:** a new ticket from the [submit page](SUBMIT-PAGE.md). Admins get it in the
+bell, which shows (to admins) only while the submit page is on, and lists nothing else. See
+[NOTIFICATIONS.md](NOTIFICATIONS.md#with-teams-off).
+
 ## Who has what
 
-A card can be **assigned** to one person: pick them under **Assignee** in the card, or press **Assign to me**. Their
-initials show on the card's tile (hover for the full name). Deactivated people can't be given cards; one who still
-has a card keeps it until someone changes it.
+*With [Teams](#teams) on.* A card can be **assigned** to one person: pick them under **Assignee** in the card, or press
+**Assign to me**. Their initials show on the card's tile (hover for the full name). Deactivated people can't be given
+cards; one who still has a card keeps it until someone changes it.
 
 Two pages in the top bar sort out the work:
 
@@ -82,23 +103,23 @@ Both leave out finished cards (and, like the board, archived cards and the Trash
 
 ## History and the work log
 
-Every change to a card is recorded automatically: moves, edits, labels, links, assignments, resolutions. The
-history can't be edited or deleted, by design. Each entry says who did it: a person ("Alice"), an API token and the
-person it acts for ("via API token “Kuma” (Alice)"), or how a card came in ("submit page (Sam)", "card import",
-"recurring"). Entries from before 1.5 show no name, because nobody was recorded then.
+Every change to a card is recorded automatically: moves, edits, labels, links, assignments, resolutions. The history
+can't be edited or deleted, by design. With [Teams](#teams) on, each entry says who did it: a person ("Alice"), an API
+token and the person it acts for ("via API token “Kuma” (Alice)"), or how a card came in ("submit page (Sam)", "card
+import", "recurring"). Entries from before 1.5 show no name, because nobody was recorded then.
 
-The **work log** is for your own notes: "Reseated the SATA cable", "Rolled back to 1.32.5". Each entry shows who
-wrote it. You can backdate an entry to when it actually happened, and edit or retract it later. The original stays
-in the entry's history, which also says who made each edit, and the card's history says who retracted or restored
-it. Only the person who wrote an entry, or an admin, can edit or retract it; entries from before 1.5 have no author,
-so only admins can change those. Hover over a name to see the username, since two people can share a display
-name.
+The **work log** is for your own notes: "Reseated the SATA cable", "Rolled back to 1.32.5". With Teams on, each entry
+shows who wrote it. You can backdate an entry to when it actually happened, and edit or retract it later. The original
+stays in the entry's history, which also says who made each edit, and the card's history says who retracted or restored
+it. Only the person who wrote an entry, or an admin, can edit or retract it; entries from before 1.5 have no author, so
+only admins can change those. Hover over a name to see the username, since two people can share a display name.
 
 ## Watching, mentions and the bell
 
-**Watch** a card to hear about it: a new note, a move (including done or reopened), or a new assignee. The button is in
-the card's header (the eye on a phone); press it again to stop. You watch a card automatically when you create it in
-the app, are assigned it, are mentioned on it, or write a note on it.
+*With [Teams](#teams) on; with it off, the bell only holds new submit-page tickets.* **Watch** a card to hear about it:
+a new note, a move (including done or reopened), or a new assignee. The button is in the card's header (the eye on a
+phone); press it again to stop. You watch a card automatically when you create it in the app, are assigned it, are
+mentioned on it, or write a note on it.
 
 **Mention** someone in a work-log note with `@` and their username: `Swapped the cable, @sam can you test it?`. Type
 `@` and the first letters of a name or username, then pick from the list with the arrow keys and Enter (or tap a
@@ -106,17 +127,17 @@ name). Mentions of people on this install are highlighted, yours in a different 
 starts watching the card. Editing a note tells only the people it didn't mention before; a retracted note tells
 nobody. `@` in code or an email address isn't a mention.
 
-**The bell** in the top bar shows how many notifications you haven't read: cards assigned to you, mentions, and
-changes on cards you watch. Open the list and pick one to go to its card, or **Mark all read**. Opening a card, from
-the bell or anywhere else, marks its notifications read.
-You're never told about your own changes. The bell checks for news every 30 seconds, also while the tab is in the
-background, and can play a sound when something new comes in: **Off**, **Chime** or **Ping**, chosen per device under
-**Settings → Appearance**, with a **Test** button. With several tabs open, only one plays it. Browsers only allow
-sound once you've clicked or typed on the page.
+**The bell** in the top bar shows how many notifications you haven't read: cards assigned to you, mentions, changes on
+cards you watch, and (for admins, by default) new tickets from the submit page. Open the list and pick one to go to its
+card, or **Mark all read**. Opening a card, from the bell or anywhere else, marks its notifications read. You're never
+told about your own changes. The bell checks for news every 30 seconds, also while the tab is in the background, and can
+play a sound when something new comes in: **Off**, **Chime** or **Ping**, chosen per device under **Settings →
+Appearance**, with a **Test** button. With several tabs open, only one plays it. Browsers only allow sound once you've
+clicked or typed on the page.
 
 Under **Account → Notifications** you choose what reaches you and where: in the app, as a Discord mention, or on
-your own ntfy topic, and whether new tickets from outside that nobody has taken should reach you too. See
-[NOTIFICATIONS.md](NOTIFICATIONS.md#personal-notifications) for setting up Discord and ntfy.
+your own ntfy topic, and whether new tickets from the submit page, or from outside and with nobody on them, should
+reach you too. See [NOTIFICATIONS.md](NOTIFICATIONS.md#personal-notifications) for setting up Discord and ntfy.
 
 ## Finding things
 
@@ -154,7 +175,9 @@ Tickets can also come from other people through the [submit page](SUBMIT-PAGE.md
 
 ## People and your account
 
-Since 1.5, more than one person can use Belltower, each with their own username and password.
+Since 1.5, more than one person can use Belltower, each with their own username and password. To give people cards
+and let them follow each other's work, turn on [Teams](#teams); while it's off, Settings → People says so as soon as
+there's more than one active person.
 
 - **Admins** run the install: people, the install's settings, the submit page, notification channels and backups.
   They do the board work too.
@@ -178,20 +201,20 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
 
 **Menu → Account** (everyone): your display name and email, **Sign-in** (linking your account to
 [single sign-on](SSO.md), when an admin has set it up), your password (changing it signs you out on your other
-devices; the owner's can't be changed here while `APP_PASSWORD` sets it), **Notifications** (what reaches you, and
-where: see [Watching, mentions and the bell](#watching-mentions-and-the-bell)), and **Your tokens**: API tokens that
-act as you. What a token does shows in the history as "via API token" with your name, and it stops working while your
-account is deactivated.
+devices; the owner's can't be changed here while `APP_PASSWORD` sets it), **Notifications** (with Teams on: what
+reaches you, and where; see [Watching, mentions and the bell](#watching-mentions-and-the-bell)), and **Your tokens**:
+API tokens that act as you. What a token does shows in the history as "via API token" with your name, and it stops
+working while your account is deactivated.
 
 ## Settings
 
 **Menu → Settings** holds everything that isn't about one card. Members only see Appearance and the version;
 the rest is for admins.
 
-- **Appearance:** Light, Dark or System, and the bell's sound (off, chime or ping). These are saved per device, so
-  the phone can follow the system while the desktop stays dark, and the work laptop can stay quiet.
-- **General:** the ticket number format, the app's address (for links in notifications), the Claude model, and where
-  blocked cards go.
+- **Appearance:** Light, Dark or System, and the bell's sound (off, chime or ping) wherever there's a bell. These are
+  saved per device, so the phone can follow the system while the desktop stays dark, and the work laptop can stay quiet.
+- **General:** [Teams](#teams), the ticket number format, the app's address (for links in notifications), the Claude
+  model, and where blocked cards go.
 - **Resolution reasons:** the list offered on Mark done. The first one is the default.
 - **People:** see [People and your account](#people-and-your-account).
 - **Submit page**, **Automation** tokens (everyone's, with whose each is) and

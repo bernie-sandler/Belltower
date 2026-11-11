@@ -6,6 +6,13 @@ the container log on start, and in every backup export.
 
 ## 1.5.0: Teams foundation
 
+- **Teams, off by default.** The team features below (assignees, Mine and Unassigned, watching, @mentions, the bell,
+  personal notifications and names in the history) are behind **Settings → General → Teams**. It's off until an
+  admin turns it on, so a solo install looks as it did before. Turning it off hides them and deletes nothing; turning
+  it back on brings everything back. See [docs/USING.md](docs/USING.md#teams).
+  - New tickets from the submit page still ring the bell for admins while Teams is off (the bell shows while the
+    submit page is on). With Teams on, they're an event of their own under **Account → Notifications**, in the app
+    for admins by default.
 - **People.** Belltower now has accounts, each one an admin or a member.
   - **Admins** run the install: people, settings, notification channels, the submit page, backups and restore.
   - **Members** do all the board work, and manage their own profile, password and API tokens.
@@ -36,6 +43,7 @@ the container log on start, and in every backup export.
   **Settings → Automation**. A token stops working while its owner is deactivated. The automation API itself hasn't
   changed.
 - **Upgrading.** There's nothing to do, and nobody is signed out.
+  - Teams starts off, so the board looks as it did in 1.4 until an admin turns it on.
   - Your password becomes the owner account `admin`. The name `tower-tracker` that password managers saved still
     works.
   - Signed-in devices and API tokens move to the owner.

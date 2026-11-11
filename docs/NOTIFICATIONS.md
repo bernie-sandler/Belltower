@@ -7,7 +7,9 @@ to any **webhook** (Home Assistant, n8n, your own script). Use one or all of the
 Everything is under **Settings → Notifications**. Nothing goes out through a channel until it's set up.
 
 Since 1.5 each person also gets their own notifications, about their own cards: a bell in the app, and if they want,
-a Discord mention or a push to their own ntfy topic. See [Personal notifications](#personal-notifications) below.
+a Discord mention or a push to their own ntfy topic. They come with **Teams** (Settings → General), which is off until
+an admin turns it on. See [Personal notifications](#personal-notifications) below, and
+[With Teams off](#with-teams-off) for what a solo install gets.
 
 ## What it can announce
 
@@ -147,9 +149,10 @@ titles) has Markdown characters escaped, so it can't add images or disguised lin
 
 ## Personal notifications
 
-Each person decides what reaches them under **Account → Notifications**. These are separate from the install's
-channels above: the events, the webhook's payload and its `event` names don't change, and nothing personal is ever
-sent to the webhook, Gotify or the install's own ntfy topic.
+These come with **Teams** (Settings → General, see [USING.md](USING.md#teams)); for a solo install, see
+[With Teams off](#with-teams-off). Each person decides what reaches them under **Account → Notifications**. These are
+separate from the install's channels above: the events, the webhook's payload and its `event` names don't change, and
+nothing personal is ever sent to the webhook, Gotify or the install's own ntfy topic.
 
 **What notifies you**
 
@@ -164,12 +167,15 @@ sent to the webhook, Gotify or the install's own ntfy topic.
   turns it on or off.
 - **New tickets nobody has:** a ticket arrives from the submit page or an API token with nobody assigned. Off unless
   you turn it on.
+- **New tickets from the submit page:** someone without an account filed a ticket on the [submit page](SUBMIT-PAGE.md)
+  (tickets from API tokens and monitors don't count). In the app for admins by default, off for members. When both
+  this and "New tickets nobody has" apply to the same ticket, you're told once, as a submit-page ticket.
 
 You're never told about what you did yourself, but something an API token of yours did does reach you. Deactivated
 people get nothing.
 
 **Where it goes.** Each event has three boxes: **In the app** (the bell), **Discord** and **ntfy**. The bell is on by
-default for the first three events; everything else is opt-in.
+default for the first three events, and for submit-page tickets if you're an admin; everything else is opt-in.
 
 - **The bell** in the top bar shows how many you haven't read. Opening one opens its card and marks it read (so does
   opening the card any other way), and **Mark all read** clears the count. Screen readers announce what's new. It checks every 30 seconds, also in a background tab, and when you come back to
@@ -206,6 +212,19 @@ so.
 **What's sent:** what happened ("Alex Chen mentioned you: …", with the start of the note for notes and mentions), the
 card's ticket number and title, and a link to the card if the app's address is set under **Settings → General**.
 Text from other people is escaped, so it can't add formatting, links or extra Discord mentions.
+
+## With Teams off
+
+Teams is off on a new install and after upgrading, so a solo install has no assignees, watching or mentions to hear
+about. One thing still reaches you: **a new ticket from the [submit page](SUBMIT-PAGE.md)**.
+
+- Every active admin gets it in the bell, whatever they chose under Account → Notifications (which is hidden while
+  Teams is off). Members get nothing.
+- The bell, and its sound under Settings → Appearance, show only while the submit page is on, and only to admins. It
+  lists only these; anything from before Teams was turned off waits, unread, for when it's back on.
+- Nothing personal goes to Discord or ntfy. The install's own channels above already announce new tickets from
+  outside, exactly as they do with Teams on.
+- Nothing else is written while Teams is off, so turning it back on doesn't bring a pile of old news.
 
 ## Not working?
 
