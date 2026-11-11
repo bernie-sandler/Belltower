@@ -12,6 +12,7 @@ import {
   type RequestTypeBody,
   type SettingsResponse,
   type SubmitSettingsBody,
+  type TeamsSettingsBody,
 } from '@tt/shared';
 import { getBlockedColumnId } from './columns';
 import { byPosition, nextId, nowIso, type Ctx, type RequestTypeRow } from './db';
@@ -24,6 +25,16 @@ export function getResolutionReasons(ctx: Ctx): string[] {
 
 export function setResolutionReasons(ctx: Ctx, reasons: string[]): void {
   ctx.s.settings.resolutionReasons = [...reasons];
+}
+
+/**
+ * Teams (off by default on a real install). The demo seeds it on; data saved before the setting
+ * existed showed the team features, so it reads as on too.
+ */
+export const teamsEnabled = (ctx: Ctx): boolean => ctx.s.settings.teams?.enabled !== false;
+
+export function updateTeamsSettings(ctx: Ctx, body: TeamsSettingsBody): void {
+  ctx.s.settings.teams = { enabled: body.enabled };
 }
 
 export function updateGeneralSettings(ctx: Ctx, body: GeneralSettingsBody): void {
@@ -103,6 +114,7 @@ export function settingsResponse(ctx: Ctx): SettingsResponse {
     },
     blockedColumnId: getBlockedColumnId(ctx),
     resolutionReasons: getResolutionReasons(ctx),
+    teams: { enabled: teamsEnabled(ctx) },
   };
 }
 

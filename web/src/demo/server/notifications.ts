@@ -1,6 +1,6 @@
 // Mirrors server/src/services/notifications.ts: the bell, watching and @mentions. The demo can't
 // send anything, so personal Discord and ntfy stay on the server (routes.ts answers notInDemo for
-// them); everything else works the same.
+// them); everything else works the same, Teams turned off included (only `submitted`, to admins).
 
 import {
   findMentions,
@@ -13,10 +13,12 @@ import {
   type NotificationsQuery,
   type NotificationsResponse,
   type NotificationType,
+  type NotifyPrefs,
   type PersonalNotifyBody,
   type PersonalNotifySettings,
 } from '@tt/shared';
 import { actorId, nextId, nowIso, type Ctx, type NotificationRow } from './db';
+import { teamsEnabled } from './settings';
 import { getUser } from './users';
 
 const DAY_MS = 86_400_000;
@@ -34,8 +36,13 @@ interface NotifyInput {
   data: Omit<NotificationData, 'actorName' | 'hidden'>;
 }
 
-/** Returns the new rows: their ids and whom each is for. */
+/** With Teams off: in the app only. */
+const SOLO_PICKS = { inApp: true, discord: false, ntfy: false } as const;
+
+/** Returns the new rows: their ids and whom each is for. With Teams off, only `submitted`, to admins, in the app. */
 export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId: number }[] {
+  const teams = teamsEnabled(ctx);
+  if (!teams && input.type !== 'submitted') return [];
   const me = selfId(ctx);
   const ids = new Set([...input.userIds].filter((id) => id !== me));
   if (!ids.size) return [];
@@ -44,7 +51,8 @@ export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId
   const now = nowIso(ctx);
   const out: { id: number; userId: number }[] = [];
   for (const p of activePeople(ctx).filter((u) => ids.has(u.id))) {
-    const picks = notifyPrefsFrom(p.notifyPrefs)[input.type];
+    if (!teams && p.role !== 'admin') continue;
+    const picks = teams ? notifyPrefsFrom(p.notifyPrefs, p.role)[input.type] : SOLO_PICKS;
     if (!picks.inApp && !picks.discord && !picks.ntfy) continue;
     // The unique (user, activity, type) index.
     if (ctx.s.notifications.some((n) => n.userId === p.id && n.activityId === input.activityId && n.type === input.type)) continue;
@@ -147,15 +155,31 @@ export function notifyNoteEdited(ctx: Ctx, cardId: number, entryId: number, befo
   notifyPeople(ctx, { cardId, activityId: entryId, type: 'mentioned', userIds: added, data: { excerpt: noteExcerpt(after) } });
 }
 
-export function notifyNewUnassigned(ctx: Ctx, cardId: number, activityId: number, via: string | undefined): void {
-  notifyPeople(ctx, { cardId, activityId, type: 'new_unassigned', userIds: activePeople(ctx).map((u) => u.id), data: via ? { via } : {} });
+/** Everyone who asked about new unassigned tickets, except `already` (told it was submitted). */
+export function notifyNewUnassigned(
+  ctx: Ctx,
+  cardId: number,
+  activityId: number,
+  via: string | undefined,
+  already: ReadonlySet<number> = new Set(),
+): void {
+  const userIds = activePeople(ctx)
+    .map((u) => u.id)
+    .filter((id) => !already.has(id));
+  notifyPeople(ctx, { cardId, activityId, type: 'new_unassigned', userIds, data: via ? { via } : {} });
+}
+
+/** A new ticket from the submit page: admins by default; with Teams off, every active admin. Returns the people told. */
+export function notifySubmitted(ctx: Ctx, cardId: number, activityId: number, via: string | undefined): Set<number> {
+  return told(notifyPeople(ctx, { cardId, activityId, type: 'submitted', userIds: activePeople(ctx).map((u) => u.id), data: via ? { via } : {} }));
 }
 
 // ---- the bell ----
 
-/** Shown in the bell: not turned off there, not about a note retracted since. */
+/** Shown in the bell: not turned off there, not about a note retracted since, and with Teams off only `submitted`. */
 function inBell(ctx: Ctx, n: NotificationRow): boolean {
   if (n.data.hidden) return false;
+  if (n.type !== 'submitted' && !teamsEnabled(ctx)) return false;
   return !ctx.s.activity.some((a) => a.id === n.activityId && a.retractedAt !== null);
 }
 
@@ -168,7 +192,7 @@ function toItem(ctx: Ctx, n: NotificationRow): NotificationItem {
     cardId: n.cardId,
     ticketNo: card?.ticketNo ?? null,
     cardTitle: card?.title ?? '',
-    actorName: data.actorName ?? (n.type === 'new_unassigned' ? (data.via ?? null) : null),
+    actorName: data.actorName ?? (n.type === 'new_unassigned' || n.type === 'submitted' ? (data.via ?? null) : null),
     text: notificationText(n.type, data),
     createdAt: n.createdAt,
     readAt: n.readAt,
@@ -187,10 +211,13 @@ export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuer
   };
 }
 
+/** With Teams off only `submitted` is touched, so the rest are still unread when it's back on. */
 export function markNotificationsRead(ctx: Ctx, userId: number, body: MarkNotificationsReadBody): number {
   const now = nowIso(ctx);
   const ids = new Set(body.ids ?? []);
+  const teams = teamsEnabled(ctx);
   for (const n of ctx.s.notifications) {
+    if (!teams && n.type !== 'submitted') continue;
     if (n.userId === userId && n.readAt === null && (body.all || ids.has(n.id) || n.cardId === body.cardId)) n.readAt = now;
   }
   return ctx.s.notifications.filter((n) => n.userId === userId && n.readAt === null && inBell(ctx, n)).length;
@@ -209,7 +236,7 @@ export function pruneNotifications(ctx: Ctx): void {
 export function personalNotifySettings(ctx: Ctx, userId: number): PersonalNotifySettings {
   const u = getUser(ctx, userId);
   // The demo's install channels can't be given an address, so neither can carry personal messages.
-  return { discordUserId: u.discordUserId, ntfyTopic: u.ntfyTopic, prefs: notifyPrefsFrom(u.notifyPrefs), install: { discord: false, ntfy: false } };
+  return { discordUserId: u.discordUserId, ntfyTopic: u.ntfyTopic, prefs: notifyPrefsFrom(u.notifyPrefs, u.role), install: { discord: false, ntfy: false } };
 }
 
 /** Saves what goes where; a Discord ID or ntfy topic needs the server (the caller checks). */
@@ -217,6 +244,8 @@ export function updatePersonalNotify(ctx: Ctx, userId: number, body: PersonalNot
   const u = getUser(ctx, userId);
   u.discordUserId = body.discordUserId;
   u.ntfyTopic = body.ntfyTopic;
-  u.notifyPrefs = structuredClone(body.prefs);
+  // A tab on an older bundle doesn't send `submitted`: keep what's saved.
+  const prefs: NotifyPrefs = { ...body.prefs, submitted: body.prefs.submitted ?? notifyPrefsFrom(u.notifyPrefs, u.role).submitted };
+  u.notifyPrefs = structuredClone(prefs);
   return personalNotifySettings(ctx, userId);
 }

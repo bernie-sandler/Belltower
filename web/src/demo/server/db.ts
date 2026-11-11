@@ -214,6 +214,11 @@ export interface DemoSettings {
   notifyChannels?: Partial<Record<NotifyChannel, { events: { external: boolean; critical: boolean; digest: boolean; blocked: boolean } }>>;
   /** Signs ticket status links (status.ts). Optional, so data saved before it existed still loads. */
   statusSecret?: string | null;
+  /**
+   * Settings → General → Teams. The demo seeds it on, so visitors see the team features; data
+   * saved before it existed (which showed them) has none, and reads as on (settings.ts).
+   */
+  teams?: { enabled: boolean };
 }
 
 export type TableName =
