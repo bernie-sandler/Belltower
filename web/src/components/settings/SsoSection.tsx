@@ -222,7 +222,10 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
       <label className="field">
         <span className="field-label">Required group (optional)</span>
         <input className="input" value={requiredGroup} onChange={(e) => setRequiredGroup(e.target.value)} spellCheck={false} />
-        <span className="field-help">Only members of this group get in. Checked at every sign-in, so removing someone from it locks them out.</span>
+        <span className="field-help">
+          Only members of this group get in. Checked at every sign-in, so removing someone from it locks them out. The provider must send it in the
+          groups claim; some send that only for the <code>groups</code> scope.
+        </span>
       </label>
 
       {custom ? (
