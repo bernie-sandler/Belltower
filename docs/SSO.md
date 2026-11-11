@@ -126,6 +126,10 @@ with PKCE (S256) and the redirect URI. Enter the issuer exactly as the provider'
 provider uses other names. Belltower authenticates to the token endpoint with `client_secret_basic`, or with
 `client_secret_post` when that's the only method the provider lists.
 
+Some providers (VoidAuth, Pocket ID) send groups only for the `groups` scope. With a **Required group** set and the
+groups claim left at `groups`, Belltower asks for that scope on its own when the provider lists it under
+`scopes_supported`. Otherwise add `groups` to **Scopes** yourself.
+
 ## Linking an account
 
 Someone who already has a Belltower account (with a password) can link it under **Account → Sign-in → Link**. Belltower
@@ -163,9 +167,10 @@ again); "HS256" means Authentik needs a signing key.
 **"…outside its valid time."** The clocks on the Docker host and the provider differ by more than 30 seconds. Fix
 NTP on both.
 
-**"…isn't in the group allowed to use Belltower."** The required group isn't in the provider's groups claim. Check
-the exact group name, the groups claim name (`groups` by default), and that the scopes include what sends it (Authelia
-needs `groups`).
+**"…isn't in the group allowed to use Belltower."** The required group isn't in the provider's groups claim. The
+container log says which: either the provider sent no groups claim (with the names of the claims it did send), or
+the groups it holds. Check the exact group name, the groups claim name (`groups` by default), and that the scopes
+include what sends it (Authelia, VoidAuth and Pocket ID need `groups`).
 
 **"There's no Belltower account for you yet."** Account creation is off. An admin adds the person, who then links
 their account under Account. Or turn on **Create accounts on first sign-in**.
