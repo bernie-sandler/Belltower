@@ -31,6 +31,13 @@ export class Api {
   createCard(body: Record<string, unknown>) {
     return this.call<{ id: number; ticketNo: string; title: string }>('POST', '/api/cards', body);
   }
+
+  /** Settings → General → Teams (off by default). Returns what it was, so a test can put it back. */
+  async setTeams(enabled: boolean): Promise<boolean> {
+    const before = (await this.call<{ teams: { enabled: boolean } }>('GET', '/api/settings')).teams.enabled;
+    await this.call('PUT', '/api/settings/teams', { enabled });
+    return before;
+  }
 }
 
 /** A title that won't clash with cards from other tests (they share one database). */
@@ -50,6 +57,21 @@ export const test = base.extend<{ api: Api }>({
 });
 
 export { expect };
+
+/**
+ * For a spec of the team features (assignees, Mine and Unassigned, watching, @mentions, the bell):
+ * Teams on before each test, and back as it was after it, so the specs sharing the database (one
+ * worker, one file at a time) each start from the default, off.
+ */
+export function teamsOnForEachTest(): void {
+  let before = false;
+  test.beforeEach(async ({ api }) => {
+    before = await api.setTeams(true);
+  });
+  test.afterEach(async ({ api }) => {
+    await api.setTeams(before);
+  });
+}
 
 /** The board column element for a column name. */
 export function column(page: Page, name: string) {

@@ -1,8 +1,11 @@
 // Personal notifications (1.5, PR 5): an @mention rings the other person's bell (two browsers, the
 // member's clock fast-forwarded past the 30-second poll), the Watch toggle, and the bell fitting a
-// 375-pixel-wide phone next to the rest of the top bar.
+// 375-pixel-wide phone next to the rest of the top bar. Team features: Teams is on for these
+// (teams.spec.ts covers it off).
 
-import { expect, test, unique } from './helpers';
+import { expect, teamsOnForEachTest, test, unique } from './helpers';
+
+teamsOnForEachTest();
 
 const HEADERS = { 'X-Requested-With': 'tower-tracker' };
 const MEMBER_PASSWORD = 'member password 123';

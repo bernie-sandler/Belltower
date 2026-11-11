@@ -1,7 +1,10 @@
 // Assignees (1.5): Unassigned → Take it → Mine, the tile badge, the card's picker, the board
-// filter, and losing a race for the same card.
+// filter, and losing a race for the same card. A team feature: Teams is on for these
+// (teams.spec.ts covers it off).
 
-import { expect, login, test, tileByTitle, unique, type Api } from './helpers';
+import { expect, login, teamsOnForEachTest, test, tileByTitle, unique, type Api } from './helpers';
+
+teamsOnForEachTest();
 
 const queueRow = (page: import('@playwright/test').Page, title: string) => page.locator('.queue-row', { hasText: title });
 
