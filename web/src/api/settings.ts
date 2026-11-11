@@ -51,9 +51,10 @@ export function useSaveTeams() {
     meta: { errorToast: false },
     onSuccess: (s) => {
       qc.setQueryData(qk.settings, s);
-      // What the app shell shows (the nav, the bell), and what the bell lists.
+      // What the app shell shows (the nav, the bell), and what the bell lists. The bell's list is
+      // reset rather than refreshed, so what it holds now doesn't ring as if it were new.
       void qc.invalidateQueries({ queryKey: qk.config });
-      void qc.invalidateQueries({ queryKey: qk.notifications });
+      void qc.resetQueries({ queryKey: qk.notifications });
     },
   });
 }

@@ -20,14 +20,18 @@ export const CLAIM_JITTER_MS = 300;
 /**
  * When the unread count rises above the last one seen (and there's a newer notification): plays
  * the sound in one tab only, and calls `onNew` with the new unread items. The first answer only
- * sets the baseline.
+ * sets the baseline, and so does the first after the list was reset (turning Teams on or off
+ * changes what it holds, which isn't news).
  */
 export function useRingOnNew(data: NotificationsResponse | undefined, onNew?: (fresh: NotificationItem[]) => void): void {
   const baseline = useRef<{ unread: number; latestId: number } | null>(null);
   const onNewRef = useRef(onNew);
   onNewRef.current = onNew;
   useEffect(() => {
-    if (!data) return;
+    if (!data) {
+      baseline.current = null;
+      return;
+    }
     const before = baseline.current;
     baseline.current = { unread: data.unread, latestId: data.latestId };
     if (!before || data.unread <= before.unread || data.latestId <= before.latestId) return;
