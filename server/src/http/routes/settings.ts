@@ -1,4 +1,4 @@
-// Settings page: general options, the submit page and its request types, API tokens, and
+// Settings page: general options (Teams included), the submit page and its request types, API tokens, and
 // notifications (Discord, ntfy, Gotify, webhook). Everyone signed in can read the settings (they're
 // redacted); changing them is for admins. API tokens: your own, or everyone's for admins.
 
@@ -13,6 +13,7 @@ import {
   ReorderBody,
   RequestTypeBody,
   SubmitSettingsBody,
+  TeamsSettingsBody,
 } from '@tt/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppDeps } from '../../app';
@@ -34,6 +35,7 @@ import {
   updateDiscordSettings,
   updateGeneralSettings,
   updateSubmitSettings,
+  updateTeamsSettings,
 } from '../../services/settings';
 import { resetStatusLinks } from '../../services/status';
 import { createToken, listTokens, revokeToken } from '../../services/tokens';
@@ -47,6 +49,10 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps): voi
   app.get('/api/settings', async (req) => current(req.ctx));
   app.put('/api/settings/general', ADMIN, async (req) => {
     updateGeneralSettings(req.ctx, parse(GeneralSettingsBody, req.body));
+    return current(req.ctx);
+  });
+  app.put('/api/settings/teams', ADMIN, async (req) => {
+    updateTeamsSettings(req.ctx, parse(TeamsSettingsBody, req.body));
     return current(req.ctx);
   });
   app.put('/api/settings/submit', ADMIN, async (req) => {

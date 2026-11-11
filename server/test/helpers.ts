@@ -16,6 +16,7 @@ import { createLogger } from '../src/logger';
 import type { TicketDrafter } from '../src/services/aiDraft';
 import type { Notifier } from '../src/services/notify';
 import type { Ctx } from '../src/services/context';
+import { updateTeamsSettings } from '../src/services/settings';
 
 setScryptCostForTests(10);
 
@@ -145,4 +146,9 @@ export async function addPerson(
   const res = await client(t.app, adminCookie)('POST', '/api/users', { username, displayName: username, role, password });
   if (res.statusCode !== 201) throw new Error(`adding ${username} failed: ${res.statusCode} ${res.body}`);
   return { id: res.json().id as number, cookie: await loginAs(t, username, password) };
+}
+
+/** Turns on Settings → General → Teams (off by default), for tests of the team features. */
+export function enableTeams(ctx: Ctx): void {
+  updateTeamsSettings(ctx, { enabled: true });
 }

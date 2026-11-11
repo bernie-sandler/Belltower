@@ -295,6 +295,7 @@ describe('roles', () => {
     'PUT /api/settings/oidc',
     'PUT /api/settings/resolutions',
     'PUT /api/settings/submit',
+    'PUT /api/settings/teams',
   ];
   /** Everything else: board work, your own account and tokens, the public pages, the automation API. */
   const MEMBER_ROUTES = [

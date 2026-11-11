@@ -14,7 +14,7 @@ import { updateChannelSettings, updateDiscordSettings, updateGeneralSettings } f
 import { createToken } from '../src/services/tokens';
 import { createUser, updateUser } from '../src/services/users';
 import { addWorklog, updateWorklog } from '../src/services/worklog';
-import { addPerson, client, columnId, loginAs, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
+import { addPerson, client, columnId, enableTeams, loginAs, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
 
 let t: ReturnType<typeof makeCtx>;
 let events: AppEvent[];
@@ -41,6 +41,8 @@ const watchers = (cardId: number) =>
 
 beforeEach(() => {
   t = makeCtx();
+  // These are the team features (Settings → General → Teams); teams.test.ts covers them turned off.
+  enableTeams(t.ctx);
   events = [];
   t.ctx.emit = (e) => events.push(e);
   for (const k of Object.keys(people)) delete people[k];
@@ -521,6 +523,7 @@ describe('over HTTP', () => {
   it('a mention reaches the member’s bell; they open it and mark it read; nobody sees anyone else’s', async () => {
     app = await makeApp();
     const admin = await setupAndLogin(app);
+    expect((await client(app.app, admin)('PUT', '/api/settings/teams', { enabled: true })).statusCode).toBe(200);
     const sam = await addPerson(app, admin, 'sam');
     const asAdmin = client(app.app, admin);
     const asSam = client(app.app, sam.cookie);

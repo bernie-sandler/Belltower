@@ -14,6 +14,7 @@ import {
   type NotifyChannelInfo,
   type SettingsResponse,
   type SubmitSettingsBody,
+  type TeamsSettingsBody,
 } from '@tt/shared';
 import { getSetting, setSetting } from '../db/connection';
 import { badRequest } from '../errors';
@@ -25,6 +26,7 @@ const KEY = {
   submit: 'submit_settings',
   discord: 'discord_settings',
   channels: 'notify_channels',
+  teams: 'teams_settings',
 } as const;
 
 /** Every channel that can send, Discord included. */
@@ -58,6 +60,15 @@ export interface DiscordSettings {
   alertSeverity: 'blocker' | 'major' | 'minor';
 }
 
+/**
+ * The team features: assignees, Mine and Unassigned, watching, @mentions, the bell and personal
+ * notifications. Off by default, so a solo install looks as it did before 1.5. While off, the app
+ * hides them and notifyPeople writes only `submitted` (to admins, in the app); nothing is deleted.
+ */
+export interface TeamsSettings {
+  enabled: boolean;
+}
+
 export interface Delivery {
   at: string;
   ok: boolean;
@@ -72,6 +83,7 @@ const SUBMIT_DEFAULTS: SubmitSettings = {
   intro: 'Tell us what’s wrong and we’ll take a look.',
   key: null,
 };
+const TEAMS_DEFAULTS: TeamsSettings = { enabled: false };
 const DISCORD_DEFAULTS: DiscordSettings = {
   webhookUrl: null,
   events: { external: true, critical: true, digest: false, blocked: false },
@@ -100,6 +112,14 @@ export const getDiscordSettings = (ctx: Ctx) => {
   const d = read(ctx, KEY.discord, DISCORD_DEFAULTS);
   return { ...d, events: { ...DISCORD_DEFAULTS.events, ...d.events } };
 };
+
+/** A restored backup isn't validated, so anything but `true` reads as off. */
+export const getTeamsSettings = (ctx: Ctx): TeamsSettings => ({ enabled: read(ctx, KEY.teams, TEAMS_DEFAULTS).enabled === true });
+export const teamsEnabled = (ctx: Ctx): boolean => getTeamsSettings(ctx).enabled;
+
+export function updateTeamsSettings(ctx: Ctx, body: TeamsSettingsBody): void {
+  write(ctx, KEY.teams, { enabled: body.enabled });
+}
 
 export function updateGeneralSettings(ctx: Ctx, body: GeneralSettingsBody): void {
   write(ctx, KEY.general, { ...getGeneralSettings(ctx), ...body });
@@ -316,5 +336,6 @@ export function settingsResponse(ctx: Ctx, ai: { modelFromEnv: string | null; en
     },
     blockedColumnId: getBlockedColumnId(ctx),
     resolutionReasons: getResolutionReasons(ctx),
+    teams: getTeamsSettings(ctx),
   };
 }

@@ -127,6 +127,13 @@ export interface AppConfig {
   timeZone: string;
   maxUploadBytes: number;
   passwordManagedByEnv: boolean;
+  /**
+   * Settings → General → Teams: assignees, Mine and Unassigned, watching, @mentions and the bell.
+   * Off by default; while off the app hides them (nothing is deleted).
+   */
+  teams: boolean;
+  /** Whether the submit page is on. With Teams off, the bell shows (to admins) only while it is. */
+  submitPageEnabled: boolean;
 }
 
 export interface Column {
@@ -664,6 +671,8 @@ export interface SettingsResponse {
   };
   blockedColumnId: number | null;
   resolutionReasons: string[];
+  /** The team features (Settings → General → Teams). */
+  teams: { enabled: boolean };
 }
 
 /** A notification channel as Settings shows it. Saved addresses and secrets are never sent back. */

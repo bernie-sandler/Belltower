@@ -545,6 +545,14 @@ export const SubmitSettingsBody = z.object({
 });
 export type SubmitSettingsBody = z.infer<typeof SubmitSettingsBody>;
 
+/**
+ * PUT /api/settings/teams: the team features (assignees, Mine and Unassigned, watching, @mentions,
+ * the bell). Off by default, so a solo install looks as it did before 1.5; turning it off hides
+ * them and deletes nothing.
+ */
+export const TeamsSettingsBody = z.object({ enabled: z.boolean() });
+export type TeamsSettingsBody = z.infer<typeof TeamsSettingsBody>;
+
 export const NOTIFY_EVENTS = ['external', 'critical', 'digest', 'blocked'] as const;
 export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
 

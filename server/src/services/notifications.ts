@@ -10,13 +10,20 @@
 //  - mentioned: @username in a work-log note (only new names when a note is edited);
 //  - watching: people watching the card, on a new note, a move (done and reopened included) or an
 //    assignee change;
-//  - new_unassigned: everyone who opted in, when an outside ticket arrives with no assignee.
+//  - new_unassigned: everyone who opted in, when an outside ticket arrives with no assignee;
+//  - submitted: a new ticket from the submit page; admins by default. Someone told about it isn't
+//    also told new_unassigned for the same ticket.
 // Never the person acting (a token acts for its owner, who *is* told), never deactivated people, and
 // once per person and change (a unique index). Someone told they were mentioned or assigned isn't
 // also told as a watcher; someone who turned those off still hears it as a watcher.
 //
 // You watch a card when you create it in the app, are assigned it, are mentioned on it or write a
 // note on it. Notifications aren't in backups; old ones are pruned (pruneNotifications).
+//
+// Teams (Settings → General) is off by default. While it's off only `submitted` is written, to
+// every active admin, in the app only: no personal Discord or ntfy (the install's own channels
+// already announce outside tickets), and the bell lists only those. Watching and assigning still
+// work and are kept, so turning Teams back on brings everything back.
 
 import {
   NtfyTopic,
@@ -37,7 +44,7 @@ import {
 import { stmt } from '../db/connection';
 import { badRequest } from '../errors';
 import { actorUserId, nowIso, type Ctx } from './context';
-import { channelReady, getChannelSettings, getDiscordSettings } from './settings';
+import { channelReady, getChannelSettings, getDiscordSettings, teamsEnabled } from './settings';
 import { getUser } from './users';
 
 /** Read notifications are pruned this many days after they were made… */
@@ -65,13 +72,17 @@ function actorName(ctx: Ctx): string | null {
   return null;
 }
 
-export function prefsOf(raw: string | null | undefined): NotifyPrefs {
+/** A person's saved prefs, with the defaults for their role filled in. */
+export function prefsOf(raw: string | null | undefined, role: 'admin' | 'member'): NotifyPrefs {
   try {
-    return notifyPrefsFrom(raw ? JSON.parse(raw) : {});
+    return notifyPrefsFrom(raw ? JSON.parse(raw) : {}, role);
   } catch {
-    return notifyPrefsFrom({});
+    return notifyPrefsFrom({}, role);
   }
 }
+
+/** With Teams off: in the app only. */
+const SOLO_PICKS = { inApp: true, discord: false, ntfy: false } as const;
 
 interface NotifyInput {
   cardId: number;
@@ -87,15 +98,20 @@ interface NotifyInput {
  * delivery to personal channels. Leaves out the person acting, deactivated people and people who
  * turned this event off everywhere; someone who turned off only the bell gets a row marked hidden
  * (and read), so personal channels still hear about it and the unique index still stops repeats.
+ * With Teams off, only `submitted` is written, to the admins among `userIds`, in the app only, and
+ * nothing is announced for personal channels.
  * Returns the new rows: their ids and whom each is for.
  */
 export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId: number }[] {
+  const teams = teamsEnabled(ctx);
+  if (!teams && input.type !== 'submitted') return [];
   const me = selfId(ctx);
   const userIds = [...new Set(input.userIds)].filter((id) => id !== me);
   if (!userIds.length) return [];
-  const people = stmt(ctx.db, 'SELECT id, notify_prefs FROM users WHERE id IN (SELECT value FROM json_each(?)) AND disabled_at IS NULL').all(
-    JSON.stringify(userIds),
-  ) as { id: number; notify_prefs: string }[];
+  const people = stmt(
+    ctx.db,
+    'SELECT id, role, notify_prefs FROM users WHERE id IN (SELECT value FROM json_each(?)) AND disabled_at IS NULL',
+  ).all(JSON.stringify(userIds)) as { id: number; role: 'admin' | 'member'; notify_prefs: string }[];
   const now = nowIso(ctx);
   const data: NotificationData = { ...input.data, actorName: actorName(ctx) };
   const insert = stmt(
@@ -105,13 +121,14 @@ export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId
   );
   const written: { id: number; userId: number }[] = [];
   for (const p of people) {
-    const picks = prefsOf(p.notify_prefs)[input.type];
+    if (!teams && p.role !== 'admin') continue;
+    const picks = teams ? prefsOf(p.notify_prefs, p.role)[input.type] : SOLO_PICKS;
     if (!picks.inApp && !picks.discord && !picks.ntfy) continue;
     const row = picks.inApp ? data : { ...data, hidden: true };
     const info = insert.run(p.id, input.cardId, input.activityId, input.type, actorUserId(ctx), JSON.stringify(row), now, picks.inApp ? null : now);
     if (info.changes) written.push({ id: Number(info.lastInsertRowid), userId: p.id });
   }
-  if (written.length) ctx.emit?.({ type: 'people_notified', ids: written.map((w) => w.id), actor: ctx.actor });
+  if (written.length && teams) ctx.emit?.({ type: 'people_notified', ids: written.map((w) => w.id), actor: ctx.actor });
   return written;
 }
 
@@ -223,10 +240,28 @@ export function notifyNoteEdited(ctx: Ctx, cardId: number, entryId: number, befo
   notifyPeople(ctx, { cardId, activityId: entryId, type: 'mentioned', userIds: added, data: { excerpt: noteExcerpt(after) } });
 }
 
-/** A ticket from outside (submit page, API token) with nobody assigned: everyone who asked to hear about those. */
-export function notifyNewUnassigned(ctx: Ctx, cardId: number, activityId: number, via: string | undefined): void {
+/**
+ * A ticket from outside (submit page, API token) with nobody assigned: everyone who asked to hear
+ * about those, except `already` (told it was submitted, so one ticket doesn't ring twice).
+ */
+export function notifyNewUnassigned(
+  ctx: Ctx,
+  cardId: number,
+  activityId: number,
+  via: string | undefined,
+  already: ReadonlySet<number> = new Set(),
+): void {
   const everyone = stmt(ctx.db, 'SELECT id FROM users WHERE disabled_at IS NULL').pluck().all() as number[];
-  notifyPeople(ctx, { cardId, activityId, type: 'new_unassigned', userIds: everyone, data: via ? { via } : {} });
+  notifyPeople(ctx, { cardId, activityId, type: 'new_unassigned', userIds: everyone.filter((id) => !already.has(id)), data: via ? { via } : {} });
+}
+
+/**
+ * A new ticket from the submit page: everyone who wants to hear about those (admins, by default).
+ * With Teams off, every active admin, in the app. Returns the people told.
+ */
+export function notifySubmitted(ctx: Ctx, cardId: number, activityId: number, via: string | undefined): Set<number> {
+  const everyone = stmt(ctx.db, 'SELECT id FROM users WHERE disabled_at IS NULL').pluck().all() as number[];
+  return told(notifyPeople(ctx, { cardId, activityId, type: 'submitted', userIds: everyone, data: via ? { via } : {} }));
 }
 
 // ---- the bell ----
@@ -247,6 +282,8 @@ interface ItemRow {
 const NOT_RETRACTED = 'NOT EXISTS (SELECT 1 FROM activity a WHERE a.id = n.activity_id AND a.retracted_at IS NOT NULL)';
 /** Shown in the bell: not turned off there (hidden), not about a retracted note. */
 const IN_BELL = `json_extract(n.data, '$.hidden') IS NULL AND ${NOT_RETRACTED}`;
+/** With Teams off the bell shows only new submit-page tickets; the rest wait, untouched, until it's back on. */
+const inBell = (ctx: Ctx) => (teamsEnabled(ctx) ? IN_BELL : `${IN_BELL} AND n.type = 'submitted'`);
 
 const ITEM_SELECT = `SELECT n.id, n.user_id, n.card_id, n.type, n.data, n.created_at, n.read_at, c.title, c.ticket_no
   FROM notifications n JOIN cards c ON c.id = n.card_id`;
@@ -264,7 +301,7 @@ export function toItem(r: ItemRow): NotificationItem {
     cardId: r.card_id,
     ticketNo: r.ticket_no,
     cardTitle: r.title,
-    actorName: data.actorName ?? (r.type === 'new_unassigned' ? (data.via ?? null) : null),
+    actorName: data.actorName ?? (r.type === 'new_unassigned' || r.type === 'submitted' ? (data.via ?? null) : null),
     text: notificationText(r.type, data),
     createdAt: r.created_at,
     readAt: r.read_at,
@@ -272,7 +309,8 @@ export function toItem(r: ItemRow): NotificationItem {
 }
 
 export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuery): NotificationsResponse {
-  const rows = stmt(ctx.db, `${ITEM_SELECT} WHERE n.user_id = ? AND n.id > ? AND ${IN_BELL} ORDER BY n.id DESC LIMIT ?`).all(
+  const where = inBell(ctx);
+  const rows = stmt(ctx.db, `${ITEM_SELECT} WHERE n.user_id = ? AND n.id > ? AND ${where} ORDER BY n.id DESC LIMIT ?`).all(
     userId,
     q.after ?? 0,
     q.limit,
@@ -280,26 +318,31 @@ export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuer
   const counts = stmt(
     ctx.db,
     `SELECT count(*) FILTER (WHERE n.read_at IS NULL) AS unread, coalesce(max(n.id), 0) AS latest
-       FROM notifications n WHERE n.user_id = ? AND ${IN_BELL}`,
+       FROM notifications n WHERE n.user_id = ? AND ${where}`,
   ).get(userId) as { unread: number; latest: number };
   return { items: rows.map(toItem), unread: counts.unread, latestId: counts.latest };
 }
 
-/** Marks some, a card's (you opened it) or all of your notifications read. Returns how many are still unread. */
+/**
+ * Marks some, a card's (you opened it) or all of your notifications read. Returns how many are
+ * still unread. With Teams off only the kind the bell shows is touched, so the others are still
+ * unread when Teams is turned back on.
+ */
 export function markNotificationsRead(ctx: Ctx, userId: number, body: MarkNotificationsReadBody): number {
   const now = nowIso(ctx);
+  const only = teamsEnabled(ctx) ? '' : " AND type = 'submitted'";
   if (body.all) {
-    stmt(ctx.db, 'UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL').run(now, userId);
+    stmt(ctx.db, `UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL${only}`).run(now, userId);
   } else if (body.cardId !== undefined) {
-    stmt(ctx.db, 'UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND card_id = ?').run(now, userId, body.cardId);
+    stmt(ctx.db, `UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND card_id = ?${only}`).run(now, userId, body.cardId);
   } else {
-    stmt(ctx.db, 'UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND id IN (SELECT value FROM json_each(?))').run(
+    stmt(ctx.db, `UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND id IN (SELECT value FROM json_each(?))${only}`).run(
       now,
       userId,
       JSON.stringify(body.ids ?? []),
     );
   }
-  return stmt(ctx.db, `SELECT count(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL AND ${IN_BELL}`).pluck().get(userId) as number;
+  return stmt(ctx.db, `SELECT count(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL AND ${inBell(ctx)}`).pluck().get(userId) as number;
 }
 
 /** Notifications for personal channels: these rows (if they still exist), oldest first, retracted notes left out. */
@@ -325,7 +368,7 @@ export function personalNotifySettings(ctx: Ctx, userId: number): PersonalNotify
   return {
     discordUserId: u.discord_user_id,
     ntfyTopic: u.ntfy_topic,
-    prefs: prefsOf(u.notify_prefs),
+    prefs: prefsOf(u.notify_prefs, u.role),
     install: installChannels(ctx),
   };
 }
@@ -350,14 +393,16 @@ export function personalTopicOk(ctx: Ctx, topic: string): boolean {
 }
 
 export function updatePersonalNotify(ctx: Ctx, userId: number, body: PersonalNotifyBody): PersonalNotifySettings {
-  getUser(ctx, userId);
+  const u = getUser(ctx, userId);
   if (body.ntfyTopic !== null && body.ntfyTopic === installTopic(ctx)) {
     throw badRequest('validation', 'That’s the install’s own ntfy topic; pick a topic of your own (Random topic makes one)');
   }
+  // A tab on an older bundle doesn't send `submitted`: keep what's saved.
+  const prefs: NotifyPrefs = { ...body.prefs, submitted: body.prefs.submitted ?? prefsOf(u.notify_prefs, u.role).submitted };
   stmt(ctx.db, 'UPDATE users SET discord_user_id = ?, ntfy_topic = ?, notify_prefs = ? WHERE id = ?').run(
     body.discordUserId,
     body.ntfyTopic,
-    JSON.stringify(body.prefs),
+    JSON.stringify(prefs),
     userId,
   );
   return personalNotifySettings(ctx, userId);
