@@ -100,8 +100,9 @@ templates and the app itself did.
 `discord_settings` (which includes the webhook URL, and the alert levels and summary time every channel uses),
 `notify_channels` (ntfy, Gotify and webhook addresses and tokens), `<channel>_last_delivery` and
 `<channel>_digest_last` for `discord`, `ntfy`, `gotify` and `webhook`,
-`resolution_reasons`, `blocked_column_id`, `teams_settings` (Settings → General → Teams, since 1.5),
-`status_link_secret` (signs ticket status links), `app_tz_at_seed`, `seeded` and `request_types_seeded`.
+`resolution_reasons`, `blocked_column_id`, `teams_settings` (Settings → General → Teams, since 1.5; a backup
+without it restores with Teams on only if it has more than one active person), `status_link_secret` (signs ticket
+status links), `app_tz_at_seed`, `seeded` and `request_types_seeded`.
 
 ## What's left out
 

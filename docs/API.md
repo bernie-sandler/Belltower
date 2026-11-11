@@ -82,32 +82,36 @@ included; nobody reads or changes anyone else's. `CardDetail.watching` says whet
 
 | Method & path | Body | Success | Notes |
 |---|---|---|---|
-| `GET /api/notifications?limit=30&after=<id>` | — | `NotificationsResponse {items, unread, latestId}` | Your newest first, at most `limit` (1–100, default 30); `after` returns only ids above it. Each `NotificationItem` is `{id, type, cardId, ticketNo, cardTitle, actorName, text, createdAt, readAt}`: `type` is `assigned`, `mentioned`, `watching`, `new_unassigned` or `submitted`, and `text` is one sentence starting with who did it ("Alex Chen mentioned you: “…”"; for the last two, where the ticket came from: "New ticket from submit page (Sam)"). `unread` counts all of them, `latestId` is the newest id (0 for none). Notifications about a note that's been retracted are left out (they come back if it's restored), and so are ones you turned off in the app but kept for Discord or ntfy. With Teams off only `submitted` ones are listed and counted. The bell polls this every 30 seconds, so it's a *passive* route (`{config: {passive: true}}`): it checks your session without sliding its expiry, and a tab left open doesn't keep an idle session alive past its 12-hour timeout. |
+| `GET /api/notifications?limit=30&after=<id>` | — | `NotificationsResponse {items, unread, latestId, teams}` | Your newest first, at most `limit` (1–100, default 30); `after` returns only ids above it. Each `NotificationItem` is `{id, type, cardId, ticketNo, cardTitle, actorName, text, createdAt, readAt}`: `type` is `assigned`, `mentioned`, `watching`, `new_unassigned` or `submitted`, and `text` is one sentence starting with who did it ("Alex Chen mentioned you: “…”"; for the last two, where the ticket came from: "New ticket from submit page (Sam)"). `unread` counts all of them, `latestId` is the newest id (0 for none). Notifications about a note that's been retracted are left out (they come back if it's restored), and so are ones you turned off in the app but kept for Discord or ntfy. With Teams off only `submitted` ones are listed and counted. `teams` says whether Teams is on; a tab that sees it change starts its "what's new" count over and reloads `/api/config`. The bell polls this every 30 seconds, so it's a *passive* route (`{config: {passive: true}}`): it checks your session without sliding its expiry, and a tab left open doesn't keep an idle session alive past its 12-hour timeout. |
 | `POST /api/notifications/read` | `MarkNotificationsReadBody {ids?: number[], cardId?: number, all?: true}` | `{unread}` | Marks these, the ones about `cardId` (the app sends it when you open a card), or all of yours read; other people's are untouched. With Teams off only `submitted` ones are marked, so the rest are still unread when it's back on. `400 validation` with none of them. |
 | `PUT /api/cards/:id/watch` | — | `{watching: true}` | Watch a card (any state, Trash included). Doing it twice is fine. `404` for an unknown card. |
 | `DELETE /api/cards/:id/watch` | — | `{watching: false}` | Stop watching. |
-| `GET /api/me/notifications` | — | `PersonalNotifySettings {discordUserId, ntfyTopic, prefs, install}` | `prefs` is `NotifyPrefs`: for each type, `{inApp, discord, ntfy}` booleans, with the defaults filled in (in the app for `assigned`, `mentioned` and `watching`, and for admins `submitted`; nothing else). Prefs saved before a type existed take its default. `install: {discord, ntfy}` says whether the install has the channel those ride on. |
+| `GET /api/me/notifications` | — | `PersonalNotifySettings {discordUserId, ntfyTopic, prefs, install}` | `prefs` is `NotifyPrefs`: for each type, `{inApp, discord, ntfy}` booleans, with the defaults filled in (in the app for `assigned`, `mentioned` and `watching`, and for admins `submitted`; nothing else). Prefs saved before a type existed take its default; `submitted`'s follows the person's current role until they save their own. `install: {discord, ntfy}` says whether the install has the channel those ride on. |
 | `PUT /api/me/notifications` | `PersonalNotifyBody {discordUserId, ntfyTopic, prefs}` | `PersonalNotifySettings` | `discordUserId`: 17–20 digits or `null`; `ntfyTopic`: `belltower-` and 1–54 of `A-Z a-z 0-9 - _`, or `null`, and not the install's own ntfy topic (`400 validation`); `prefs` complete, except that `submitted` may be left out (a tab on an older bundle), which keeps the saved choice. Stored in `users.discord_user_id`, `ntfy_topic` and `notify_prefs`. |
 | `POST /api/me/notifications/test` | — | `PersonalTestResult {discord, ntfy}` | One test message on each channel you've filled in (`null` for the others): `{ok, message}`, where a channel the install hasn't set up is `ok: false` with a message saying so. `400 nothing_to_test` with neither filled in, `429 rate_limited {retryAfterSec}` after 5 in 10 minutes (it posts in a shared Discord channel), `503 unavailable` without a notifier. |
 
 Who is told (rows are written in the change's transaction, so a rolled-back change tells nobody): the new assignee
 (`assigned`); people @mentioned in a new note, or newly in an edited one, unless the note is retracted (`mentioned`);
 people watching the card when it gets a note, moves (done, reopened and a park in the blocked column included) or
-changes assignee (`watching`); for a ticket from the submit page, everyone with `submitted` on (admins by default); and,
-for a ticket from the submit page or an API token with nobody assigned, everyone who turned `new_unassigned` on and
-wasn't just told `submitted` about it. Never the person acting (an API token's owner *is* told), never deactivated
-people, at most one type per person and change (someone told they were mentioned or assigned isn't also told as a
-watcher; someone who turned that type off still is), and once: `(user_id, activity_id, type)` is unique. Notes that come
-with imported cards (card import, a new ticket through `/api/v1`) notify nobody and don't make the importer watch;
-automation's later "Seen again" and "Recovered" notes do notify watchers. You start watching a card when you create it
-in the app (`POST /api/cards`, `POST /api/tickets`), are assigned it, are mentioned on it, or write a note on it. After
-the rows are written the server emits the internal event `people_notified {ids, actor}`; the Notifier sends personal
-Discord and ntfy messages from it a few seconds later, combined per person. `WEBHOOK_EVENTS` and the webhook payload are
-unchanged. Read notifications are pruned after 30 days, any after 90; they aren't in backups.
+changes assignee (`watching`); for a ticket from the submit page, everyone with `submitted` on (admins by default), on
+the channels of `submitted` and `new_unassigned` together; and, for a ticket from the submit page or an API token with
+nobody assigned, everyone who turned `new_unassigned` on and wasn't just told `submitted` about it. Never the person
+acting (an API token's owner *is* told), never deactivated people, at most one type per person and change (someone told
+they were mentioned or assigned isn't also told as a watcher; someone who turned that type off still is), and once:
+`(user_id, activity_id, type)` is unique. Notes that come with imported cards (card import, a new ticket through
+`/api/v1`) notify nobody and don't make the importer watch; automation's later "Seen again" and "Recovered" notes do
+notify watchers. You start watching a card when you create it in the app (`POST /api/cards`, `POST /api/tickets`), are
+assigned it, are mentioned on it, or write a note on it. After the rows are written the server emits the internal event
+`people_notified {ids, actor}`; the Notifier sends personal Discord and ntfy messages from it a few seconds later,
+combined per person. `WEBHOOK_EVENTS` and the webhook payload are unchanged. Read notifications are pruned after 30
+days, any after 90; they aren't in backups.
 
 **With Teams off** (`teams_settings.enabled` false, the default) only `submitted` is written, to every active admin,
 in the app only, whatever their prefs; no `people_notified` event is emitted, and the Notifier sends nothing personal
-(it also drops what was waiting when Teams went off). Watching, assigning and the routes above keep working.
+(it also drops what was waiting when Teams went off). A note's `@name` mentions nobody and makes nobody watch; the
+writer still starts watching, and watching, assigning and the routes above keep working. A database without
+`teams_settings` (a new install, an upgrade, a restored backup) gets it once at startup or restore: on when more than
+one person is active, off otherwise.
 
 ## Config
 

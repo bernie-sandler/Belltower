@@ -168,14 +168,17 @@ nothing personal is ever sent to the webhook, Gotify or the install's own ntfy t
 - **New tickets nobody has:** a ticket arrives from the submit page or an API token with nobody assigned. Off unless
   you turn it on.
 - **New tickets from the submit page:** someone without an account filed a ticket on the [submit page](SUBMIT-PAGE.md)
-  (tickets from API tokens and monitors don't count). In the app for admins by default, off for members. When both
-  this and "New tickets nobody has" apply to the same ticket, you're told once, as a submit-page ticket.
+  (tickets from API tokens and monitors don't count). In the app for admins by default, off for members. A
+  submit-page ticket is also a new ticket nobody has: if you want both, you're told once, as a submit-page ticket, on
+  every channel either one is ticked for (a Discord ping for "New tickets nobody has" still comes).
 
 You're never told about what you did yourself, but something an API token of yours did does reach you. Deactivated
 people get nothing.
 
 **Where it goes.** Each event has three boxes: **In the app** (the bell), **Discord** and **ntfy**. The bell is on by
-default for the first three events, and for submit-page tickets if you're an admin; everything else is opt-in.
+default for the first three events, and for submit-page tickets if you're an admin; everything else is opt-in. Until you
+first save your choices here, that last default follows your role, so it changes if an admin makes you an admin (or a
+member); once saved, your choice stays.
 
 - **The bell** in the top bar shows how many you haven't read. Opening one opens its card and marks it read (so does
   opening the card any other way), and **Mark all read** clears the count. Screen readers announce what's new. It checks every 30 seconds, also in a background tab, and when you come back to

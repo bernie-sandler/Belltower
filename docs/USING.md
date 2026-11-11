@@ -66,7 +66,8 @@ board shows a small badge when a card ended as anything other than the default.
 ## Teams
 
 Belltower works for one person or for several. The features for working together are behind one switch,
-**Settings → General → Teams**, which is off until an admin turns it on, so a solo install looks as it always did:
+**Settings → General → Teams**, which is off until an admin turns it on, so a solo install looks as it always did
+(an install that already had several people when it moved to 1.5.0 starts with it on):
 
 - **assignees**: the Assignee field on cards, initials on tiles, the filter's Assignee group, and the **Mine** and
   **Unassigned** pages (see [Who has what](#who-has-what));
@@ -75,10 +76,12 @@ Belltower works for one person or for several. The features for working together
 - **people's names in the history** and on work-log notes.
 
 With Teams off all of that is hidden, and nothing is deleted: assignments, watches and notifications are kept (the API
-can still set them), and turning Teams back on brings everything back as it was. Turning it off while other people are
-active asks first. Accounts, signing in, **Settings → People**, your **Account** (profile, password, tokens, sign-in)
-and [single sign-on](SSO.md) work either way. Entries in the history still say when something came through an API
-token, the submit page, a recurring template or card import, just without the person's name.
+can still set them), and turning Teams back on brings everything back as it was. `@name` in a note is plain text, so it
+doesn't make anyone watch the card. Turning Teams off while other people have accounts asks first, since it hides the
+features for everyone and stops their personal Discord and ntfy messages. Accounts, signing in, **Settings → People**,
+your **Account** (profile, password, tokens, sign-in) and [single sign-on](SSO.md) work either way. Entries in the
+history still say when something came through an API token, the submit page, a recurring template or card import, just
+without the person's name.
 
 **One thing still notifies with Teams off:** a new ticket from the [submit page](SUBMIT-PAGE.md). Admins get it in the
 bell, which shows (to admins) only while the submit page is on, and lists nothing else. See
