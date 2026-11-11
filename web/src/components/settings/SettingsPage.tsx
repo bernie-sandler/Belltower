@@ -267,7 +267,7 @@ export function TeamsSwitch({ s }: { s: SettingsResponse }) {
           type="checkbox"
           role="switch"
           checked={enabled}
-          disabled={save.isPending}
+          disabled={save.isPending || !users}
           aria-describedby={`${ids}-help`}
           onChange={(e) => (e.target.checked ? set(true) : others > 0 ? setConfirmOff(true) : set(false))}
         />
