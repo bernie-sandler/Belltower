@@ -495,10 +495,11 @@ export const RequestTypeBody = z
     description: z.string().trim().max(300).default(''),
     titlePattern: z.string().trim().min(1).max(200).default('{summary}'),
     fields: z.array(RequestField).max(LIMITS.requestFields).default([]),
-    /** Labels submitters may pick as tags. */
-    tagLabelIds: z.array(id).max(30).default([]),
-    /** A label every ticket of this type gets (optional). */
-    typeLabelId: id.nullable().default(null),
+    /**
+     * Labels every ticket of this type gets (submitters don't pick labels). Left out, a new type gets
+     * none and an update keeps the saved ones: an app tab opened before 1.6 doesn't send them.
+     */
+    labelIds: z.array(id).max(50).optional(),
     enabled: z.boolean().default(true),
   })
   .superRefine((t, c) => {
@@ -631,7 +632,11 @@ export const SubmitBody = z.object({
   summary: Title,
   description: z.string().trim().min(1).max(LIMITS.submitAnswer * 2).refine(noNul, NUL_MESSAGE),
   answers: z.record(z.string(), z.union([z.string().max(LIMITS.submitAnswer), z.array(z.string().max(200)).max(LIMITS.requestChoices), z.boolean()])).default({}),
-  tagLabelIds: z.array(id).max(30).default([]),
+  /**
+   * Ignored since submitters stopped picking tags (the request type's labels are added instead).
+   * Still accepted so a submit page opened before an upgrade can send its form.
+   */
+  tagLabelIds: z.array(id).max(30).optional(),
   name: z.string().trim().max(60).refine(noNul, NUL_MESSAGE).default(''),
   /** Honeypot: people never see it, bots fill it in. */
   website: z.string().max(200).optional(),

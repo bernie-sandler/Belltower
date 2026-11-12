@@ -60,6 +60,7 @@ export const BACKUP_TABLES = [
   'activity_revisions',
   'template_runs',
   'request_types',
+  'request_type_labels',
 ] as const;
 
 /**
@@ -75,6 +76,7 @@ const EXPORT_ORDER: Partial<Record<(typeof BACKUP_TABLES)[number], string>> = {
   card_labels: 'card_id, label_id',
   card_watchers: 'card_id, user_id',
   recurring_template_labels: 'template_id, label_id',
+  request_type_labels: 'request_type_id, label_id',
 };
 
 export interface BackupData {

@@ -1,5 +1,6 @@
 // Submit page request types: what a submitter picks first ("Plex", "Game servers"…), each with
-// its own questions, tag choices and title pattern. Edited on the Settings page.
+// its own questions, title pattern and the labels every ticket of that type gets. Edited on the
+// Settings page.
 
 import type { RequestFieldDef, RequestType, RequestTypeBody } from '@tt/shared';
 import { getSetting, setSetting, stmt } from '../db/connection';
@@ -12,23 +13,30 @@ interface Row {
   description: string;
   title_pattern: string;
   fields: string;
-  tag_label_ids: string;
-  type_label_id: number | null;
   position: number;
   enabled: 0 | 1;
 }
 
+// tag_label_ids and type_label_id (schema 5) are unused since schema 10: request_type_labels holds
+// a type's labels, and deleting a label removes it there.
+function labelIdsOf(ctx: Ctx, id: number): number[] {
+  return stmt(
+    ctx.db,
+    `SELECT t.label_id FROM request_type_labels t JOIN labels l ON l.id = t.label_id
+      WHERE t.request_type_id = ? ORDER BY l.position, l.id`,
+  )
+    .pluck()
+    .all(id) as number[];
+}
+
 function toType(ctx: Ctx, r: Row): RequestType {
-  // Labels can be deleted after a type was saved; only offer ones that still exist.
-  const labels = new Set(stmt(ctx.db, 'SELECT id FROM labels').pluck().all() as number[]);
   return {
     id: r.id,
     name: r.name,
     description: r.description,
     titlePattern: r.title_pattern,
     fields: JSON.parse(r.fields) as RequestFieldDef[],
-    tagLabelIds: (JSON.parse(r.tag_label_ids) as number[]).filter((id) => labels.has(id)),
-    typeLabelId: r.type_label_id,
+    labelIds: labelIdsOf(ctx, r.id),
     position: r.position,
     enabled: r.enabled === 1,
   };
@@ -44,59 +52,43 @@ export function getRequestType(ctx: Ctx, id: number): RequestType {
   return toType(ctx, row);
 }
 
-function checkLabels(ctx: Ctx, body: RequestTypeBody): void {
-  const ids = [...body.tagLabelIds, ...(body.typeLabelId !== null ? [body.typeLabelId] : [])];
-  for (const id of ids) {
-    if (!stmt(ctx.db, 'SELECT 1 FROM labels WHERE id = ?').get(id)) throw badRequest('validation', `Unknown label id ${id}`);
+function setLabels(ctx: Ctx, id: number, labelIds: number[]): void {
+  for (const l of labelIds) {
+    if (!stmt(ctx.db, 'SELECT 1 FROM labels WHERE id = ?').get(l)) throw badRequest('validation', `Unknown label id ${l}`);
   }
+  stmt(ctx.db, 'DELETE FROM request_type_labels WHERE request_type_id = ?').run(id);
+  const add = stmt(ctx.db, 'INSERT INTO request_type_labels (request_type_id, label_id) VALUES (?, ?)');
+  for (const l of new Set(labelIds)) add.run(id, l);
 }
 
 export function createRequestType(ctx: Ctx, body: RequestTypeBody): RequestType {
-  checkLabels(ctx, body);
   return tx(ctx, () => {
     const now = nowIso(ctx);
     const pos = stmt(ctx.db, 'SELECT coalesce(max(position), -1) + 1 FROM request_types').pluck().get() as number;
     const id = Number(
       stmt(
         ctx.db,
-        `INSERT INTO request_types (name, description, title_pattern, fields, tag_label_ids, type_label_id, position, enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        body.name,
-        body.description,
-        body.titlePattern,
-        JSON.stringify(body.fields),
-        JSON.stringify([...new Set(body.tagLabelIds)]),
-        body.typeLabelId,
-        pos,
-        body.enabled ? 1 : 0,
-        now,
-        now,
-      ).lastInsertRowid,
+        `INSERT INTO request_types (name, description, title_pattern, fields, position, enabled, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(body.name, body.description, body.titlePattern, JSON.stringify(body.fields), pos, body.enabled ? 1 : 0, now, now)
+        .lastInsertRowid,
     );
+    setLabels(ctx, id, body.labelIds ?? []);
     return getRequestType(ctx, id);
   });
 }
 
 export function updateRequestType(ctx: Ctx, id: number, body: RequestTypeBody): RequestType {
   getRequestType(ctx, id);
-  checkLabels(ctx, body);
-  stmt(
-    ctx.db,
-    `UPDATE request_types SET name = ?, description = ?, title_pattern = ?, fields = ?, tag_label_ids = ?, type_label_id = ?,
-       enabled = ?, updated_at = ? WHERE id = ?`,
-  ).run(
-    body.name,
-    body.description,
-    body.titlePattern,
-    JSON.stringify(body.fields),
-    JSON.stringify([...new Set(body.tagLabelIds)]),
-    body.typeLabelId,
-    body.enabled ? 1 : 0,
-    nowIso(ctx),
-    id,
-  );
-  return getRequestType(ctx, id);
+  return tx(ctx, () => {
+    stmt(
+      ctx.db,
+      `UPDATE request_types SET name = ?, description = ?, title_pattern = ?, fields = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+    ).run(body.name, body.description, body.titlePattern, JSON.stringify(body.fields), body.enabled ? 1 : 0, nowIso(ctx), id);
+    // Left out (an app tab opened before 1.6): keep the saved labels.
+    if (body.labelIds) setLabels(ctx, id, body.labelIds);
+    return getRequestType(ctx, id);
+  });
 }
 
 export function deleteRequestType(ctx: Ctx, id: number): void {
@@ -117,7 +109,7 @@ const TRIED: RequestFieldDef = { key: 'tried', label: 'What have you tried so fa
 const STARTED: RequestFieldDef = { key: 'started', label: 'When did it start?', help: '', kind: 'datetime', required: false, options: [] };
 
 /** Starting point, based on the owner's old Discord support templates. All editable in Settings. */
-const DEFAULT_TYPES: Omit<RequestTypeBody, 'tagLabelIds' | 'typeLabelId' | 'enabled'>[] = [
+const DEFAULT_TYPES: Omit<RequestTypeBody, 'labelIds' | 'enabled'>[] = [
   {
     name: 'General',
     description: 'A question, a request, or an idea',
@@ -181,7 +173,7 @@ export function seedRequestTypes(ctx: Ctx): boolean {
   if (getSetting(ctx.db, 'request_types_seeded')) return false;
   tx(ctx, () => {
     if ((stmt(ctx.db, 'SELECT count(*) FROM request_types').pluck().get() as number) === 0) {
-      for (const t of DEFAULT_TYPES) createRequestType(ctx, { ...t, tagLabelIds: [], typeLabelId: null, enabled: true });
+      for (const t of DEFAULT_TYPES) createRequestType(ctx, { ...t, labelIds: [], enabled: true });
     }
     setSetting(ctx.db, 'request_types_seeded', '1');
   });
