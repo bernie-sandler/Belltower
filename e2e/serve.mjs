@@ -12,6 +12,10 @@ process.env.HOST = '127.0.0.1';
 process.env.TZ = 'America/Chicago';
 process.env.NODE_ENV = 'production';
 process.env.LOG_LEVEL = 'warn';
+// The browsers connect from 127.0.0.1: trusting it lets a test give a visitor its own address
+// (X-Forwarded-For, see visitorContext in helpers.ts), so submit-page tests don't share one rate
+// limit. Browsers send no X-Forwarded-* headers of their own, so nothing else changes.
+process.env.TRUST_PROXY ??= '127.0.0.1';
 // APP_PASSWORD comes from playwright.config.ts (a test-only value).
 
 const cleanup = () => rmSync(dataDir, { recursive: true, force: true });
