@@ -5,6 +5,7 @@ import { useConfig, useTeams } from '../../api/config';
 import { useIsAdmin, useMe } from '../../api/me';
 import { useAiStatus } from '../../api/tickets';
 import { errorMessage } from '../../api/errors';
+import { useLiveRefresh } from '../../api/liveRefresh';
 import { backgroundOf } from '../../lib/navigation';
 import { setAppTimeZone } from '../../lib/time';
 import { Board } from '../board/Board';
@@ -35,6 +36,8 @@ const AccountPage = lazy(() => import('../account/AccountPage').then((m) => ({ d
  * (who you are, whether you're an admin) before showing any admin-only part.
  */
 export function AppShell() {
+  // The board (and the rest that shows tickets) refetches in the background.
+  useLiveRefresh();
   const config = useConfig();
   const me = useMe();
   const [labelsOpen, setLabelsOpen] = useState(false);

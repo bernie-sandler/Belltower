@@ -5,6 +5,7 @@ import { toast } from '../lib/toast';
 import { ApiError, setUnauthenticatedHandler } from './client';
 import { errorMessage } from './errors';
 import { qk } from './keys';
+import { endQuietRefetch, isQuietRefetch } from './liveRefresh';
 
 declare module '@tanstack/react-query' {
   interface Register {
@@ -31,10 +32,12 @@ export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (err, query) => {
       refreshRoleOnForbidden(err);
-      if (isUnauthenticated(err) || query.meta?.errorToast === false) return;
+      // A live refresh is a poll: the next one tries again, so its failure doesn't toast.
+      if (isUnauthenticated(err) || query.meta?.errorToast === false || isQuietRefetch(query)) return;
       // First-load failures are shown inline by the page; only background refetch failures toast.
       if (query.state.data !== undefined) toast(errorMessage(err), { kind: 'error' });
     },
+    onSettled: (_data, _err, query) => endQuietRefetch(query),
   }),
   mutationCache: new MutationCache({
     onError: (err, _vars, _ctx, mutation) => {
