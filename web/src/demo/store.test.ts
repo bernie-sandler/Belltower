@@ -11,7 +11,10 @@ import {
   type MeResponse,
   type NotificationsResponse,
   type PersonalNotifySettings,
+  type PublicSubmitConfig,
+  type RequestType,
   type SettingsResponse,
+  type SubmitResult,
   type UserInfo,
 } from '@tt/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -394,6 +397,44 @@ describe('assignees', () => {
     expect([refused.status, (refused.body as { error: string }).error]).toEqual([400, 'assignee_disabled']);
     expect((call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: 999, expectedVersion: taken.version }).body as { error: string }).error).toBe('invalid_assignee');
     expect(ok<CardDetail>(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: null, expectedVersion: taken.version })).assigneeId).toBeNull();
+  });
+});
+
+describe('request type labels', () => {
+  it('gives every submitted ticket its type’s labels, ignores labels the submitter sends, and drops a deleted label', () => {
+    const store = makeStore();
+    const label = (name: string) => board(store).labels.find((l) => l.name === name)!.id;
+    const [plex, network, docker] = [label('Plex'), label('Network'), label('Docker')];
+    const seeded = ok<RequestType[]>(call(store, 'GET', '/api/request-types'));
+    expect(seeded.find((t) => t.name === 'Plex')!.labelIds).toEqual([plex]);
+    expect(seeded.find((t) => t.name === 'General')!.labelIds).toEqual([]);
+
+    // Duplicates collapse and the list comes back in label order; an unknown id is refused.
+    const type = ok<RequestType>(call(store, 'POST', '/api/request-types', { name: 'Wi-Fi', labelIds: [docker, network, docker] }));
+    expect(type.labelIds).toEqual([network, docker]);
+    // An update without labelIds (a tab opened before 1.6) keeps them.
+    expect(ok<RequestType>(call(store, 'PUT', `/api/request-types/${type.id}`, { name: 'Wi-Fi', typeLabelId: null })).labelIds).toEqual([network, docker]);
+    expect(call(store, 'POST', '/api/request-types', { name: 'Bad', labelIds: [9999] })).toMatchObject({
+      status: 400,
+      body: { error: 'validation', message: 'Unknown label id 9999' },
+    });
+
+    // The submit page sees none of the labels.
+    const key = ok<SettingsResponse>(call(store, 'GET', '/api/settings')).submit.key!;
+    const config = ok<PublicSubmitConfig>(call(store, 'GET', `/api/public/submit/${key}`));
+    for (const t of config.types) expect(Object.keys(t).sort()).toEqual(['description', 'fields', 'id', 'name', 'titlePattern']);
+
+    // An older page that still sends tagLabelIds gets the type's labels, nothing else.
+    const form = new FormData();
+    form.set('data', JSON.stringify({ typeId: type.id, summary: 'Wi-Fi drops', description: 'Every evening', tagLabelIds: [plex] }));
+    const sent = call(store, 'POST', `/api/public/submit/${key}`, undefined, form);
+    expect(sent.status, JSON.stringify(sent.body)).toBe(201);
+    const card = board(store).cards.find((c) => c.ticketNo === (sent.body as SubmitResult).ticketNo)!;
+    expect(card.labelIds).toEqual([network, docker]);
+
+    expect(call(store, 'DELETE', `/api/labels/${docker}`).status).toBe(204);
+    expect(ok<RequestType[]>(call(store, 'GET', '/api/request-types')).find((t) => t.id === type.id)!.labelIds).toEqual([network]);
+    expect(store.snapshot().requestTypes.find((t) => t.id === type.id)!.labelIds).toEqual([network]);
   });
 });
 

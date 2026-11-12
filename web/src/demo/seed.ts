@@ -134,7 +134,7 @@ const REQUEST_TYPES = [
     name: 'Plex',
     description: 'Playback, missing episodes, subtitles, audio…',
     titlePattern: 'Plex – {title} – {summary}',
-    typeLabel: 'Plex',
+    labels: ['Plex'],
     fields: [
       { key: 'title', label: 'Movie or TV show', help: '', kind: 'short', required: true, options: [] },
       { key: 'media', label: 'Media type', help: '', kind: 'choice', required: true, options: ['Movie', 'TV show'] },
@@ -558,8 +558,7 @@ export function seedDemo(now: Date, tz: string, opts: SeedOptions = {}): DemoSta
       description: t.description,
       titlePattern: t.titlePattern,
       fields: t.fields.map((f) => ({ ...f, options: [...f.options] })),
-      tagLabelIds: [],
-      typeLabelId: 'typeLabel' in t ? labelId(t.typeLabel) : null,
+      labelIds: 'labels' in t ? t.labels.map(labelId) : [],
       enabled: true,
     });
   }

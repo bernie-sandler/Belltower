@@ -22,10 +22,10 @@ export function checkSubmitKey(ctx: Ctx, key: string): void {
 export function publicSubmitConfig(ctx: Ctx, key: string): PublicSubmitConfig {
   checkSubmitKey(ctx, key);
   const s = ctx.s.settings.submit;
-  const labels = new Map(ctx.s.labels.map((l) => [l.id, { id: l.id, name: l.name, color: l.color }]));
   return {
     pageTitle: s.pageTitle,
     intro: s.intro,
+    // None of your labels: submitters don't pick them, the type adds them.
     types: listRequestTypes(ctx)
       .filter((t) => t.enabled)
       .map((t) => ({
@@ -34,7 +34,6 @@ export function publicSubmitConfig(ctx: Ctx, key: string): PublicSubmitConfig {
         description: t.description,
         titlePattern: t.titlePattern,
         fields: t.fields,
-        tags: t.tagLabelIds.map((id) => labels.get(id)).filter((l) => l !== undefined),
       })),
     maxFiles: LIMITS.submitFiles,
     maxUploadBytes: MAX_UPLOAD_BYTES,
@@ -132,7 +131,7 @@ export function submitTicket(ctx: Ctx, key: string, body: SubmitBody): SubmitRes
   if (body.website) return { ticketNo: null, statusPath: null };
   const type = listRequestTypes(ctx).find((t) => t.id === body.typeId && t.enabled);
   if (!type) throw badRequest('validation', 'Pick what you need help with');
-  const tags = body.tagLabelIds.filter((id) => type.tagLabelIds.includes(id));
+  // body.tagLabelIds (from a submit page opened before the upgrade) is ignored: the type decides the labels.
   const { title, description } = buildSubmission(type, body);
   const { columnId } = ctx.s.settings.submit;
   const columnExists = columnId !== null && ctx.s.columns.some((c) => c.id === columnId);
@@ -142,7 +141,7 @@ export function submitTicket(ctx: Ctx, key: string, body: SubmitBody): SubmitRes
       title,
       description,
       columnId: columnExists ? columnId : getRoleColumn(ctx, 'triage').id,
-      labelIds: [...new Set([...(type.typeLabelId !== null ? [type.typeLabelId] : []), ...tags])],
+      labelIds: type.labelIds,
     },
     { source: 'api', sourceRef: 'submit', via: `submit page${body.name ? ` (${body.name})` : ''}`, external: true, submitPage: true },
   );

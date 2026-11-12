@@ -17,6 +17,7 @@ import {
 import { getBlockedColumnId } from './columns';
 import { byPosition, nextId, nowIso, type Ctx, type RequestTypeRow } from './db';
 import { badRequest, notFound } from './errors';
+import { labelIdsOf } from './labels';
 
 export function getResolutionReasons(ctx: Ctx): string[] {
   const list = ctx.s.settings.resolutionReasons;
@@ -121,15 +122,13 @@ export function settingsResponse(ctx: Ctx): SettingsResponse {
 // ---- request types ----
 
 function toType(ctx: Ctx, r: RequestTypeRow): RequestType {
-  const labels = new Set(ctx.s.labels.map((l) => l.id));
   return {
     id: r.id,
     name: r.name,
     description: r.description,
     titlePattern: r.titlePattern,
     fields: structuredClone(r.fields),
-    tagLabelIds: r.tagLabelIds.filter((id) => labels.has(id)),
-    typeLabelId: r.typeLabelId,
+    labelIds: labelIdsOf(ctx, r.labelIds),
     position: r.position,
     enabled: r.enabled,
   };
@@ -145,14 +144,16 @@ function typeRow(ctx: Ctx, id: number): RequestTypeRow {
   return row;
 }
 
-function checkLabels(ctx: Ctx, body: RequestTypeBody): void {
-  for (const id of [...body.tagLabelIds, ...(body.typeLabelId !== null ? [body.typeLabelId] : [])]) {
+/** The label ids, checked to exist, without duplicates. */
+function checkLabels(ctx: Ctx, labelIds: number[]): number[] {
+  for (const id of labelIds) {
     if (!ctx.s.labels.some((l) => l.id === id)) throw badRequest('validation', `Unknown label id ${id}`);
   }
+  return [...new Set(labelIds)];
 }
 
 export function createRequestType(ctx: Ctx, body: RequestTypeBody): RequestType {
-  checkLabels(ctx, body);
+  const labelIds = checkLabels(ctx, body.labelIds ?? []);
   const now = nowIso(ctx);
   const row: RequestTypeRow = {
     id: nextId(ctx, 'requestTypes'),
@@ -160,8 +161,7 @@ export function createRequestType(ctx: Ctx, body: RequestTypeBody): RequestType 
     description: body.description,
     titlePattern: body.titlePattern,
     fields: body.fields,
-    tagLabelIds: [...new Set(body.tagLabelIds)],
-    typeLabelId: body.typeLabelId,
+    labelIds,
     position: Math.max(-1, ...ctx.s.requestTypes.map((t) => t.position)) + 1,
     enabled: body.enabled,
     createdAt: now,
@@ -173,14 +173,14 @@ export function createRequestType(ctx: Ctx, body: RequestTypeBody): RequestType 
 
 export function updateRequestType(ctx: Ctx, id: number, body: RequestTypeBody): RequestType {
   const row = typeRow(ctx, id);
-  checkLabels(ctx, body);
+  // Left out (an app tab opened before 1.6): keep the saved labels.
+  const labelIds = body.labelIds ? checkLabels(ctx, body.labelIds) : row.labelIds;
   Object.assign(row, {
     name: body.name,
     description: body.description,
     titlePattern: body.titlePattern,
     fields: body.fields,
-    tagLabelIds: [...new Set(body.tagLabelIds)],
-    typeLabelId: body.typeLabelId,
+    labelIds,
     enabled: body.enabled,
     updatedAt: nowIso(ctx),
   });
