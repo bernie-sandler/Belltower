@@ -21,6 +21,7 @@ import { itemStateIn, nextState, withItemState } from '../lib/checkState';
 import { applyCardDetail } from './cards';
 import { api, ApiError, request } from './client';
 import { qk } from './keys';
+import { holdLiveRefresh } from './liveRefresh';
 
 function invalidateActivity(qc: QueryClient, cardId: number): void {
   void qc.invalidateQueries({ queryKey: qk.activity(cardId) });
@@ -65,6 +66,8 @@ interface Burst {
   /** The mark the item had before the burst's first click. */
   from: ChecklistItemState;
   timer: ReturnType<typeof setTimeout>;
+  /** Lets live refreshes run again: until the save starts, one would bring the old mark back. */
+  release: () => void;
 }
 
 export function useChecklistActions(cardId: number) {
@@ -97,6 +100,7 @@ export function useChecklistActions(cardId: number) {
   const forget = (ids: number[]) => {
     for (const id of ids) {
       clearTimeout(bursts.get(id)?.timer);
+      bursts.get(id)?.release();
       bursts.delete(id);
       marks.delete(id);
       unsure.delete(id);
@@ -157,6 +161,8 @@ export function useChecklistActions(cardId: number) {
     if (!burst) return;
     clearTimeout(burst.timer);
     bursts.delete(id);
+    // The save below is a pending mutation, which keeps live refreshes off from here on.
+    burst.release();
     const m = marks.get(id);
     if (!m) return;
     // Gone (deleted, maybe elsewhere) or back where it started: nothing to save.
@@ -175,7 +181,11 @@ export function useChecklistActions(cardId: number) {
     m.state = state;
     if (!burst) m.pending++;
     marks.set(item.id, m);
-    bursts.set(item.id, { from: burst?.from ?? current, timer: setTimeout(() => flush(item.id), MARK_SAVE_DELAY_MS) });
+    bursts.set(item.id, {
+      from: burst?.from ?? current,
+      timer: setTimeout(() => flush(item.id), MARK_SAVE_DELAY_MS),
+      release: burst?.release ?? holdLiveRefresh(),
+    });
     return state;
   };
 

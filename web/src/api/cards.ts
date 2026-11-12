@@ -152,6 +152,11 @@ export function useUpdateCard(id: number) {
     onMutate: (patch) => {
       const fields = optimisticFields(patch);
       if (Object.keys(fields).length === 0) return;
+      // A refetch already on its way (a live refresh) would land on top of these values, and a
+      // quick second change (another label) would start from what it brought back.
+      for (const queryKey of [qk.card(id), qk.board]) {
+        if (qc.getQueryData(queryKey) !== undefined) void qc.cancelQueries({ queryKey });
+      }
       qc.setQueryData<CardDetail>(qk.card(id), (c) => (c ? { ...c, ...fields } : c));
       setBoard(qc, (b) => ({ ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, ...fields } : c)) }));
     },
