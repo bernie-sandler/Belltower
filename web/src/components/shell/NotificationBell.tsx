@@ -1,7 +1,8 @@
 // The bell in the top bar: how many notifications you haven't read, and the list. Opening one
 // opens its card and marks it read; "Mark all read" clears the count. It polls every 30 seconds,
-// background tabs included, and when the count goes up (never for what was already there when the
-// page loaded) it plays the sound chosen for this device and tells screen readers what's new.
+// background tabs included (a visible tab's live refresh asks more often), and when the count goes
+// up (never for what was already there when the page loaded) it tells screen readers what's new,
+// refetches the board, and then plays the sound chosen for this device.
 
 import type { NotificationItem, NotificationsResponse } from '@tt/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,6 +10,7 @@ import { Bell, CheckCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useConfig, useTeams } from '../../api/config';
 import { qk } from '../../api/keys';
+import { refreshForNews } from '../../api/liveRefresh';
 import { useMarkNotificationsRead, useNotifications } from '../../api/notifications';
 import { cls } from '../../lib/cls';
 import { useOpenCard } from '../../lib/navigation';
@@ -19,16 +21,26 @@ import { Popover } from '../common/Popover';
 /** Tabs wait up to this long before claiming a new notification's sound, so two tabs polling at once rarely both play. */
 export const CLAIM_JITTER_MS = 300;
 
+/** The longest the sound waits for the board to refetch, so a slow or failing refetch never swallows it. */
+export const CHIME_WAIT_MS = 2_000;
+
 /**
- * When the unread count rises above the last one seen (and there's a newer notification): plays
- * the sound in one tab only, and calls `onNew` with the new unread items. The first answer only
+ * When the unread count rises above the last one seen (and there's a newer notification): calls
+ * `onNew` with the new unread items, runs `refresh` (the board's refetch), and once that has
+ * landed, or after CHIME_WAIT_MS at most, plays the sound in one tab only. The first answer only
  * sets the baseline, and so does the first after the list was reset or Teams was turned on or off,
  * here or anywhere else (that changes what the list holds, which isn't news).
  */
-export function useRingOnNew(data: NotificationsResponse | undefined, onNew?: (fresh: NotificationItem[]) => void): void {
+export function useRingOnNew(
+  data: NotificationsResponse | undefined,
+  onNew?: (fresh: NotificationItem[]) => void,
+  refresh?: () => Promise<unknown>,
+): void {
   const baseline = useRef<{ unread: number; latestId: number; teams: boolean } | null>(null);
   const onNewRef = useRef(onNew);
   onNewRef.current = onNew;
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
   useEffect(() => {
     if (!data) {
       baseline.current = null;
@@ -39,11 +51,30 @@ export function useRingOnNew(data: NotificationsResponse | undefined, onNew?: (f
     if (!before || before.teams !== data.teams || data.unread <= before.unread || data.latestId <= before.latestId) return;
     onNewRef.current?.(data.items.filter((n) => n.id > before.latestId && !n.readAt));
     const id = data.latestId;
-    // Not cancelled when the data changes meanwhile (marking something read shouldn't swallow it).
-    setTimeout(() => {
-      // A tab that can't make a sound (audio not unlocked yet) leaves the claim to one that can.
-      if (canPlay() && claimNotification(id)) playSound();
-    }, Math.random() * CLAIM_JITTER_MS);
+    // Nothing here is cancelled when the data changes meanwhile (marking something read shouldn't swallow it).
+    const ring = () =>
+      setTimeout(() => {
+        // A tab that can't make a sound (audio not unlocked yet) leaves the claim to one that can.
+        if (canPlay() && claimNotification(id)) playSound();
+      }, Math.random() * CLAIM_JITTER_MS);
+    const run = refreshRef.current;
+    if (!run) {
+      ring();
+      return;
+    }
+    // The new ticket should be on the board when the sound plays.
+    let rung = false;
+    const once = () => {
+      if (rung) return;
+      rung = true;
+      clearTimeout(cap);
+      ring();
+    };
+    const cap = setTimeout(once, CHIME_WAIT_MS);
+    void Promise.resolve()
+      .then(run)
+      .catch(() => undefined)
+      .then(once);
   }, [data]);
 }
 
@@ -70,10 +101,15 @@ function useFollowTeams(data: NotificationsResponse | undefined): void {
 }
 
 export function NotificationBell() {
+  const qc = useQueryClient();
   const { data } = useNotifications();
   useFollowTeams(data);
   const [announcement, setAnnouncement] = useState('');
-  useRingOnNew(data, (fresh) => setAnnouncement(announce(fresh, data?.unread ?? fresh.length)));
+  useRingOnNew(
+    data,
+    (fresh) => setAnnouncement(announce(fresh, data?.unread ?? fresh.length)),
+    () => refreshForNews(qc),
+  );
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const unread = data?.unread ?? 0;
 
