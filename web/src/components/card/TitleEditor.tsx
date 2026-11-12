@@ -1,7 +1,8 @@
 import { LIMITS, type CardDetail } from '@tt/shared';
 import { useEffect, useRef, useState } from 'react';
-import { useUpdateCard } from '../../api/cards';
+import { CONFLICT_MESSAGE, useUpdateCard } from '../../api/cards';
 import { conflictCard } from '../../api/errors';
+import { toast } from '../../lib/toast';
 import { AutoGrowTextarea } from '../common/AutoGrowTextarea';
 import { TicketTitle } from '../common/TicketTitle';
 
@@ -19,12 +20,16 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
   const [draft, setDraft] = useState(card.title);
   // Esc cancels; a blur fired while the textarea unmounts must not save the cancelled text.
   const editingRef = useRef(false);
+  // The saved title the draft started from: if a refresh brings in another one meanwhile, Save
+  // says so first instead of quietly replacing it (the request would carry the newer version).
+  const base = useRef(card.title);
 
   const dirty = editing && draft.trim() !== card.title;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
-  function open(text: string) {
+  function open(text: string, from: string) {
     setDraft(text);
+    base.current = from;
     editingRef.current = true;
     setEditing(true);
   }
@@ -36,7 +41,7 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
 
   function start() {
     if (readOnly) return;
-    open(card.title);
+    open(card.title, card.title);
   }
 
   function save() {
@@ -44,12 +49,19 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
     const title = draft.replace(/\s+/g, ' ').trim();
     stop();
     if (!title || title === card.title) return;
+    if (card.title !== base.current) {
+      // Changed on another device while you typed: keep your text; saving again replaces theirs.
+      toast(CONFLICT_MESSAGE, { kind: 'warning' });
+      open(title, card.title);
+      return;
+    }
     update.mutate(
       { title },
       {
         onError: (err) => {
           // Someone else changed the card: reopen with the user's text so it isn't lost.
-          if (conflictCard(err)) open(title);
+          const current = conflictCard(err);
+          if (current) open(title, current.title);
         },
       },
     );
