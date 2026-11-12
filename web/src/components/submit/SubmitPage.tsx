@@ -1,6 +1,6 @@
 // The public submit page (/submit/<key>): pick what you need help with, answer its questions,
-// file a ticket. No sign-in; shows nothing from the board except the request types and their tags,
-// and afterwards a link to the new ticket's status page (StatusPage.tsx).
+// file a ticket. No sign-in; shows nothing from the board except the request types, and afterwards
+// a link to the new ticket's status page (StatusPage.tsx). The type's labels are added by the server.
 
 import { useQuery } from '@tanstack/react-query';
 import { CSRF_HEADER, CSRF_VALUE, LIMITS, type PublicSubmitConfig, type RequestFieldDef, type SubmitResult } from '@tt/shared';
@@ -14,7 +14,6 @@ import { cls } from '../../lib/cls';
 import { formatBytes } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { AuthLayout } from '../auth/AuthLayout';
-import { LabelChip } from '../labels/LabelChip';
 import { Spinner } from '../common/Status';
 
 type Answers = Record<string, string | string[] | boolean>;
@@ -75,7 +74,6 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
   const [answers, setAnswers] = useState<Answers>({});
-  const [tags, setTags] = useState<number[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState('');
   const [website, setWebsite] = useState('');
@@ -88,7 +86,6 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
     setSummary('');
     setDescription('');
     setAnswers({});
-    setTags([]);
     setFiles([]);
     setError(null);
     setDone(null);
@@ -119,7 +116,7 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
     try {
       const result = await send(
         submitKey,
-        { typeId: type.id, summary: summary.trim(), description: description.trim(), answers, tagLabelIds: tags, name: name.trim(), website },
+        { typeId: type.id, summary: summary.trim(), description: description.trim(), answers, name: name.trim(), website },
         files,
       );
       setDone(result);
@@ -171,7 +168,6 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
                   onClick={() => {
                     setTypeId(t.id);
                     setAnswers({});
-                    setTags([]);
                   }}
                 >
                   <strong>{t.name}</strong>
@@ -195,29 +191,6 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
               {type.fields.map((f) => (
                 <Question key={`${type.id}-${f.key}`} field={f} value={answers[f.key]} onChange={(v) => setAnswers({ ...answers, [f.key]: v })} />
               ))}
-              {type.tags.length > 0 && (
-                <fieldset className="ticket-fieldset">
-                  <legend className="field-label">Tags</legend>
-                  <div className="ticket-labels">
-                    {type.tags.map((l) => {
-                      const on = tags.includes(l.id);
-                      return (
-                        <button
-                          key={l.id}
-                          type="button"
-                          role="checkbox"
-                          aria-checked={on}
-                          aria-label={l.name}
-                          className="ticket-label-toggle"
-                          onClick={() => setTags(on ? tags.filter((x) => x !== l.id) : [...tags, l.id])}
-                        >
-                          <LabelChip label={l} />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              )}
               <div className="field">
                 <span className="field-label" id={`${ids}-shots`}>
                   Screenshots (up to {config.maxFiles})

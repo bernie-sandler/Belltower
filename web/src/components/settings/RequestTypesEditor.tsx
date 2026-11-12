@@ -1,5 +1,6 @@
-// Settings → Submit page → Request types: what submitters pick first, and the questions each type
-// asks. Answers are added below the submitter's description; the title follows the pattern.
+// Settings → Submit page → Request types: what submitters pick first, the questions each type asks
+// and the labels its tickets get. Answers are added below the submitter's description; the title
+// follows the pattern.
 
 import {
   REQUEST_FIELD_KINDS,
@@ -67,6 +68,15 @@ export function RequestTypesEditor() {
               <span className="muted small">
                 {t.fields.length} question{t.fields.length === 1 ? '' : 's'} · title “{t.titlePattern}”
               </span>
+              {t.labelIds.length > 0 && (
+                <span className="ticket-labels">
+                  {labels
+                    .filter((l) => t.labelIds.includes(l.id))
+                    .map((l) => (
+                      <LabelChip key={l.id} label={l} size="sm" />
+                    ))}
+                </span>
+              )}
             </span>
             <button type="button" className="icon-btn" aria-label={`Move “${t.name}” up`} disabled={i === 0} onClick={() => move(i, -1)}>
               <ArrowUp size={16} aria-hidden />
@@ -114,8 +124,7 @@ function toBody(t: Omit<RequestType, 'id' | 'position'>): RequestTypeBody {
     description: t.description,
     titlePattern: t.titlePattern,
     fields: t.fields,
-    tagLabelIds: t.tagLabelIds,
-    typeLabelId: t.typeLabelId,
+    labelIds: t.labelIds,
     enabled: t.enabled,
   };
 }
@@ -140,8 +149,7 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
   const [description, setDescription] = useState(type?.description ?? '');
   const [titlePattern, setTitlePattern] = useState(type?.titlePattern ?? '{summary}');
   const [fields, setFields] = useState<RequestFieldDef[]>(type?.fields ?? []);
-  const [tagLabelIds, setTagLabelIds] = useState<number[]>(type?.tagLabelIds ?? []);
-  const [typeLabelId, setTypeLabelId] = useState<number | null>(type?.typeLabelId ?? null);
+  const [labelIds, setLabelIds] = useState<number[]>(type?.labelIds ?? []);
   const [error, setError] = useState<string | null>(null);
   const busy = create.isPending || update.isPending;
 
@@ -167,7 +175,7 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
 
   function save() {
     setError(null);
-    const body = toBody({ name, description, titlePattern, fields, tagLabelIds, typeLabelId, enabled: type?.enabled ?? true });
+    const body = toBody({ name, description, titlePattern, fields, labelIds, enabled: type?.enabled ?? true });
     const done = {
       onSuccess: () => {
         toast(type ? 'Request type saved' : 'Request type added', { kind: 'success', durationMs: 2000 });
@@ -210,13 +218,14 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
         </label>
 
         <fieldset className="ticket-fieldset">
-          <legend className="field-inline-label">Tags submitters can pick</legend>
+          <legend className="field-inline-label">Labels added to every ticket</legend>
+          <p className="muted small">Every ticket filed with this type gets these labels. Submitters don’t pick labels.</p>
           {labels.length === 0 ? (
             <p className="muted small">No labels yet. Add some under Menu → Manage labels.</p>
           ) : (
             <div className="ticket-labels">
               {labels.map((l) => {
-                const on = tagLabelIds.includes(l.id);
+                const on = labelIds.includes(l.id);
                 return (
                   <button
                     key={l.id}
@@ -225,7 +234,7 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
                     aria-checked={on}
                     aria-label={l.name}
                     className="ticket-label-toggle"
-                    onClick={() => setTagLabelIds(on ? tagLabelIds.filter((x) => x !== l.id) : [...tagLabelIds, l.id])}
+                    onClick={() => setLabelIds(on ? labelIds.filter((x) => x !== l.id) : [...labelIds, l.id])}
                   >
                     <LabelChip label={l} />
                   </button>
@@ -234,17 +243,6 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
             </div>
           )}
         </fieldset>
-        <label className="field-inline settings-inline">
-          <span className="field-inline-label">Always add the label</span>
-          <select className="input select" value={typeLabelId ?? ''} onChange={(e) => setTypeLabelId(e.target.value ? Number(e.target.value) : null)}>
-            <option value="">None</option>
-            {labels.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-        </label>
 
         <fieldset className="ticket-fieldset">
           <legend className="field-inline-label">

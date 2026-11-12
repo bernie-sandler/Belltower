@@ -46,7 +46,78 @@ test('someone without the password files a ticket through the submit page @mobil
   await stranger.close();
 });
 
-test('Settings: create an API token and use it like a monitor would', async ({ page, api: _signedIn, request }) => {
+test('Settings: a request type’s labels go on every ticket filed with it, and submitters don’t pick labels', async ({ page, api, browser }) => {
+  const s = await api.call<{ submit: { key: string } }>('PUT', '/api/settings/submit', {
+    enabled: true,
+    columnId: null,
+    pageTitle: 'Report a problem',
+    intro: 'Tell us what’s wrong.',
+  });
+  const network = await api.call<{ id: number; name: string }>('POST', '/api/labels', { name: unique('Network'), color: '#4bce97' });
+  const family = await api.call<{ id: number; name: string }>('POST', '/api/labels', { name: unique('From family'), color: '#94c748' });
+  const typeName = unique('Printer');
+  let typeId: number | undefined;
+  try {
+    // The admin picks the type's labels in Settings → Submit page.
+    await page.goto('/settings');
+    await page.getByRole('button', { name: 'Add a request type' }).click();
+    const editor = page.getByRole('dialog', { name: 'New request type' });
+    await editor.getByLabel('Name', { exact: true }).fill(typeName);
+    await editor.getByLabel('Ticket title').fill('{summary}');
+    const labels = editor.getByRole('group', { name: 'Labels added to every ticket' });
+    await labels.getByRole('checkbox', { name: network.name, exact: true }).click();
+    await labels.getByRole('checkbox', { name: family.name, exact: true }).click();
+    await editor.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+
+    const saved = (await api.call<{ id: number; name: string; labelIds: number[] }[]>('GET', '/api/request-types')).find((t) => t.name === typeName);
+    expect(saved).toBeTruthy();
+    typeId = saved!.id;
+    expect([...saved!.labelIds].sort((a, b) => a - b)).toEqual([network.id, family.id].sort((a, b) => a - b));
+
+    // Reopened, the editor shows both labels ticked.
+    await page.getByRole('button', { name: `Edit “${typeName}”` }).click();
+    const again = page.getByRole('dialog', { name: `Edit “${typeName}”` });
+    await expect(again.getByRole('checkbox', { name: network.name, exact: true })).toBeChecked();
+    await expect(again.getByRole('checkbox', { name: family.name, exact: true })).toBeChecked();
+    await again.getByRole('button', { name: 'Cancel' }).click();
+
+    // A visitor files a ticket of that type, without seeing any labels.
+    const summary = unique('paper jam');
+    const visitor = await browser.newContext();
+    try {
+      const v = await visitor.newPage();
+      const config = await (await v.request.get(`/api/public/submit/${s.submit.key}`)).json();
+      const offered = (config as { types: Record<string, unknown>[] }).types.find((t) => t.name === typeName);
+      expect(offered).toBeTruthy();
+      expect(offered).not.toHaveProperty('labelIds');
+      expect(offered).not.toHaveProperty('tags');
+
+      await v.goto(`/submit/${s.submit.key}`);
+      await v.getByRole('radio', { name: typeName }).click();
+      await v.getByLabel('Title *').fill(summary);
+      await expect(v.getByRole('group', { name: 'Tags' })).toHaveCount(0);
+      await expect(v.getByRole('checkbox', { name: network.name })).toHaveCount(0);
+      await v.getByLabel('What’s wrong? *').fill('Jams on every page.');
+      await v.getByRole('button', { name: 'Send' }).click();
+      await expect(v.getByRole('heading', { name: 'Thanks!' })).toBeVisible();
+    } finally {
+      await visitor.close();
+    }
+
+    const card = (await api.board()).cards.find((c) => c.title === summary);
+    expect(card).toBeTruthy();
+    const detail = await api.call<{ labelIds: number[] }>('GET', `/api/cards/${card!.id}`);
+    expect([...detail.labelIds].sort((a, b) => a - b)).toEqual([network.id, family.id].sort((a, b) => a - b));
+  } finally {
+    // Later specs share the submit page and the label list.
+    if (typeId !== undefined) await api.call('DELETE', `/api/request-types/${typeId}`);
+    await api.call('DELETE', `/api/labels/${network.id}`);
+    await api.call('DELETE', `/api/labels/${family.id}`);
+  }
+});
+
+test('Settings: create an API token and use it like a monitor would',async ({ page, api: _signedIn, request }) => {
   await page.goto('/settings');
   await page.getByLabel('New token for').fill(unique('Monitor'));
   await page.getByRole('button', { name: 'Create token' }).click();
