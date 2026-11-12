@@ -117,7 +117,7 @@ test('Settings: a request type’s labels go on every ticket filed with it, and 
   }
 });
 
-test('Settings: create an API token and use it like a monitor would',async ({ page, api: _signedIn, request }) => {
+test('Settings: create an API token and use it like a monitor would', async ({ page, api: _signedIn, request }) => {
   await page.goto('/settings');
   await page.getByLabel('New token for').fill(unique('Monitor'));
   await page.getByRole('button', { name: 'Create token' }).click();
