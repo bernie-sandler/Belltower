@@ -52,12 +52,20 @@ export function isRestricted(ctx: Ctx): boolean {
  * shifting the positional parameters around it; prepared statements are then cached per person.
  */
 export function visibleSql(ctx: Ctx, alias = 'c'): string {
+  return ctx.scope ? restrictedVisibleSql(ctx.scope.userId, alias) : visibleAlias(alias);
+}
+
+const visibleAlias = (alias: string) => {
   if (!ALIAS.test(alias)) throw new Error(`visibleSql: bad alias ${alias}`);
-  const scope = ctx.scope;
-  if (!scope) return '1';
-  if (!Number.isSafeInteger(scope.userId)) throw new Error('visibleSql: bad user id');
+  return '1';
+};
+
+/** visibleSql for a tag-restricted person `userId` (whoever is acting). */
+export function restrictedVisibleSql(userId: number, alias = 'c'): string {
+  visibleAlias(alias);
+  if (!Number.isSafeInteger(userId)) throw new Error('visibleSql: bad user id');
   return `EXISTS (SELECT 1 FROM card_labels scl JOIN user_labels sul ON sul.label_id = scl.label_id
-                   WHERE scl.card_id = ${alias}.id AND sul.user_id = ${scope.userId})`;
+                   WHERE scl.card_id = ${alias}.id AND sul.user_id = ${userId})`;
 }
 
 /** Whether `ctx` may see card `cardId` (false for a card that doesn't exist). */

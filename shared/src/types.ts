@@ -104,9 +104,14 @@ export interface UserInfo extends UserRef {
   /**
    * A tag-restricted member sees only tickets carrying at least one of these tags (label ids, in
    * tag order); untagged tickets are hidden from them. Empty = sees nothing. Null = not restricted
-   * (always null for admins and the owner).
+   * (always null for admins and the owner). Only filled in for admins and on your own entry; null otherwise.
    */
   tagScope: number[] | null;
+}
+
+/** PATCH /api/users/:id: the person, and how many cards they were taken off (narrowed tags hide them). */
+export interface UpdateUserResponse extends UserInfo {
+  unassigned: number;
 }
 
 /** GET /api/me: the signed-in person. */

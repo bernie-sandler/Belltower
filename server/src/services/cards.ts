@@ -19,7 +19,7 @@ import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
 import { isWatching, notifyAssigned, notifyMoved, notifyNewUnassigned, notifySubmitted, watchOwnNewCard } from './notifications';
 import { reindexCard } from './search';
-import { assertUnrestricted, userCanSeeCard, visibleIds, visibleOrders, visibleSql } from './scope';
+import { assertUnrestricted, restrictedVisibleSql, userCanSeeCard, userTagScope, visibleIds, visibleOrders, visibleSql } from './scope';
 import { findUser, type UserRow } from './users';
 import { localDateOf } from '../lib/localdate';
 import { getGeneralSettings, getResolutionReasons } from './settings';
@@ -194,6 +194,26 @@ function assertAssigneeSees(ctx: Ctx, user: UserRow, cardId: number): void {
   if (!userCanSeeCard(ctx, user.id, cardId)) {
     throw badRequest('assignee_cant_see', `${user.display_name} can’t see this ticket: it has none of their tags`);
   }
+}
+
+/**
+ * After someone's tags were narrowed (or set): takes them off every card (not in the Trash) they
+ * can no longer see, logging each as unassigned. Inside the caller's transaction. Returns how many.
+ */
+export function unassignHiddenCards(ctx: Ctx, userId: number): number {
+  if (userTagScope(ctx, userId) === null) return 0;
+  const ids = stmt(
+    ctx.db,
+    `SELECT c.id FROM cards c WHERE c.assignee_id = ? AND c.deleted_at IS NULL AND NOT ${restrictedVisibleSql(userId)} ORDER BY c.id`,
+  )
+    .pluck()
+    .all(userId) as number[];
+  const now = nowIso(ctx);
+  for (const id of ids) {
+    stmt(ctx.db, 'UPDATE cards SET assignee_id = NULL, version = version + 1, updated_at = ? WHERE id = ?').run(now, id);
+    recordAssigned(ctx, id, userId, null);
+  }
+  return ids.length;
 }
 
 /** Logs and announces an assignee change, and tells the people concerned (inside the change's transaction). */
@@ -619,7 +639,11 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
         }
       }
       if (kind === 'work' && parentId !== null && patch.parentId === undefined) {
-        throw badRequest('invalid_parent', 'Take this ticket out of its work card before making it a work card');
+        // A tag-restricted person may not see the work card, so they aren't told it's there.
+        throw badRequest(
+          'invalid_parent',
+          ctx.scope ? 'This ticket can’t be made a work card right now' : 'Take this ticket out of its work card before making it a work card',
+        );
       }
       const parent = checkFamily(ctx, kind, parentId, id);
       if (kind !== card.kind) {
@@ -653,6 +677,11 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       sets.push('assignee_id = ?');
       params.push(to?.id ?? null);
       assigned = { from: card.assignee_id, to };
+    } else if (patch.labelIds !== undefined && card.assignee_id !== null && !userCanSeeCard(ctx, card.assignee_id, id)) {
+      // The new tags took the card out of a tag-restricted assignee's view: nobody has it now.
+      sets.push('assignee_id = ?');
+      params.push(null);
+      assigned = { from: card.assignee_id, to: null };
     }
 
     if (patch.resolution !== undefined) {
