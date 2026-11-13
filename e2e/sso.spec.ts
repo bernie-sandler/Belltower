@@ -8,13 +8,19 @@ import { Api, login } from './helpers';
 
 /**
  * Turns single sign-on on (against an address nothing answers at: these tests never follow the
- * button) with a password sign-in mode, and returns a function that puts everything back.
+ * button) with a password sign-in mode. `register` gets the function that puts everything back
+ * before anything changes, so a failure partway can't leave single sign-on on for later specs.
  */
-async function ssoOn(page: Page, passwordLogin: 'shown' | 'hidden' | 'off'): Promise<() => Promise<void>> {
+async function ssoOn(page: Page, passwordLogin: 'shown' | 'hidden' | 'off', register: (restore: () => Promise<void>) => void): Promise<void> {
   await login(page);
   const api = new Api(page.request);
   const { general } = await api.call<{ general: { ticketFormat: string; appUrl: string; claudeModel: string } }>('GET', '/api/settings');
   const keep = { ticketFormat: general.ticketFormat, claudeModel: general.claudeModel };
+  register(async () => {
+    await login(page);
+    await api.call('PUT', '/api/settings/oidc', { enabled: false, preset: 'authentik', issuer: '', clientId: '', clientSecret: '', passwordLogin: 'hidden' });
+    await api.call('PUT', '/api/settings/general', { ...keep, appUrl: general.appUrl });
+  });
   await api.call('PUT', '/api/settings/general', { ...keep, appUrl: 'http://127.0.0.1:9' });
   await api.call('PUT', '/api/settings/oidc', {
     enabled: true,
@@ -26,11 +32,6 @@ async function ssoOn(page: Page, passwordLogin: 'shown' | 'hidden' | 'off'): Pro
     passwordLogin,
   });
   await page.request.post('/api/auth/logout', { headers: { 'X-Requested-With': 'tower-tracker' } });
-  return async () => {
-    await login(page);
-    await api.call('PUT', '/api/settings/oidc', { enabled: false, preset: 'authentik', issuer: '', clientId: '', clientSecret: '', passwordLogin: 'hidden' });
-    await api.call('PUT', '/api/settings/general', { ...keep, appUrl: general.appUrl });
-  };
 }
 
 test('the login page shows no single sign-on until it is set up @mobile', async ({ page }) => {
@@ -70,7 +71,7 @@ test.describe('password sign-in while single sign-on is on', () => {
   });
 
   test('hidden: a link opens the password form @mobile', async ({ page }) => {
-    restore = await ssoOn(page, 'hidden');
+    await ssoOn(page, 'hidden', (r) => (restore = r));
     await page.goto('/');
     await expect(page.getByRole('link', { name: 'Sign in with single sign-on' })).toBeVisible();
     await expect(page.getByLabel('Password')).toHaveCount(0);
@@ -81,7 +82,7 @@ test.describe('password sign-in while single sign-on is on', () => {
   });
 
   test('off: only the button, and the owner still signs in at /login?password', async ({ page }) => {
-    restore = await ssoOn(page, 'off');
+    await ssoOn(page, 'off', (r) => (restore = r));
     await page.goto('/');
     await expect(page.getByRole('link', { name: 'Sign in with single sign-on' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign in with a password' })).toHaveCount(0);
