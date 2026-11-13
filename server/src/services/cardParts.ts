@@ -16,6 +16,7 @@ import type {
 import { stmt } from '../db/connection';
 import { conflict } from '../errors';
 import type { Ctx } from './context';
+import { visibleIds, visibleSql } from './scope';
 
 export interface ChecklistRow {
   id: number;
@@ -134,8 +135,9 @@ const toSummary = (r: SummaryRow): CardSummary => ({
   updatedAt: r.updated_at,
 });
 
+/** A card in short; null when it doesn't exist or `ctx` can't see it. */
 export function cardSummary(ctx: Ctx, id: number): CardSummary | null {
-  const row = stmt(ctx.db, `${SUMMARY_SELECT} WHERE c.id = ?`).get(id) as SummaryRow | undefined;
+  const row = stmt(ctx.db, `${SUMMARY_SELECT} WHERE c.id = ? AND ${visibleSql(ctx)}`).get(id) as SummaryRow | undefined;
   return row ? toSummary(row) : null;
 }
 
@@ -160,7 +162,7 @@ export function listCards(
   ctx: Ctx,
   opts: { status: CardListStatus; q?: string; limit: number; kind?: CardKind },
 ): CardSummary[] {
-  const where = [STATUS_WHERE[opts.status]];
+  const where = [STATUS_WHERE[opts.status], visibleSql(ctx)];
   const params: unknown[] = [];
   if (opts.kind) {
     where.push('c.kind = ?');
@@ -188,7 +190,7 @@ export function listChildren(ctx: Ctx, cardId: number): CardSummary[] {
   return (
     stmt(
       ctx.db,
-      `${SUMMARY_SELECT} WHERE c.parent_id = ? AND c.deleted_at IS NULL
+      `${SUMMARY_SELECT} WHERE c.parent_id = ? AND c.deleted_at IS NULL AND ${visibleSql(ctx)}
         ORDER BY (c.completed_at IS NOT NULL), col.position, c.position, c.id`,
     ).all(cardId) as SummaryRow[]
   ).map(toSummary);
@@ -239,10 +241,17 @@ export function cardsWithOpenBlockers(ctx: Ctx): Set<number> {
 
 /** A blocked card can't be completed until every card blocking it is done. 409 `blocked`. */
 export function assertNotBlocked(ctx: Ctx, card: { id: number; title: string }): void {
-  const blockers = openBlockers(ctx, card.id);
-  if (!blockers.length) return;
-  const names = blockers.slice(0, 3).map((b) => `#${b.id} “${b.title}”`).join(', ');
-  const more = blockers.length > 3 ? ` and ${blockers.length - 3} more` : '';
+  const all = openBlockers(ctx, card.id);
+  if (!all.length) return;
+  // Blockers a tag-restricted person can't see still block, but aren't named.
+  const seen = visibleIds(ctx, all.map((b) => b.id));
+  const blockers = all.filter((b) => seen.has(b.id));
+  const shown = blockers.slice(0, 3);
+  const rest = all.length - shown.length;
+  const names = shown.length
+    ? shown.map((b) => `#${b.id} “${b.title}”`).join(', ')
+    : `${all.length} card${all.length === 1 ? '' : 's'} you can’t see`;
+  const more = shown.length && rest > 0 ? ` and ${rest} more` : '';
   throw conflict(
     'blocked',
     `“${card.title}” can't be completed while it's blocked by ${names}${more}. Finish ${blockers.length === 1 ? 'that card' : 'those cards'} first.`,
