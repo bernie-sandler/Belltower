@@ -181,8 +181,7 @@ function oldDatabase(v: number): DB {
     );
     run(`INSERT INTO notifications (user_id, card_id, activity_id, type, actor_user_id, created_at) VALUES (?, ?, ?, 'assigned', ?, ?)`, sam, disk, assigned, owner, at(3));
   }
-  // ---- Tag-restricted accounts (migration 10 on feat/tag-restricted-accounts; renumbered once the
-  // other branch's migration 10 merges) ----
+  // Tag-restricted accounts.
   if (v >= 10) {
     // The member only sees cards with the first tag.
     db.prepare('UPDATE users SET tag_scoped = 1 WHERE id = ?').run(sam);

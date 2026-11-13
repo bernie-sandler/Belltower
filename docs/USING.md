@@ -210,7 +210,7 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
   - They can't add, rename or delete tags, change columns, set the blocked column, archive all of Done, sort a column,
     or manage recurring templates. The board hides those controls for them.
   - They're only told about tickets they can see, and a ticket can only be given to them if it carries one of their
-    tags (the assignee list leaves them out otherwise).
+    tags (an admin's assignee list leaves them out otherwise; for anyone else the app explains the refusal). Narrowing their tags, or taking their tag off a ticket they\n    have, unassigns them from tickets they can no longer see; each shows in the ticket's history.
   - Admins and the owner always see every ticket; making someone an admin lifts their restriction.
 - What can't work isn't offered: the owner can't be demoted or deactivated, you can't deactivate yourself or reset
   your own password there (that's under Account), and the last active admin stays an admin.

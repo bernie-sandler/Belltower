@@ -136,4 +136,4 @@ tokens and API token hashes, keep exports somewhere private.
 | 7 | 1.3 | `api_tokens.scope` (`full` or `read`; tokens from older backups come back as `full`) |
 | 8 | 1.4 | `checklist_items.state` (`open`, `done`, `failed` or `unverified`; checked items from older backups come back as `done`) |
 | 9 | 1.5 | `users` (people; exported without passwords), `card_watchers`, `cards.assignee_id`, `activity.user_id` and `token_id`, `activity_revisions.user_id`, `api_tokens.user_id`. Backups from older versions have no people: the server you restore into adds its own, and their API tokens go to its owner |
-| 10 | 1.6 | `users.tag_scoped`, `user_labels` (members restricted to some tags) |
+| 10 | 1.5 | `users.tag_scoped`, `user_labels` (members restricted to some tags) |
