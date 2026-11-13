@@ -1,6 +1,7 @@
 // The public submit page: someone with the link picks a request type, answers its questions and
 // files a ticket. The answers are appended to their description; the title follows the type's
-// pattern ("Plex – {title} – {summary}"). Tickets land in the column set in Settings.
+// pattern ("Plex – {title} – {summary}") and the ticket gets the type's labels. Tickets land in
+// the column set in Settings.
 
 import {
   LIMITS,
@@ -31,9 +32,6 @@ export function checkSubmitKey(ctx: Ctx, key: string): void {
 export function publicSubmitConfig(ctx: Ctx, key: string, maxUploadBytes: number): PublicSubmitConfig {
   checkSubmitKey(ctx, key);
   const s = getSubmitSettings(ctx);
-  const labels = new Map(
-    (stmt(ctx.db, 'SELECT id, name, color FROM labels').all() as { id: number; name: string; color: string }[]).map((l) => [l.id, l]),
-  );
   return {
     pageTitle: s.pageTitle,
     intro: s.intro,
@@ -45,7 +43,6 @@ export function publicSubmitConfig(ctx: Ctx, key: string, maxUploadBytes: number
         description: t.description,
         titlePattern: t.titlePattern,
         fields: t.fields,
-        tags: t.tagLabelIds.map((id) => labels.get(id)).filter((l) => l !== undefined),
       })),
     maxFiles: LIMITS.submitFiles,
     maxUploadBytes,
@@ -166,7 +163,6 @@ export function submitTicket(
 
   const type = listRequestTypes(ctx).find((t) => t.id === body.typeId && t.enabled);
   if (!type) throw badRequest('validation', 'Pick what you need help with');
-  const tags = body.tagLabelIds.filter((id) => type.tagLabelIds.includes(id));
   const { title, description } = buildSubmission(type, body);
 
   const settings = getSubmitSettings(ctx);
@@ -178,7 +174,9 @@ export function submitTicket(
       title,
       description,
       columnId: columnExists ? settings.columnId! : getRoleColumn(ctx, 'triage').id,
-      labelIds: [...new Set([...(type.typeLabelId !== null ? [type.typeLabelId] : []), ...tags])],
+      // The type's labels. Submitters don't pick any (a page opened before 1.5.0-rc.4 may still send
+      // tagLabelIds; they're ignored).
+      labelIds: type.labelIds,
     },
     {
       source: 'api',

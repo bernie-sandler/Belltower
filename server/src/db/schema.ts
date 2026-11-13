@@ -347,6 +347,22 @@ CREATE INDEX ix_notifications_unread ON notifications (user_id) WHERE read_at IS
 CREATE UNIQUE INDEX ux_notifications_once ON notifications (user_id, activity_id, type) WHERE activity_id IS NOT NULL;
 `;
 
+// 1.5 (rc.4): request types say which labels every ticket of that type gets; submitters no longer pick
+// tags. The one "always add" label (type_label_id) carries over; the old pick lists
+// (tag_label_ids) are dropped, as decided for 1.5. Both v5 columns stay (a shipped column can't be
+// dropped) but are unused from here on: emptied now and never written again.
+const v10 = `
+CREATE TABLE request_type_labels (
+  request_type_id INTEGER NOT NULL REFERENCES request_types (id) ON DELETE CASCADE,
+  label_id        INTEGER NOT NULL REFERENCES labels (id) ON DELETE CASCADE,
+  PRIMARY KEY (request_type_id, label_id)
+) STRICT, WITHOUT ROWID;
+
+INSERT INTO request_type_labels (request_type_id, label_id)
+SELECT id, type_label_id FROM request_types WHERE type_label_id IN (SELECT id FROM labels);
+UPDATE request_types SET type_label_id = NULL, tag_label_ids = '[]';
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -357,6 +373,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 7, name: 'read-only API tokens', sql: v7 },
   { version: 8, name: 'checklist item states', sql: v8 },
   { version: 9, name: 'people', sql: v9 },
+  { version: 10, name: 'request type labels', sql: v10 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

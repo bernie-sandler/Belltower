@@ -47,6 +47,8 @@ export function useDeleteLabel() {
       void qc.invalidateQueries({ queryKey: qk.board });
       void qc.invalidateQueries({ queryKey: qk.cards });
       void qc.invalidateQueries({ queryKey: qk.activities });
+      // The server also took it off every request type.
+      void qc.invalidateQueries({ queryKey: qk.requestTypes });
     },
     onError: (err) => {
       if (isApiError(err, 'not_found')) void qc.invalidateQueries({ queryKey: qk.board });

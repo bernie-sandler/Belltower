@@ -566,19 +566,17 @@ export interface RequestType {
   description: string;
   titlePattern: string;
   fields: RequestFieldDef[];
-  tagLabelIds: number[];
-  typeLabelId: number | null;
+  /** Labels every ticket of this type gets, in label order. */
+  labelIds: number[];
   position: number;
   enabled: boolean;
 }
 
-/** What the public submit page gets: enabled types only, with tag names (not your whole label list). */
+/** What the public submit page gets: enabled types only, and none of your labels. */
 export interface PublicSubmitConfig {
   pageTitle: string;
   intro: string;
-  types: (Omit<RequestType, 'tagLabelIds' | 'typeLabelId' | 'position' | 'enabled'> & {
-    tags: { id: number; name: string; color: string }[];
-  })[];
+  types: Omit<RequestType, 'labelIds' | 'position' | 'enabled'>[];
   maxFiles: number;
   maxUploadBytes: number;
 }

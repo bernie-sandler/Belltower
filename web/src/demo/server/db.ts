@@ -19,8 +19,9 @@ import type {
  * Bump this whenever DemoState changes shape. Saved data with another version is thrown away and
  * the demo seeds itself again, instead of crashing on data it doesn't understand.
  * 3: people (1.5): users, assignees, watchers, notifications, and who did what.
+ * 4: request types carry the labels every ticket gets (labelIds), submitters no longer pick tags.
  */
-export const DEMO_SCHEMA_VERSION = 3;
+export const DEMO_SCHEMA_VERSION = 4;
 
 /** The users table (no passwords: the demo signs anyone in as the owner). */
 export interface UserRow {
@@ -188,8 +189,8 @@ export interface RequestTypeRow {
   description: string;
   titlePattern: string;
   fields: RequestFieldDef[];
-  tagLabelIds: number[];
-  typeLabelId: number | null;
+  /** request_type_labels: the labels every ticket of this type gets (read through labelIdsOf). */
+  labelIds: number[];
   position: number;
   enabled: boolean;
   createdAt: string;

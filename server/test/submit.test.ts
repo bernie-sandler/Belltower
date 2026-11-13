@@ -2,9 +2,10 @@ import { CSRF_VALUE, GeneralSettingsBody, RequestTypeBody, SubmitBody, DiscordSe
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { listActivity } from '../src/services/activity';
 import { createCard, getCard } from '../src/services/cards';
-import { createLabel } from '../src/services/labels';
+import { createLabel, deleteLabel } from '../src/services/labels';
 import {
   createRequestType,
+  deleteRequestType,
   listRequestTypes,
   reorderRequestTypes,
   seedRequestTypes,
@@ -101,15 +102,45 @@ describe('request types', () => {
     expect(RequestTypeBody.safeParse({ ...base, fields: [{ key: 'Bad Key', label: 'S', kind: 'short' }] }).success).toBe(false);
   });
 
-  it('creates, updates, reorders, and drops tags whose label was deleted', () => {
+  it('seeds types without labels', () => {
+    expect(listRequestTypes(t.ctx).map((x) => x.labelIds)).toEqual([[], [], []]);
+  });
+
+  it('creates, updates and reorders, with the labels every ticket gets', () => {
     const video = createLabel(t.ctx, 'Video', '#579dff');
-    const created = createRequestType(t.ctx, RequestTypeBody.parse({ name: 'Network', tagLabelIds: [video.id] }));
-    expect(created.tagLabelIds).toEqual([video.id]);
-    expect(() => updateRequestType(t.ctx, created.id, RequestTypeBody.parse({ name: 'N', tagLabelIds: [9999] }))).toThrow(/Unknown label/);
-    t.ctx.db.prepare('DELETE FROM labels WHERE id = ?').run(video.id);
-    expect(listRequestTypes(t.ctx).find((x) => x.id === created.id)!.tagLabelIds).toEqual([]);
+    const audio = createLabel(t.ctx, 'Audio', '#4bce97');
+    // In label order, once each.
+    const created = createRequestType(t.ctx, RequestTypeBody.parse({ name: 'Network', labelIds: [audio.id, video.id, audio.id] }));
+    expect(created.labelIds).toEqual([video.id, audio.id]);
+    expect(updateRequestType(t.ctx, created.id, RequestTypeBody.parse({ name: 'Network', labelIds: [audio.id] })).labelIds).toEqual([audio.id]);
+    // An unknown label changes nothing.
+    expect(() => updateRequestType(t.ctx, created.id, RequestTypeBody.parse({ name: 'N', labelIds: [video.id, 9999] }))).toThrow(/Unknown label id 9999/);
+    expect(listRequestTypes(t.ctx).find((x) => x.id === created.id)).toMatchObject({ name: 'Network', labelIds: [audio.id] });
+    expect(() => createRequestType(t.ctx, RequestTypeBody.parse({ name: 'Bad', labelIds: [9999] }))).toThrow(/Unknown label/);
+    expect(listRequestTypes(t.ctx).map((x) => x.name)).not.toContain('Bad');
     const ids = listRequestTypes(t.ctx).map((x) => x.id).reverse();
     expect(reorderRequestTypes(t.ctx, ids).map((x) => x.id)).toEqual(ids);
+  });
+
+  it('keeps the saved labels when an update leaves them out (a tab opened before 1.5.0-rc.4)', () => {
+    const video = createLabel(t.ctx, 'Video', '#579dff');
+    const created = createRequestType(t.ctx, RequestTypeBody.parse({ name: 'Network', labelIds: [video.id] }));
+    // What 1.5's settings page sent: the old fields are dropped, labelIds is missing.
+    const old = RequestTypeBody.parse({ name: 'Network', enabled: false, tagLabelIds: [], typeLabelId: null });
+    expect(old).not.toHaveProperty('labelIds');
+    expect(updateRequestType(t.ctx, created.id, old)).toMatchObject({ enabled: false, labelIds: [video.id] });
+    expect(updateRequestType(t.ctx, created.id, RequestTypeBody.parse({ name: 'Network', labelIds: [] })).labelIds).toEqual([]);
+    expect(createRequestType(t.ctx, RequestTypeBody.parse({ name: 'Bare' })).labelIds).toEqual([]);
+  });
+
+  it('drops a deleted label from every type, and a deleted type takes its labels with it', () => {
+    const video = createLabel(t.ctx, 'Video', '#579dff');
+    const audio = createLabel(t.ctx, 'Audio', '#4bce97');
+    const created = createRequestType(t.ctx, RequestTypeBody.parse({ name: 'Network', labelIds: [video.id, audio.id] }));
+    deleteLabel(t.ctx, video.id);
+    expect(listRequestTypes(t.ctx).find((x) => x.id === created.id)!.labelIds).toEqual([audio.id]);
+    deleteRequestType(t.ctx, created.id);
+    expect(t.ctx.db.prepare('SELECT count(*) FROM request_type_labels').pluck().get()).toBe(0);
   });
 });
 
@@ -217,17 +248,29 @@ describe('submit page over HTTP', () => {
     expect(res.json().types.map((x: { name: string }) => x.name)).toEqual(['General', 'Plex', 'Game servers']);
   });
 
-  it('files a ticket in the chosen column with tags, a screenshot and history', async () => {
-    const key = await openPage('Backlog');
+  it('never shows the page your labels', async () => {
+    const key = await openPage();
     const video = createLabel(app.ctx, 'Video', '#579dff');
     const p = listRequestTypes(app.ctx).find((x) => x.name === 'Plex')!;
-    updateRequestType(app.ctx, p.id, RequestTypeBody.parse({ ...p, tagLabelIds: [video.id] }));
+    updateRequestType(app.ctx, p.id, RequestTypeBody.parse({ ...p, labelIds: [video.id] }));
+    const res = await app.app.inject({ method: 'GET', url: `/api/public/submit/${key}` });
+    for (const type of res.json().types) expect(Object.keys(type).sort()).toEqual(['description', 'fields', 'id', 'name', 'titlePattern']);
+    expect(res.body).not.toContain('Video');
+  });
 
-    const unknownTag = 999;
+  it('files a ticket in the chosen column with the type’s labels, a screenshot and history', async () => {
+    const key = await openPage('Backlog');
+    const video = createLabel(app.ctx, 'Video', '#579dff');
+    const audio = createLabel(app.ctx, 'Audio', '#4bce97');
+    const other = createLabel(app.ctx, 'Other', '#f87168');
+    const p = listRequestTypes(app.ctx).find((x) => x.name === 'Plex')!;
+    updateRequestType(app.ctx, p.id, RequestTypeBody.parse({ ...p, labelIds: [video.id, audio.id] }));
+
+    // A page opened before 1.5.0-rc.4 still sends picked tags: they're ignored.
     const res = await app.app.inject({
       method: 'POST',
       url: `/api/public/submit/${key}`,
-      ...multipart(submission(p.id, { tagLabelIds: [video.id, unknownTag], name: 'Sam' }), [{ name: 'shot.png', content: PNG }]),
+      ...multipart(submission(p.id, { tagLabelIds: [other.id, 999], name: 'Sam' }), [{ name: 'shot.png', content: PNG }]),
     });
     expect(res.statusCode).toBe(201);
     const ticketNo = res.json().ticketNo as string;
@@ -236,9 +279,19 @@ describe('submit page over HTTP', () => {
 
     const id = app.ctx.db.prepare('SELECT id FROM cards WHERE ticket_no = ?').pluck().get(ticketNo) as number;
     const card = getCard(app.ctx, id);
-    expect(card).toMatchObject({ title: 'Plex – Interstellar – stutters', columnId: columnId(app.ctx, 'Backlog'), labelIds: [video.id] });
+    expect(card).toMatchObject({ title: 'Plex – Interstellar – stutters', columnId: columnId(app.ctx, 'Backlog') });
+    expect([...card.labelIds].sort()).toEqual([video.id, audio.id].sort());
     expect(card.attachments.map((a) => a.kind)).toEqual(['image']);
     expect(listActivity(app.ctx, id).find((e) => e.type === 'created')!.data).toMatchObject({ via: 'submit page (Sam)', source: 'api' });
+  });
+
+  it('files a ticket without labels for a type that has none', async () => {
+    const key = await openPage();
+    const typeId = listRequestTypes(app.ctx)[1]!.id;
+    const res = await app.app.inject({ method: 'POST', url: `/api/public/submit/${key}`, ...multipart(submission(typeId)) });
+    expect(res.statusCode).toBe(201);
+    const id = app.ctx.db.prepare('SELECT id FROM cards WHERE ticket_no = ?').pluck().get(res.json().ticketNo) as number;
+    expect(getCard(app.ctx, id).labelIds).toEqual([]);
   });
 
   it('accepts only image screenshots, and pretends to accept bots', async () => {
