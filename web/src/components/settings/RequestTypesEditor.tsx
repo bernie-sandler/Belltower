@@ -11,7 +11,7 @@ import {
   type RequestTypeBody,
 } from '@tt/shared';
 import { ArrowDown, ArrowUp, ListChecks, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useBoard } from '../../api/board';
 import { errorMessage } from '../../api/errors';
 import { sortedLabels } from '../../api/labels';
@@ -60,7 +60,8 @@ export function RequestTypesEditor() {
                 type="checkbox"
                 checked={t.enabled}
                 aria-label={`Offer “${t.name}”`}
-                onChange={(e) => update.mutate({ id: t.id, body: toBody({ ...t, enabled: e.target.checked }) })}
+                // No labelIds: the server keeps the saved ones (this list may be behind a label delete).
+                onChange={(e) => update.mutate({ id: t.id, body: { ...toBody(t), labelIds: undefined, enabled: e.target.checked } })}
               />
             </label>
             <span className="request-type-main">
@@ -151,6 +152,7 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
   const [fields, setFields] = useState<RequestFieldDef[]>(type?.fields ?? []);
   const [labelIds, setLabelIds] = useState<number[]>(type?.labelIds ?? []);
   const [error, setError] = useState<string | null>(null);
+  const labelsHelpId = useId();
   const busy = create.isPending || update.isPending;
 
   // Keys of saved questions never change (titles may use them); a new question's key follows its wording.
@@ -175,7 +177,9 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
 
   function save() {
     setError(null);
-    const body = toBody({ name, description, titlePattern, fields, labelIds, enabled: type?.enabled ?? true });
+    // A label deleted while this was open is no longer offered; don't send it.
+    const kept = labelIds.filter((id) => labels.some((l) => l.id === id));
+    const body = toBody({ name, description, titlePattern, fields, labelIds: kept, enabled: type?.enabled ?? true });
     const done = {
       onSuccess: () => {
         toast(type ? 'Request type saved' : 'Request type added', { kind: 'success', durationMs: 2000 });
@@ -217,9 +221,9 @@ function RequestTypeDialog({ type, labels, onClose }: { type: RequestType | null
           </span>
         </label>
 
-        <fieldset className="ticket-fieldset">
+        <fieldset className="ticket-fieldset" aria-describedby={labelsHelpId}>
           <legend className="field-inline-label">Labels added to every ticket</legend>
-          <p className="muted small">Every ticket filed with this type gets these labels. Submitters don’t pick labels.</p>
+          <p className="muted small" id={labelsHelpId}>Every ticket filed with this type gets these labels. Submitters don’t pick labels.</p>
           {labels.length === 0 ? (
             <p className="muted small">No labels yet. Add some under Menu → Manage labels.</p>
           ) : (

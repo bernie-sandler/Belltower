@@ -89,6 +89,27 @@ describe('RequestTypesEditor', () => {
     expect(sent('PUT')!.body.labelIds).toEqual([1]);
   });
 
+  it('never sends a label that was deleted since the list loaded', async () => {
+    // 99 was deleted in Manage labels; this list still has it.
+    const { sent } = setup([{ ...printer, labelIds: [2, 99] }]);
+    await screen.findByText('Printer');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit “Printer”' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit “Printer”' });
+    const group = within(dialog).getByRole('group', { name: 'Labels added to every ticket' });
+    expect(document.getElementById(group.getAttribute('aria-describedby')!)!.textContent).toMatch(/Every ticket filed with this type/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent('PUT')).toBeTruthy());
+    expect(sent('PUT')!.body.labelIds).toEqual([2]);
+  });
+
+  it('turning a type off leaves its labels to the server', async () => {
+    const { sent } = setup([{ ...printer, labelIds: [2, 99] }]);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Offer “Printer”' }));
+    await waitFor(() => expect(sent('PUT')).toBeTruthy());
+    expect(sent('PUT')!.body).toMatchObject({ name: 'Printer', enabled: false });
+    expect(sent('PUT')!.body).not.toHaveProperty('labelIds');
+  });
+
   it('says where to add labels when there are none', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     qc.setQueryData(qk.board, board([]));
