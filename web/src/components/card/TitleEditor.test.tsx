@@ -75,12 +75,15 @@ describe('TitleEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /Printer offline/ }));
     fireEvent.change(field(), { target: { value: 'Office printer offline' } });
     await changeElsewhere('Printer offline (2nd floor)');
+    // The field shows what saving would replace.
+    expect(screen.getByText(/Changed on another device to “Printer offline \(2nd floor\)”/)).toBeTruthy();
 
     fireEvent.keyDown(field(), { key: 'Enter' });
     await settle();
     expect(patches).toEqual([]);
     expect(toast).toHaveBeenCalledWith(CONFLICT_MESSAGE, { kind: 'warning' });
     expect(field().value).toBe('Office printer offline');
+    expect(screen.getByText(/Changed on another device/)).toBeTruthy();
 
     // Saving again replaces it on purpose.
     fireEvent.keyDown(field(), { key: 'Enter' });
@@ -88,5 +91,22 @@ describe('TitleEditor', () => {
     expect(patches).toEqual([{ title: 'Office printer offline', expectedVersion: 2 }]);
     expect(screen.queryByRole('textbox', { name: 'Card title' })).toBeNull();
     expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaving the field on such a conflict keeps it open and focused, so Esc still cancels', async () => {
+    const { patches, changeElsewhere } = setup();
+    fireEvent.click(screen.getByRole('button', { name: /Printer offline/ }));
+    fireEvent.change(field(), { target: { value: 'Office printer offline' } });
+    await changeElsewhere('Printer offline (2nd floor)');
+    field().blur();
+    await settle();
+    expect(patches).toEqual([]);
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(field());
+    fireEvent.keyDown(field(), { key: 'Escape' });
+    await settle();
+    expect(screen.queryByRole('textbox', { name: 'Card title' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Printer offline \(2nd floor\)/ })).toBeTruthy();
+    expect(patches).toEqual([]);
   });
 });

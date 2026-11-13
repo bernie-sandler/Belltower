@@ -20,16 +20,19 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
   const [draft, setDraft] = useState(card.title);
   // Esc cancels; a blur fired while the textarea unmounts must not save the cancelled text.
   const editingRef = useRef(false);
-  // The saved title the draft started from: if a refresh brings in another one meanwhile, Save
-  // says so first instead of quietly replacing it (the request would carry the newer version).
-  const base = useRef(card.title);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  // The saved title the draft started from. If a refresh brings in another one meanwhile, the
+  // field shows it, and Save says so first instead of quietly replacing it (the request would
+  // carry the newer version); once you've been told (`reviewed`), saving again replaces it.
+  const [base, setBase] = useState(card.title);
+  const [reviewed, setReviewed] = useState(false);
+  const changedElsewhere = editing && card.title !== base;
 
   const dirty = editing && draft.trim() !== card.title;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
-  function open(text: string, from: string) {
+  function open(text: string) {
     setDraft(text);
-    base.current = from;
     editingRef.current = true;
     setEditing(true);
   }
@@ -41,27 +44,33 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
 
   function start() {
     if (readOnly) return;
-    open(card.title, card.title);
+    setBase(card.title);
+    setReviewed(false);
+    open(card.title);
   }
 
   function save() {
     if (!editingRef.current) return;
     const title = draft.replace(/\s+/g, ' ').trim();
-    stop();
-    if (!title || title === card.title) return;
-    if (card.title !== base.current) {
-      // Changed on another device while you typed: keep your text; saving again replaces theirs.
+    if (changedElsewhere && !reviewed && title && title !== card.title) {
+      // Changed on another device while you typed: keep the field open with your text (focused
+      // again if you'd left it, so Esc still cancels); saving again replaces theirs.
       toast(CONFLICT_MESSAGE, { kind: 'warning' });
-      open(title, card.title);
+      setReviewed(true);
+      setTimeout(() => textRef.current?.focus(), 0);
       return;
     }
+    stop();
+    if (!title || title === card.title) return;
     update.mutate(
       { title },
       {
         onError: (err) => {
           // Someone else changed the card: reopen with the user's text so it isn't lost.
-          const current = conflictCard(err);
-          if (current) open(title, current.title);
+          if (conflictCard(err)) {
+            setReviewed(true);
+            open(title);
+          }
         },
       },
     );
@@ -83,6 +92,7 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
       {editing && card.ticketNo && <span className="ticket-no card-title-ticket">{card.ticketNo}</span>}
       {editing && (
         <AutoGrowTextarea
+          ref={textRef}
           className="input card-title-input"
           aria-label="Card title"
           value={draft}
@@ -104,6 +114,12 @@ export function TitleEditor({ card, titleId, readOnly = false, onDirtyChange }: 
           }}
           onBlur={save}
         />
+      )}
+      {editing && (
+        // Always there while editing, so screen readers hear the change when it arrives.
+        <p className={changedElsewhere ? 'notice notice-warning card-title-conflict' : 'visually-hidden'} aria-live="polite">
+          {changedElsewhere && <>Changed on another device to “{card.title}”. Saving replaces it with yours.</>}
+        </p>
       )}
     </>
   );
