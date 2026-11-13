@@ -1,6 +1,7 @@
 // Live refresh: with the board open, a ticket filed somewhere else turns up on it without a reload.
-// The board refetches every 15 seconds while the tab is visible; the page's clock is moved past
-// that tick but not past the bell's 30-second poll, so it's the live refresh that brings it in.
+// The board refetches every 15 seconds while the tab is visible; the page's clock is paused, then
+// moved past that tick but not past the bell's 30-second poll, so it's the live refresh that
+// brings it in.
 //
 // The specs share one database and run one at a time (playwright.config.ts). This test turns the
 // submit page on and puts its settings back in a `finally`, and deletes the ticket it filed.
@@ -28,6 +29,8 @@ test('a ticket from the submit page shows up on the open board without a reload'
     const triage = column(page, 'Triage');
     await expect(triage).toBeVisible();
     const tile = triage.locator('.tile-slot', { hasText: summary });
+    // From here on only the test moves the page's time, so a slow machine can't reach a tick early.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 10));
 
     // Someone without an account files a ticket in their own browser (with an address of its own,
     // so this doesn't use up the submit rate limit the other specs share).
@@ -45,10 +48,18 @@ test('a ticket from the submit page shows up on the open board without a reload'
       await visitor.close();
     }
 
-    // Not on the open board yet; past the 15-second refresh (and short of the bell's 30-second
-    // poll) it is, with no reload.
+    // Five seconds on, short of the 15-second refresh, it isn't on the open board yet.
+    await page.clock.runFor(5_000);
     await expect(tile).toHaveCount(0);
-    await page.clock.fastForward(16_000);
+    // Past the refresh (and short of the bell's 30-second poll) it is, with no reload. Time moves
+    // in small steps while waiting, so the page's own short timers (rendering the answer) run.
+    await page.clock.fastForward(11_000);
+    await expect
+      .poll(async () => {
+        await page.clock.runFor(100);
+        return tile.count();
+      })
+      .toBe(1);
     await expect(tile).toBeVisible();
   } finally {
     const card = (await api.board()).cards.find((c) => c.title.includes(summary));
