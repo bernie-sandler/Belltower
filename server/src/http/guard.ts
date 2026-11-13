@@ -2,6 +2,7 @@ import { CSRF_HEADER, CSRF_VALUE, SESSION_COOKIE, type Actor } from '@tt/shared'
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
 import { lookupSession, type SessionUser, type SessionWithUser } from '../auth/sessions';
 import { withActor, type Ctx } from '../services/context';
+import { scopeFor } from '../services/scope';
 import { authenticateToken } from '../services/tokens';
 import { adminOnly } from '../services/users';
 import { AppError } from '../errors';
@@ -168,7 +169,9 @@ export function installGuard(app: FastifyInstance, deps: AppDeps): void {
       const m = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '');
       req.apiToken = m ? authenticateToken(req.ctx, m[1]!) : null;
       if (!req.apiToken) throw new AppError(401, 'unauthenticated', 'Send a valid API token: Authorization: Bearer tt_…');
-      req.ctx = withActor(deps.baseCtx, { kind: 'token', tokenId: req.apiToken.id, userId: req.apiToken.userId });
+      // A token sees what its owner sees: a tag-restricted member's token is restricted too.
+      const owner = req.apiToken.userId;
+      req.ctx = withActor(deps.baseCtx, { kind: 'token', tokenId: req.apiToken.id, userId: owner }, scopeFor(deps.baseCtx, owner));
       // Read-only tokens only get routes that opt in with config.readScope (the summary), so a route
       // added later is closed to them unless it says otherwise. Unknown paths fall through to the 404.
       if (req.apiToken.scope === 'read' && req.routeOptions.url !== undefined && req.routeOptions.config.readScope !== true) {
@@ -202,7 +205,7 @@ export function installGuard(app: FastifyInstance, deps: AppDeps): void {
     if (!session) throw new AppError(401, 'unauthenticated', 'Please log in');
     req.session = session;
     req.user = session.user;
-    req.ctx = withActor(deps.baseCtx, { kind: 'user', userId: session.user.id });
+    req.ctx = withActor(deps.baseCtx, { kind: 'user', userId: session.user.id }, scopeFor(deps.baseCtx, session.user.id));
     if (req.routeOptions.config.admin === true && session.user.role !== 'admin') throw adminOnly();
   });
 }

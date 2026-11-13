@@ -347,6 +347,21 @@ CREATE INDEX ix_notifications_unread ON notifications (user_id) WHERE read_at IS
 CREATE UNIQUE INDEX ux_notifications_once ON notifications (user_id, activity_id, type) WHERE activity_id IS NOT NULL;
 `;
 
+// Tag-restricted accounts: an admin can limit a member to cards carrying one of their tags.
+//  - users.tag_scoped: 1 = restricted. Kept apart from the tag list so a restricted account whose
+//    tags were all deleted still counts as restricted and sees nothing (fails closed).
+//  - user_labels: the tags a restricted account sees. Deleting a tag or a person removes the rows.
+const v10 = `
+ALTER TABLE users ADD COLUMN tag_scoped INTEGER NOT NULL DEFAULT 0 CHECK (tag_scoped IN (0, 1));
+
+CREATE TABLE user_labels (
+  user_id  INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  label_id INTEGER NOT NULL REFERENCES labels (id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, label_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX ix_user_labels_label ON user_labels (label_id);
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -357,6 +372,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 7, name: 'read-only API tokens', sql: v7 },
   { version: 8, name: 'checklist item states', sql: v8 },
   { version: 9, name: 'people', sql: v9 },
+  { version: 10, name: 'tag-restricted accounts', sql: v10 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

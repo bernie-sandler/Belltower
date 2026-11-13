@@ -19,8 +19,9 @@ import type {
  * Bump this whenever DemoState changes shape. Saved data with another version is thrown away and
  * the demo seeds itself again, instead of crashing on data it doesn't understand.
  * 3: people (1.5): users, assignees, watchers, notifications, and who did what.
+ * 4: tag-restricted accounts (UserRow.tagScope).
  */
-export const DEMO_SCHEMA_VERSION = 3;
+export const DEMO_SCHEMA_VERSION = 4;
 
 /** The users table (no passwords: the demo signs anyone in as the owner). */
 export interface UserRow {
@@ -37,6 +38,8 @@ export interface UserRow {
   notifyPrefs: Record<string, unknown>;
   createdAt: string;
   disabledAt: string | null;
+  /** Mirrors tag_scoped + user_labels: the tags a restricted member sees (null = every card). */
+  tagScope: number[] | null;
 }
 
 export interface WatcherRow {

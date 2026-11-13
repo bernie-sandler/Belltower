@@ -15,6 +15,7 @@ const person = (over: Partial<UserInfo>): UserInfo => ({
   hasPassword: true,
   createdAt: '2026-10-01T15:00:00.000Z',
   disabledAt: null,
+  tagScope: null,
   ...over,
 });
 

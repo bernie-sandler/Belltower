@@ -101,6 +101,12 @@ export interface UserInfo extends UserRef {
   hasPassword: boolean;
   createdAt: IsoTimestamp;
   disabledAt: IsoTimestamp | null;
+  /**
+   * A tag-restricted member sees only tickets carrying at least one of these tags (label ids, in
+   * tag order); untagged tickets are hidden from them. Empty = sees nothing. Null = not restricted
+   * (always null for admins and the owner).
+   */
+  tagScope: number[] | null;
 }
 
 /** GET /api/me: the signed-in person. */

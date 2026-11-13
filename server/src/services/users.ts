@@ -5,7 +5,7 @@
 
 import { OWNER_ALIAS, type MeResponse, type UpdateMeBody, type UpdateUserBody, type UserInfo, type UserRef, type UserRole } from '@tt/shared';
 import { stmt } from '../db/connection';
-import { AppError, conflict, notFound } from '../errors';
+import { AppError, badRequest, conflict, notFound } from '../errors';
 import { deleteUserSessions } from '../auth/sessions';
 import { actorUserId, nowIso, tx, type Ctx } from './context';
 
@@ -24,13 +24,14 @@ export interface UserRow {
   notify_prefs: string;
   created_at: string;
   disabled_at: string | null;
+  tag_scoped: 0 | 1;
 }
 
 export function toUserRef(r: UserRow): UserRef {
   return { id: r.id, username: r.username, displayName: r.display_name, role: r.role, disabled: r.disabled_at !== null };
 }
 
-function toUserInfo(r: UserRow, showEmail: boolean): UserInfo {
+function toUserInfo(r: UserRow, showEmail: boolean, tags: Map<number, number[]>): UserInfo {
   return {
     ...toUserRef(r),
     isOwner: r.is_owner === 1,
@@ -38,7 +39,25 @@ function toUserInfo(r: UserRow, showEmail: boolean): UserInfo {
     hasPassword: r.password_hash !== null,
     createdAt: r.created_at,
     disabledAt: r.disabled_at,
+    tagScope: isTagScoped(r) ? (tags.get(r.id) ?? []) : null,
   };
+}
+
+/** Restricted to some tags (services/scope.ts). Admins and the owner never are, whatever is stored. */
+function isTagScoped(r: UserRow): boolean {
+  return r.tag_scoped === 1 && r.role !== 'admin' && r.is_owner === 0;
+}
+
+/** Every restricted person's tags (label ids in tag order), or one person's. */
+function tagScopes(ctx: Ctx, userId?: number): Map<number, number[]> {
+  const rows = stmt(
+    ctx.db,
+    `SELECT ul.user_id, ul.label_id FROM user_labels ul JOIN labels l ON l.id = ul.label_id
+      WHERE ? IS NULL OR ul.user_id = ? ORDER BY l.position, l.id`,
+  ).all(userId ?? null, userId ?? null) as { user_id: number; label_id: number }[];
+  const out = new Map<number, number[]>();
+  for (const r of rows) out.set(r.user_id, [...(out.get(r.user_id) ?? []), r.label_id]);
+  return out;
 }
 
 export function hasUsers(ctx: Ctx): boolean {
@@ -88,17 +107,22 @@ export function listUsers(ctx: Ctx): UserInfo[] {
   const admin = actorIsAdmin(ctx);
   const me = actorUserId(ctx);
   const rows = stmt(ctx.db, 'SELECT * FROM users ORDER BY disabled_at IS NOT NULL, display_name COLLATE NOCASE, id').all() as UserRow[];
-  return rows.map((r) => toUserInfo(r, admin || r.id === me));
+  const tags = tagScopes(ctx);
+  return rows.map((r) => toUserInfo(r, admin || r.id === me, tags));
 }
 
 /** One person, as an admin sees them. */
 export function userInfo(ctx: Ctx, id: number): UserInfo {
-  return toUserInfo(getUser(ctx, id), true);
+  return toUserInfo(getUser(ctx, id), true, tagScopes(ctx, id));
 }
 
 export function meResponse(ctx: Ctx, id: number, passwordSourceEnv: boolean): MeResponse {
   const row = getUser(ctx, id);
-  return { ...toUserInfo(row, true), passwordManagedByEnv: passwordSourceEnv && row.is_owner === 1, ssoLinked: row.oidc_subject !== null };
+  return {
+    ...toUserInfo(row, true, tagScopes(ctx, id)),
+    passwordManagedByEnv: passwordSourceEnv && row.is_owner === 1,
+    ssoLinked: row.oidc_subject !== null,
+  };
 }
 
 function assertUsernameFree(ctx: Ctx, username: string): void {
@@ -171,6 +195,18 @@ export function updateUser(
     if (wasActiveAdmin && (role !== 'admin' || disabled) && activeAdminCount(ctx) <= 1) {
       throw conflict('last_admin', 'At least one active admin has to remain');
     }
+    // Tag restriction: members only. Making someone an admin lifts it.
+    const restrictTo = patch.tagScope ?? null;
+    if (restrictTo !== null && (role === 'admin' || isOwner)) {
+      throw conflict('cannot_restrict_admin', 'Admins and the owner always see every ticket; make them a member first');
+    }
+    if (restrictTo !== null) {
+      for (const labelId of new Set(restrictTo)) {
+        if (stmt(ctx.db, 'SELECT EXISTS (SELECT 1 FROM labels WHERE id = ?)').pluck().get(labelId) !== 1) {
+          throw badRequest('invalid_label', 'That tag no longer exists; reload and pick again');
+        }
+      }
+    }
 
     const now = nowIso(ctx);
     stmt(ctx.db, 'UPDATE users SET display_name = ?, email = ?, role = ?, disabled_at = ? WHERE id = ?').run(
@@ -181,6 +217,12 @@ export function updateUser(
       id,
     );
     if (opts.passwordHash !== undefined) stmt(ctx.db, 'UPDATE users SET password_hash = ? WHERE id = ?').run(opts.passwordHash, id);
+    if (patch.tagScope !== undefined || role === 'admin') {
+      stmt(ctx.db, 'DELETE FROM user_labels WHERE user_id = ?').run(id);
+      const add = stmt(ctx.db, 'INSERT OR IGNORE INTO user_labels (user_id, label_id) VALUES (?, ?)');
+      for (const labelId of restrictTo ?? []) add.run(id, labelId);
+      stmt(ctx.db, 'UPDATE users SET tag_scoped = ? WHERE id = ?').run(restrictTo !== null ? 1 : 0, id);
+    }
     if ((disabled && row.disabled_at === null) || opts.passwordHash !== undefined) deleteUserSessions(ctx, id);
     return userInfo(ctx, id);
   });

@@ -81,6 +81,11 @@ export const UpdateUserBody = z.object({
   disabled: z.boolean().optional(),
   /** Reset to a new temporary password (signs them out everywhere). */
   password: NewPassword.optional(),
+  /**
+   * Members only: restrict them to tickets carrying at least one of these tags (label ids); null
+   * lifts the restriction. An empty list is allowed and means they see nothing.
+   */
+  tagScope: z.array(id).max(50).nullable().optional(),
 });
 export type UpdateUserBody = z.infer<typeof UpdateUserBody>;
 

@@ -4,13 +4,13 @@
 
 import type { CreateUserBody, MeResponse, UpdateMeBody, UpdateUserBody, UserInfo, UserRef } from '@tt/shared';
 import { actorId, nextId, nowIso, type Ctx, type UserRow } from './db';
-import { conflict, notFound } from './errors';
+import { badRequest, conflict, notFound } from './errors';
 
 export function toUserRef(r: UserRow): UserRef {
   return { id: r.id, username: r.username, displayName: r.displayName, role: r.role, disabled: r.disabledAt !== null };
 }
 
-function toUserInfo(r: UserRow, showEmail: boolean): UserInfo {
+function toUserInfo(ctx: Ctx, r: UserRow, showEmail: boolean): UserInfo {
   return {
     ...toUserRef(r),
     isOwner: r.isOwner,
@@ -18,7 +18,17 @@ function toUserInfo(r: UserRow, showEmail: boolean): UserInfo {
     hasPassword: r.hasPassword,
     createdAt: r.createdAt,
     disabledAt: r.disabledAt,
+    tagScope: tagScopeOf(ctx, r),
   };
+}
+
+/**
+ * A restricted member's tags in tag order, or null (admins and the owner never are). Deleted tags drop
+ * out here, as user_labels rows do on the server (ON DELETE CASCADE).
+ */
+function tagScopeOf(ctx: Ctx, r: UserRow): number[] | null {
+  if (r.tagScope === null || r.role === 'admin' || r.isOwner) return null;
+  return [...ctx.s.labels].sort((a, b) => a.position - b.position || a.id - b.id).filter((l) => r.tagScope!.includes(l.id)).map((l) => l.id);
 }
 
 export function getUser(ctx: Ctx, id: number): UserRow {
@@ -51,13 +61,13 @@ export function listUsers(ctx: Ctx): UserInfo[] {
         a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }) ||
         a.id - b.id,
     )
-    .map((u) => toUserInfo(u, admin || u.id === me));
+    .map((u) => toUserInfo(ctx, u, admin || u.id === me));
 }
 
-export const userInfo = (ctx: Ctx, id: number): UserInfo => toUserInfo(getUser(ctx, id), true);
+export const userInfo = (ctx: Ctx, id: number): UserInfo => toUserInfo(ctx, getUser(ctx, id), true);
 
 export function meResponse(ctx: Ctx, id: number): MeResponse {
-  return { ...toUserInfo(getUser(ctx, id), true), passwordManagedByEnv: false, ssoLinked: false };
+  return { ...toUserInfo(ctx, getUser(ctx, id), true), passwordManagedByEnv: false, ssoLinked: false };
 }
 
 /** Seeding: adds someone as is (the owner flag included). */
@@ -75,6 +85,7 @@ export function addUser(ctx: Ctx, input: Pick<UserRow, 'username' | 'displayName
     notifyPrefs: {},
     createdAt: nowIso(ctx),
     disabledAt: null,
+    tagScope: null,
   };
   ctx.s.users.push(row);
   return row;
@@ -103,8 +114,17 @@ export function updateUser(ctx: Ctx, id: number, patch: Omit<UpdateUserBody, 'pa
   }
   row.displayName = patch.displayName ?? row.displayName;
   if (patch.email !== undefined) row.email = patch.email;
+  // Tag restriction: members only. Making someone an admin lifts it.
+  const restrictTo = patch.tagScope ?? null;
+  if (restrictTo !== null && (role === 'admin' || row.isOwner)) {
+    throw conflict('cannot_restrict_admin', 'Admins and the owner always see every ticket; make them a member first');
+  }
+  if (restrictTo?.some((labelId) => !ctx.s.labels.some((l) => l.id === labelId))) {
+    throw badRequest('invalid_label', 'That tag no longer exists; reload and pick again');
+  }
   row.role = role;
   row.disabledAt = disabled ? (row.disabledAt ?? nowIso(ctx)) : null;
+  if (patch.tagScope !== undefined || role === 'admin') row.tagScope = restrictTo ? [...new Set(restrictTo)] : null;
   return userInfo(ctx, id);
 }
 
