@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { usePerson } from '../../api/assignees';
 import { useTeams } from '../../api/config';
 import { useUpdateCard, type CardPatch } from '../../api/cards';
-import { useMe, useUsers } from '../../api/me';
+import { canSeeTags, useMe, useUsers } from '../../api/me';
 import { cls } from '../../lib/cls';
 import { dueStatus, formatDateTime, formatDue, fromLocalInput, toLocalInput, useNow } from '../../lib/time';
 import { toast } from '../../lib/toast';
@@ -103,7 +103,8 @@ export function CardFields({ card, readOnly }: { card: CardDetail; readOnly: boo
 function AssigneeField({ card, readOnly, onSave }: { card: CardDetail; readOnly: boolean; onSave: (p: CardPatch) => void }) {
   const me = useMe().data;
   const users = useUsers();
-  const active = (users.data ?? []).filter((u) => !u.disabled);
+  // A tag-restricted member is only offered cards with one of their tags (the current assignee always shows).
+  const active = (users.data ?? []).filter((u) => !u.disabled && (u.id === card.assigneeId || canSeeTags(u, card.labelIds)));
   const current = usePerson(card.assigneeId);
   const id = `assignee-${card.id}`;
   return (
@@ -135,7 +136,7 @@ function AssigneeField({ card, readOnly, onSave }: { card: CardDetail; readOnly:
           </option>
         )}
       </select>
-      {!readOnly && me && !me.disabled && card.assigneeId !== me.id && (
+      {!readOnly && me && !me.disabled && card.assigneeId !== me.id && canSeeTags(me, card.labelIds) && (
         <button type="button" className="btn btn-sm" onClick={() => onSave({ assigneeId: me.id })}>
           Assign to me
         </button>

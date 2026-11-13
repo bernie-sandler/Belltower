@@ -25,6 +25,10 @@ export function peopleErrorMessage(err: unknown): string {
         return 'This person changed meanwhile (was a backup restored?). The list has been refreshed; try again.';
       case 'forbidden':
         return 'Only an admin can manage people.';
+      case 'cannot_restrict_admin':
+        return 'Admins and the owner always see every ticket. Make them a member first.';
+      case 'invalid_label':
+        return 'One of those tags no longer exists. Reload and pick again.';
       default:
         break;
     }

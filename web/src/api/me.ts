@@ -20,6 +20,20 @@ export function useIsAdmin(): boolean {
   return useMe().data?.role === 'admin';
 }
 
+/**
+ * Whether the signed-in person is restricted to some tags: they see only tickets with one of them
+ * and can't change tags, columns or other board-wide things (the server refuses them anyway).
+ */
+export function useIsRestricted(): boolean {
+  const scope = useMe().data?.tagScope;
+  return scope !== undefined && scope !== null;
+}
+
+/** Whether `person` may be given a card with these tags (a restricted member needs one of theirs). */
+export function canSeeTags(person: Pick<UserInfo, 'tagScope'>, labelIds: readonly number[]): boolean {
+  return person.tagScope === null || person.tagScope.some((id) => labelIds.includes(id));
+}
+
 /** The people directory query, for useUsers and anything that selects from it (usePerson). */
 export const usersQuery = queryOptions({
   queryKey: qk.users,

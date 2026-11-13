@@ -24,6 +24,11 @@ const ALEX = person({ id: 2, username: 'alex', displayName: 'Alex Chen', role: '
 const SAM = person({ id: 3, username: 'sam', displayName: 'Sam Ortiz', role: 'member' });
 const KIM = person({ id: 4, username: 'kim', displayName: 'Kim Park', role: 'member', disabled: true, disabledAt: '2026-10-02T15:00:00.000Z', hasPassword: false });
 
+const LABELS = [
+  { id: 11, name: 'Plex', color: '#112233', position: 0 },
+  { id: 12, name: 'Network', color: '#445566', position: 1 },
+];
+
 function setup(me: UserInfo, people: UserInfo[], patchReply?: { status: number; body: unknown }) {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -31,6 +36,7 @@ function setup(me: UserInfo, people: UserInfo[], patchReply?: { status: number; 
     if (url === '/api/users' && init?.method === 'POST') return json({ ...SAM, id: 9, ...JSON.parse(String(init.body)) }, 201);
     if (url.startsWith('/api/users/') && init?.method === 'PATCH') return patchReply ? json(patchReply.body, patchReply.status) : json(SAM);
     if (url === '/api/users') return json(people);
+    if (url === '/api/board') return json({ columns: [], labels: LABELS, cards: [], blockedColumnId: null, resolutionReasons: [] });
     return json({});
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -118,5 +124,39 @@ describe('PeopleSection', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Add person' }));
     await waitFor(() => expect(sent('POST', '/api/users')).toEqual({ username: 'morgan', displayName: 'Morgan Lee', role: 'member', password: generated }));
     expect(await screen.findByText(/They sign in as/)).toBeTruthy();
+  });
+
+  it('restricts a member to tags, and lifts it again', async () => {
+    const { sent } = setup(OWNER, [OWNER, SAM]);
+    const sam = await openEditor('Sam Ortiz');
+    fireEvent.click(within(sam).getByLabelText('Restrict to tags'));
+    expect(within(sam).getByText(/tickets without tags are hidden/)).toBeTruthy();
+    fireEvent.click(await within(sam).findByLabelText('Network'));
+    fireEvent.click(within(sam).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent('PATCH', '/api/users/3')).toEqual({ tagScope: [12] }));
+  });
+
+  it('shows a member’s restriction, and lifts it when turned off', async () => {
+    const { sent } = setup(OWNER, [OWNER, { ...SAM, tagScope: [11] }]);
+    expect(await screen.findByText('Only: Plex')).toBeTruthy();
+    const sam = await openEditor('Sam Ortiz');
+    fireEvent.click(within(sam).getByLabelText('Restrict to tags'));
+    fireEvent.click(within(sam).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent('PATCH', '/api/users/3')).toEqual({ tagScope: null }));
+  });
+
+  it('offers no tag restriction for admins and the owner', async () => {
+    setup(OWNER, [OWNER, ALEX, SAM]);
+    const owner = await openEditor('Admin');
+    expect(within(owner).queryByLabelText('Restrict to tags')).toBeNull();
+    fireEvent.click(within(owner).getByRole('button', { name: 'Close' }));
+    const alex = await openEditor('Alex Chen');
+    expect(within(alex).queryByLabelText('Restrict to tags')).toBeNull();
+    fireEvent.click(within(alex).getByRole('button', { name: 'Close' }));
+    // Switching a member to admin in the form hides it too.
+    const sam = await openEditor('Sam Ortiz');
+    expect(within(sam).getByLabelText('Restrict to tags')).toBeTruthy();
+    fireEvent.click(within(sam).getByLabelText(/^Admin:/));
+    expect(within(sam).queryByLabelText('Restrict to tags')).toBeNull();
   });
 });

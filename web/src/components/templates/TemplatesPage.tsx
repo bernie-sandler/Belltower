@@ -26,6 +26,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Modal } from '../common/Modal';
 import { Spinner } from '../common/Status';
 import { LabelChip } from '../labels/LabelChip';
+import { useIsRestricted } from '../../api/me';
 
 const UNIT_NAMES = { day: 'day', week: 'week', month: 'month' } as const;
 
@@ -38,6 +39,8 @@ export function TemplatesPage() {
   const { data, error, isPending } = useTemplates();
   const { data: board } = useBoard();
   const actions = useTemplateActions();
+  // Tag-restricted people see the templates with their tags but can't change or run them.
+  const restricted = useIsRestricted();
   const openCard = useOpenCard();
   const now = useNow();
   const [editing, setEditing] = useState<RecurringTemplate | 'new' | null>(null);
@@ -68,9 +71,11 @@ export function TemplatesPage() {
         <h2 className="list-page-title">
           <Repeat size={20} aria-hidden /> Recurring maintenance
         </h2>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
-          <Plus size={16} aria-hidden /> New template
-        </button>
+        {!restricted && (
+          <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
+            <Plus size={16} aria-hidden /> New template
+          </button>
+        )}
       </header>
       <p className="muted">
         Each template creates a card in Triage when it comes due. If the last card it made is still open, it waits and
@@ -129,29 +134,31 @@ export function TemplatesPage() {
                 </span>
               )}
             </div>
-            <div className="template-actions">
-              <button type="button" className="btn btn-sm" onClick={() => runNow(t)} disabled={actions.runNow.isPending}>
-                <Zap size={14} aria-hidden /> Create now
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() =>
-                  actions.update.mutate(
-                    { id: t.id, patch: { enabled: !t.enabled } },
-                    { onSuccess: () => toast(t.enabled ? 'Paused' : 'Resumed', { kind: 'success', durationMs: 2000 }) },
-                  )
-                }
-              >
-                {t.enabled ? <Pause size={14} aria-hidden /> : <Play size={14} aria-hidden />} {t.enabled ? 'Pause' : 'Resume'}
-              </button>
-              <button type="button" className="btn btn-sm" onClick={() => setEditing(t)}>
-                <Pencil size={14} aria-hidden /> Edit
-              </button>
-              <button type="button" className="btn btn-sm card-action-danger" onClick={() => setDeleting(t)}>
-                <Trash2 size={14} aria-hidden /> Delete
-              </button>
-            </div>
+            {!restricted && (
+              <div className="template-actions">
+                <button type="button" className="btn btn-sm" onClick={() => runNow(t)} disabled={actions.runNow.isPending}>
+                  <Zap size={14} aria-hidden /> Create now
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() =>
+                    actions.update.mutate(
+                      { id: t.id, patch: { enabled: !t.enabled } },
+                      { onSuccess: () => toast(t.enabled ? 'Paused' : 'Resumed', { kind: 'success', durationMs: 2000 }) },
+                    )
+                  }
+                >
+                  {t.enabled ? <Pause size={14} aria-hidden /> : <Play size={14} aria-hidden />} {t.enabled ? 'Pause' : 'Resume'}
+                </button>
+                <button type="button" className="btn btn-sm" onClick={() => setEditing(t)}>
+                  <Pencil size={14} aria-hidden /> Edit
+                </button>
+                <button type="button" className="btn btn-sm card-action-danger" onClick={() => setDeleting(t)}>
+                  <Trash2 size={14} aria-hidden /> Delete
+                </button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
