@@ -7,9 +7,20 @@ import type { ReactNode } from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setDragging } from '../lib/dragging';
 import { toast } from '../lib/toast';
+import { PASSIVE_HEADER } from '@tt/shared';
 import { BOARD_ORDER_KEY, BOARD_ORDER_SCOPE, flushBoardRefetch } from './board';
+import { api } from './client';
 import { qk } from './keys';
-import { holdLiveRefresh, LIVE_REFRESH_MS, liveRefreshBlocked, liveRefreshTick, refreshForNews, useLiveRefresh } from './liveRefresh';
+import {
+  FAILED_TICKS_TO_WARN,
+  holdLiveRefresh,
+  LIVE_REFRESH_MS,
+  liveRefreshBlocked,
+  liveRefreshTick,
+  NOT_ANSWERING_MESSAGE,
+  refreshForNews,
+  useLiveRefresh,
+} from './liveRefresh';
 import { queryClient } from './queryClient';
 
 vi.mock('../lib/toast', () => ({ toast: vi.fn() }));
@@ -216,7 +227,69 @@ describe('refreshForNews', () => {
   });
 });
 
+describe('requests', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a tick’s requests are marked passive (they don’t keep an idle session alive); others aren’t', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"cards":[]}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { qc } = setup();
+    const observer = new QueryObserver(qc, { queryKey: qk.board, queryFn: ({ signal }) => api.get('/api/board', signal) });
+    const stop = observer.subscribe(() => {});
+    await advance(0);
+    await advance(LIVE_REFRESH_MS);
+    void qc.invalidateQueries({ queryKey: qk.board }); // someone else's refetch, after an edit say
+    await advance(0);
+    const passive = fetchMock.mock.calls.map((call) => (call as unknown[])[1] as RequestInit).map((init) => (init.headers as Record<string, string>)[PASSIVE_HEADER]);
+    expect(passive).toEqual([undefined, '1', undefined]);
+    stop();
+  });
+});
+
 describe('a failed refresh', () => {
+  it('after three failed ticks in a row says so once, and again only after one has worked', async () => {
+    const { qc } = setup();
+    let fail = false;
+    const board = watchBoard(qc, async () => {
+      if (fail) throw new Error('Server unreachable');
+      return { cards: [] };
+    });
+    await advance(0);
+    fail = true;
+    await advance(LIVE_REFRESH_MS * 2);
+    expect(toast).not.toHaveBeenCalled();
+    await advance(LIVE_REFRESH_MS);
+    expect(toast).toHaveBeenCalledWith(NOT_ANSWERING_MESSAGE, { kind: 'warning' });
+    await advance(LIVE_REFRESH_MS * 3);
+    expect(toast).toHaveBeenCalledTimes(1);
+
+    fail = false;
+    await advance(LIVE_REFRESH_MS);
+    fail = true;
+    await advance(LIVE_REFRESH_MS * FAILED_TICKS_TO_WARN);
+    expect(toast).toHaveBeenCalledTimes(2);
+    board.stop();
+  });
+
+  it('leaves a refetch already on its way loud (a refetch on focus keeps its toast)', async () => {
+    let fail = false;
+    let reject = (_err: Error) => {};
+    const observer = new QueryObserver(queryClient, {
+      queryKey: qk.board,
+      queryFn: () => (fail ? new Promise((_, r) => (reject = r)) : Promise.resolve({ cards: [] })),
+    });
+    const stop = observer.subscribe(() => {});
+    await advance(0);
+    fail = true;
+    void queryClient.refetchQueries({ queryKey: qk.board }); // on focus, say
+    liveRefreshTick(queryClient); // joins it rather than starting over
+    reject(new Error('Server unreachable'));
+    await advance(0);
+    expect(toast).toHaveBeenCalledTimes(1);
+    stop();
+    queryClient.clear();
+  });
+
   it('doesn’t toast (the next tick tries again); other failed refetches still do', async () => {
     let fail = false;
     const observer = new QueryObserver(queryClient, {

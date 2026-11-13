@@ -8,12 +8,16 @@
 // A refresh never runs mid-drag or while a change is on its way to the server (a create or move in
 // the board-order queue, an edit, a checklist mark waiting to be saved): landing then, it could
 // undo on screen what you just did. That tick is skipped and the next one catches up. A refresh
-// that fails says nothing (a missed poll isn't worth a toast); the next one tries again.
+// that fails says nothing (a missed poll isn't worth a toast; the next one tries again) until
+// FAILED_TICKS_TO_WARN ticks in a row have failed. Its requests carry PASSIVE_HEADER, so an open tab
+// doesn't keep an idle session alive.
 
-import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
+import { useQueryClient, type Query, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { isDragging } from '../lib/dragging';
+import { toast } from '../lib/toast';
 import { BOARD_ORDER_KEY, wantBoardRefetch } from './board';
+import { passively } from './client';
 import { qk } from './keys';
 
 export const LIVE_REFRESH_MS = 15_000;
@@ -59,10 +63,35 @@ export function endQuietRefetch(query: object): void {
   quiet.delete(query);
 }
 
-function refetch(qc: QueryClient, keys: readonly QueryKey[], cancelRefetch: boolean): Promise<void> {
-  const cache = qc.getQueryCache();
-  for (const queryKey of keys) for (const query of cache.findAll({ queryKey, type: 'active' })) quiet.add(query);
-  return Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey }, { cancelRefetch }))).then(() => undefined);
+/**
+ * Refetches the active queries under `keys`, as requests the app makes on its own (they don't keep
+ * an idle session alive). Resolves, once they have landed, with the queries it started.
+ */
+function refetch(qc: QueryClient, keys: readonly QueryKey[], cancelRefetch: boolean): Promise<Query[]> {
+  const started: Query[] = [];
+  for (const queryKey of keys) {
+    for (const query of qc.getQueryCache().findAll({ queryKey, type: 'active' })) {
+      // One already on its way is someone else's (a refetch on focus, say): its failure still toasts.
+      if (query.state.fetchStatus !== 'idle') continue;
+      quiet.add(query);
+      started.push(query);
+    }
+  }
+  return passively(() => Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey }, { cancelRefetch })))).then(() => started);
+}
+
+/** After this many ticks in a row whose refetches failed, one toast says so. */
+export const FAILED_TICKS_TO_WARN = 3;
+export const NOT_ANSWERING_MESSAGE = 'The board can’t refresh: the server isn’t answering. It will catch up once it’s back.';
+let failedTicks = 0;
+
+function countTick(started: Query[]): void {
+  if (!started.length) return;
+  if (started.some((q) => q.state.status === 'error')) {
+    if (++failedTicks === FAILED_TICKS_TO_WARN) toast(NOT_ANSWERING_MESSAGE, { kind: 'warning' });
+  } else {
+    failedTicks = 0;
+  }
 }
 
 /**
@@ -76,20 +105,21 @@ export function refreshForNews(qc: QueryClient): Promise<void> {
     return Promise.resolve();
   }
   // A fetch already on its way may have left before the news: start over.
-  return refetch(qc, TICKET_KEYS, true);
+  return refetch(qc, TICKET_KEYS, true).then(() => undefined);
 }
 
 /** One tick: the bell's list and what shows tickets, unless the tab is hidden or it'd get in the way. */
 export function liveRefreshTick(qc: QueryClient): void {
   if (document.visibilityState !== 'visible' || liveRefreshBlocked(qc)) return;
   // Doesn't cut short a fetch already on its way (a refetch on focus, say).
-  void refetch(qc, [qk.notifications, ...TICKET_KEYS], false);
+  void refetch(qc, [qk.notifications, ...TICKET_KEYS], false).then(countTick);
 }
 
 /** Mounted once, in the signed-in app shell. The gates are checked on every tick. */
 export function useLiveRefresh(): void {
   const qc = useQueryClient();
   useEffect(() => {
+    failedTicks = 0;
     const tick = () => liveRefreshTick(qc);
     let timer = setInterval(tick, LIVE_REFRESH_MS);
     // Back on the tab: refresh at once, and count the next tick from now.
