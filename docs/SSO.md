@@ -4,14 +4,28 @@ Belltower can let people sign in with your identity provider: [Authentik](#authe
 other OpenID Connect provider (Keycloak, Pocket ID, Zitadel, Kanidm…). It's optional and off by default. An admin
 sets it up under **Settings → Single sign-on**.
 
-**Password login always stays available.** If the provider is down or misconfigured, sign in with your password as
-usual. A broken provider can't lock anyone out, and `APP_PASSWORD` still recovers the owner account
-([INSTALL.md](INSTALL.md#forgot-the-password)).
+## Password sign-in
+
+While single sign-on is on (and complete), **Password sign-in** under Settings → Single sign-on decides how the login
+page offers the password form:
+
+- **Show the password form**: as without single sign-on, below the button.
+- **Hide it behind a link** (the default, also for installs that set up single sign-on before this choice existed):
+  the button, plus a small **Sign in with a password** link that opens the form. The form opens by itself when the
+  provider sent you back with an error, or at `/login?password`.
+- **Turn password sign-in off**: only the button. Nobody but the **owner** can sign in with a password, and nobody
+  else can unlink single sign-on (they'd have no way back in).
+
+The owner can always sign in with a password at `/login?password`, and `APP_PASSWORD` resets the owner's password
+([INSTALL.md](INSTALL.md#forgot-the-password)), so a broken provider can't lock you out. Before turning password
+sign-in off, make sure everyone else has [linked their account](#linking-an-account) (or turn on account creation or
+linking by email): an account that isn't linked can't sign in at all. If single sign-on is turned off, or stops being
+complete (no issuer, client ID, secret or app address), the password form is back for everyone.
 
 ## How it works
 
-- The login page shows **Sign in with &lt;label&gt;** above the password form. It's a plain link: Belltower sends you
-  to the provider and the provider sends you back.
+- The login page shows **Sign in with &lt;label&gt;** (above the password form, when it's
+  [shown](#password-sign-in)). It's a plain link: Belltower sends you to the provider and the provider sends you back.
 - It uses the authorization code flow with PKCE (S256), `state` and `nonce`. The sign-in in progress travels in an
   encrypted `tt_oidc` cookie, so the server keeps nothing for it. Your browser has 10 minutes to get through the
   provider's login page, and restarting Belltower cancels sign-ins that are under way (start again).
@@ -173,7 +187,9 @@ the groups it holds. Check the exact group name, the groups claim name (`groups`
 include what sends it (Authelia, VoidAuth and Pocket ID need `groups`).
 
 **"There's no Belltower account for you yet."** Account creation is off. An admin adds the person, who then links
-their account under Account. Or turn on **Create accounts on first sign-in**.
+their account under Account (with password sign-in turned off, only while it's set to **Hide it behind a link**). Or
+turn on **Create accounts on first sign-in**.
 
 **"A Belltower account with your email already exists."** Email linking found an admin account, several accounts or
-one already linked elsewhere. Sign in with that account's password and link it under Account.
+one already linked elsewhere. Sign in with that account's password and link it under Account. With password sign-in
+turned off, an admin sets it to **Hide it behind a link** while the person links, then turns it off again.
