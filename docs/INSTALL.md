@@ -113,7 +113,9 @@ empty. You can remove the line afterwards; the password stays.
 Someone else forgot theirs? An admin opens **Settings → People**, clicks **Edit** next to them and resets their
 password; that signs them out everywhere. They can change it under **Account** after signing in.
 
-Password login keeps working while [single sign-on](SSO.md) is on, so a broken identity provider never locks you out.
+While [single sign-on](SSO.md) is on, the password form may be hidden behind a link or turned off for everyone else
+(see [Password sign-in](SSO.md#password-sign-in)), but the owner can always sign in with a password at
+`/login?password`, so a broken identity provider never locks you out.
 
 ## Troubleshooting
 

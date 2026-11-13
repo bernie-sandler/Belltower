@@ -77,6 +77,12 @@ export const CSRF_HEADER = 'x-requested-with';
 /** Keeps the app's old name: tabs still open on the previous bundle would otherwise get 403 on every change. */
 export const CSRF_VALUE = 'tower-tracker';
 
+/**
+ * Sent with value '1' on GET requests the web app makes on its own (the live refresh): the server
+ * checks the session without sliding its idle expiry, so a tab left open doesn't keep it alive.
+ */
+export const PASSIVE_HEADER = 'x-tt-passive';
+
 export const SESSION_COOKIE = 'tt_sid';
 export const PASSWORD_MIN_LENGTH = 12;
 

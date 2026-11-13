@@ -1,7 +1,7 @@
 // Shared setup: sign in through the API (fast) and create test data with the same calls the app
 // makes. Requests from `page.request` share the page's cookies, so the UI is signed in too.
 
-import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test as base, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { E2E_PASSWORD } from '../playwright.config';
 
 const HEADERS = { 'X-Requested-With': 'tower-tracker' };
@@ -71,6 +71,16 @@ export function teamsOnForEachTest(): void {
   test.afterEach(async ({ api }) => {
     await api.setTeams(before);
   });
+}
+
+/**
+ * A browser for a visitor without an account (the submit page) with an address of its own. The
+ * e2e server trusts X-Forwarded-For from 127.0.0.1 (serve.mjs), so this visitor's tickets count
+ * against their own submit rate limit (5 per 10 minutes), not the one every test shares.
+ */
+export function visitorContext(browser: Browser): Promise<BrowserContext> {
+  const ip = `198.51.100.${1 + Math.floor(Math.random() * 254)}`; // TEST-NET-2, never a real client
+  return browser.newContext({ extraHTTPHeaders: { 'X-Forwarded-For': ip } });
 }
 
 /** The board column element for a column name. */

@@ -10,7 +10,7 @@ import type {
   Severity,
   UserRole,
 } from './constants';
-import type { NotifyChannel, OidcPreset, TokenScope } from './schemas';
+import type { NotifyChannel, OidcPreset, PasswordLoginMode, TokenScope } from './schemas';
 import type { NotificationType, NotifyPrefs } from './notifications';
 
 /** All timestamps are UTC ISO-8601 strings ('2026-10-10T19:04:05.123Z'). */
@@ -42,6 +42,11 @@ export interface AuthStatus {
   passwordManagedByEnv: boolean;
   /** Single sign-on is set up: the login page offers "Sign in with <label>". Null when it's off. */
   sso: { label: string } | null;
+  /**
+   * How the login page offers the password form: 'shown', 'hidden' behind a link, or 'off' (only
+   * the owner, at /login?password). Always 'shown' while single sign-on is off.
+   */
+  passwordLogin: PasswordLoginMode;
 }
 
 // ---- single sign-on (OIDC) ----
@@ -66,6 +71,8 @@ export interface OidcSettingsInfo {
   autoCreate: boolean;
   linkByEmail: boolean;
   allowHttpIssuer: boolean;
+  /** Password sign-in while single sign-on is on. 'hidden' unless an admin chose otherwise. */
+  passwordLogin: PasswordLoginMode;
   /** `${appUrl}/api/auth/oidc/callback`, or null until General → This app’s address is set. */
   redirectUri: string | null;
   /** On, and everything it needs is filled in: the login page shows the button. */
@@ -570,19 +577,17 @@ export interface RequestType {
   description: string;
   titlePattern: string;
   fields: RequestFieldDef[];
-  tagLabelIds: number[];
-  typeLabelId: number | null;
+  /** Labels every ticket of this type gets, in label order. */
+  labelIds: number[];
   position: number;
   enabled: boolean;
 }
 
-/** What the public submit page gets: enabled types only, with tag names (not your whole label list). */
+/** What the public submit page gets: enabled types only, and none of your labels. */
 export interface PublicSubmitConfig {
   pageTitle: string;
   intro: string;
-  types: (Omit<RequestType, 'tagLabelIds' | 'typeLabelId' | 'position' | 'enabled'> & {
-    tags: { id: number; name: string; color: string }[];
-  })[];
+  types: Omit<RequestType, 'labelIds' | 'position' | 'enabled'>[];
   maxFiles: number;
   maxUploadBytes: number;
 }

@@ -52,6 +52,8 @@ export function deleteLabel(ctx: Ctx, id: number): void {
     card.updatedAt = now;
   }
   for (const t of ctx.s.templates) t.labelIds = t.labelIds.filter((l) => l !== id);
+  // The server's request_type_labels cascades.
+  for (const t of ctx.s.requestTypes) t.labelIds = t.labelIds.filter((l) => l !== id);
   ctx.s.labels = ctx.s.labels.filter((l) => l.id !== id);
   [...ctx.s.labels].sort(byPosition).forEach((l, i) => (l.position = i));
 }

@@ -16,7 +16,7 @@ A short form:
 
 1. **What do you need help with?** They pick a request type, such as General, Plex or Game servers.
 2. **That type's questions:** for example "Which server?" or "What were you watching?".
-3. A title and "what's wrong", plus any tags you allow, up to 3 screenshots, and their name.
+3. A title and "what's wrong", up to 3 screenshots, and their name.
 
 When they send it, they get the new ticket's number and a **status link** for it. They never see your board.
 
@@ -42,7 +42,7 @@ Status links only work while the submit page is on. Each one is signed for its t
 edited to show a different ticket.
 
 On your side it's a normal card in Triage (or the column you choose). Their answers are added below the description,
-the title follows the type's pattern (say "Plex – Interstellar – stutters"), and the history notes
+the title follows the type's pattern (say "Plex – Interstellar – stutters"), it gets the type's labels, and the history notes
 "submit page (*their name*)". Each one rings the bell for admins, with [Teams](USING.md#teams) on or off, and with
 [notifications](NOTIFICATIONS.md) set up you also get a message for each one.
 
@@ -58,6 +58,10 @@ its own questions. You can edit, reorder, switch off or add types, and each ques
 
 A type's **title pattern** builds the ticket title from the answers. `{summary}` is the title they typed, and
 `{question_key}` is any of the type's questions.
+
+A type's **labels** (Labels added to every ticket) go on every ticket filed with it, say Plex on every Plex request.
+Submitters don't pick labels and never see yours. (Before 1.5.0-rc.4 a type had one "always add" label and could offer tags
+for submitters to pick; upgrading keeps the "always add" label and drops the tags.)
 
 ## Keeping it tidy
 

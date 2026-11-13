@@ -370,8 +370,8 @@ const noSso = (): never => {
 
 export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'GET /api/auth/status': ok(
-    // No single sign-on in the demo, so the login page shows no button for it.
-    (ctx) => ({ authenticated: ctx.s.session.signedIn, setupRequired: false, passwordManagedByEnv: false, sso: null }),
+    // No single sign-on in the demo, so the login page shows no button for it and always the password form.
+    (ctx) => ({ authenticated: ctx.s.session.signedIn, setupRequired: false, passwordManagedByEnv: false, sso: null, passwordLogin: 'shown' }),
     { public: true },
   ),
   'POST /api/auth/setup': noContent(

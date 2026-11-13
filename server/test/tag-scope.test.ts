@@ -228,8 +228,8 @@ describe('a tag-restricted member', () => {
     updateSubmitSettings(s.t.ctx, { enabled: true, columnId: null, pageTitle: 'Report a problem', intro: '' });
     const key = getSubmitSettings(s.t.ctx).key!;
     const plex = listRequestTypes(s.t.ctx).find((x) => x.name === 'Plex')!;
-    // The request type always adds tag A. (Written directly: the request-type label fields are changing.)
-    s.t.ctx.db.prepare('UPDATE request_types SET type_label_id = ? WHERE id = ?').run(s.A, plex.id);
+    // Every ticket of this request type gets tag A.
+    s.t.ctx.db.prepare('INSERT INTO request_type_labels (request_type_id, label_id) VALUES (?, ?)').run(plex.id, s.A);
     const boundary = `----tt${Math.random().toString(16).slice(2)}`;
     const data = { typeId: plex.id, summary: 'stutters', description: 'Freezes', answers: { title: 'Interstellar', media: 'Movie', device: 'Roku' } };
     const submitted = await s.t.app.inject({

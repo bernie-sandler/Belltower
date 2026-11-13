@@ -1,4 +1,4 @@
-import { CSRF_HEADER, CSRF_VALUE, SESSION_COOKIE, type Actor } from '@tt/shared';
+import { CSRF_HEADER, CSRF_VALUE, PASSIVE_HEADER, SESSION_COOKIE, type Actor } from '@tt/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from 'fastify';
 import { lookupSession, type SessionUser, type SessionWithUser } from '../auth/sessions';
 import { withActor, type Ctx } from '../services/context';
@@ -111,7 +111,10 @@ export function clearSessionCookie(req: FastifyRequest, reply: FastifyReply, dep
 export function resolveSession(req: FastifyRequest, reply: FastifyReply, deps: AppDeps): SessionWithUser | null {
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
-  const touch = req.routeOptions.config?.passive !== true;
+  // A GET marked passive by the app (its live refresh) is trusted as is: it can't change anything,
+  // and the header can only make a session end sooner.
+  const passive = req.routeOptions.config?.passive === true || (req.method === 'GET' && req.headers[PASSIVE_HEADER] === '1');
+  const touch = !passive;
   const found = lookupSession(deps.baseCtx, { rememberDays: deps.config.sessionDays }, token, { touch });
   if (!found) {
     clearSessionCookie(req, reply, deps);

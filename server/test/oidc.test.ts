@@ -759,15 +759,6 @@ describe('signing in with single sign-on', () => {
     expect(cookieOf(res, 'tt_sid')).toBeNull();
   });
 
-  it('password login stays available while single sign-on is on', async () => {
-    const { t, admin } = await app();
-    const i = await idp();
-    await enableSso(t, admin, i);
-    await i.close();
-    idps = [];
-    expect((await browser(t, '/api/auth/oidc/start')).headers.location).toBe('/login?sso_error=idp');
-    expect(await loginAs(t, 'admin')).toMatch(/^tt_sid=/);
-  });
 });
 
 describe('linking by email', () => {
@@ -916,5 +907,160 @@ describe('linking your own account', () => {
     const res = await browser(t, '/api/auth/oidc/link', [admin], { method: 'POST', headers: { 'x-requested-with': CSRF_VALUE } });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe('sso_off');
+  });
+});
+
+describe('password sign-in while single sign-on is on', () => {
+  let attempt = 0;
+  /** A password login from its own address (so the limiter stays out of it). */
+  const tryLogin = (t: TestApp, username: string | null, password = PASSWORD) =>
+    t.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      remoteAddress: `10.88.${Math.floor(++attempt / 250)}.${attempt % 250}`,
+      headers: { 'x-requested-with': CSRF_VALUE },
+      payload: username === null ? { password } : { username, password },
+    });
+  const setMode = (t: TestApp, admin: string, i: MockIdp, extra: Record<string, unknown>) =>
+    client(t.app, admin)('PUT', '/api/settings/oidc', settingsBody(i, { clientSecret: null, ...extra }));
+  const status = async (t: TestApp) => (await client(t.app)('GET', '/api/auth/status')).json();
+  async function link(t: TestApp, i: MockIdp, cookie: string, user: IdpUser) {
+    const res = await browser(t, '/api/auth/oidc/link', [cookie], { method: 'POST', headers: { 'x-requested-with': CSRF_VALUE } });
+    expect(res.statusCode, res.body).toBe(200);
+    const callback = i.authorize(res.json().url, user);
+    expect((await browser(t, callback, [cookieOf(res, 'tt_oidc')!, cookie])).headers.location).toBe('/account?sso=linked');
+  }
+
+  it('is hidden by default, and only counts while single sign-on is on and complete', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    expect((await client(t.app, admin)('GET', '/api/settings/oidc')).json().passwordLogin).toBe('hidden');
+    expect(await status(t)).toMatchObject({ sso: null, passwordLogin: 'shown' });
+    expect((await enableSso(t, admin, i)).passwordLogin).toBe('hidden');
+    expect(await status(t)).toMatchObject({ sso: { label: 'Authentik' }, passwordLogin: 'hidden' });
+  });
+
+  it('saves the choice, keeps it when an update leaves it out, and refuses an unknown one', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { passwordLogin: 'off' });
+    expect((await status(t)).passwordLogin).toBe('off');
+    // An admin tab opened before the upgrade doesn't send the field.
+    const older = await setMode(t, admin, i, { buttonLabel: 'Homelab' });
+    expect(older.json()).toMatchObject({ buttonLabel: 'Homelab', passwordLogin: 'off' });
+    expect((await setMode(t, admin, i, { passwordLogin: 'shown' })).json().passwordLogin).toBe('shown');
+    expect((await status(t)).passwordLogin).toBe('shown');
+    expect((await setMode(t, admin, i, { passwordLogin: 'never' })).statusCode).toBe(400);
+    expect((await client(t.app, admin)('GET', '/api/settings/oidc')).json().passwordLogin).toBe('shown');
+  });
+
+  it('reads a row saved before the choice existed (or a hand-edited one) as hidden', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { passwordLogin: 'off' });
+    const row = JSON.parse(t.ctx.db.prepare("SELECT value FROM settings WHERE key = 'oidc_settings'").pluck().get() as string);
+    delete row.passwordLogin;
+    t.ctx.db.prepare("UPDATE settings SET value = ? WHERE key = 'oidc_settings'").run(JSON.stringify(row));
+    expect((await status(t)).passwordLogin).toBe('hidden');
+    expect((await client(t.app, admin)('GET', '/api/settings/oidc')).json().passwordLogin).toBe('hidden');
+    t.ctx.db.prepare("UPDATE settings SET value = ? WHERE key = 'oidc_settings'").run(JSON.stringify({ ...row, passwordLogin: 'nope' }));
+    expect((await status(t)).passwordLogin).toBe('hidden');
+  });
+
+  it('shown and hidden let everyone log in with a password, also when the provider is down', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i);
+    await addPerson(t, admin, 'sam');
+    await i.close();
+    idps = [];
+    expect((await browser(t, '/api/auth/oidc/start')).headers.location).toBe('/login?sso_error=idp');
+    for (const passwordLogin of ['hidden', 'shown']) {
+      expect((await setMode(t, admin, i, { passwordLogin })).statusCode).toBe(200);
+      expect(await loginAs(t, 'admin')).toMatch(/^tt_sid=/);
+      expect(await loginAs(t, 'sam')).toMatch(/^tt_sid=/);
+    }
+  });
+
+  it('off refuses everyone but the owner, without telling a wrong password from an unknown name', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i);
+    await addPerson(t, admin, 'sam');
+    await addPerson(t, admin, 'ada', 'admin');
+    await setMode(t, admin, i, { passwordLogin: 'off' });
+
+    for (const name of ['sam', 'ada']) {
+      const refused = await tryLogin(t, name);
+      expect(refused.statusCode).toBe(403);
+      expect(refused.json().error).toBe('password_login_off');
+      expect(cookieOf(refused, 'tt_sid')).toBeNull();
+    }
+    const wrong = await tryLogin(t, 'sam', 'not the password');
+    const unknown = await tryLogin(t, 'nobody');
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.json()).toEqual(unknown.json());
+    expect(wrong.json().error).toBe('invalid_password');
+
+    // The owner always gets in, by name or without one.
+    expect(await loginAs(t, 'admin')).toMatch(/^tt_sid=/);
+    expect((await tryLogin(t, null)).statusCode).toBe(204);
+  });
+
+  it('off stops counting once single sign-on is incomplete or turned off', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { passwordLogin: 'off' });
+    await client(t.app, admin)('POST', '/api/users', { username: 'sam', displayName: 'sam', role: 'member', password: PASSWORD });
+    expect((await tryLogin(t, 'sam')).statusCode).toBe(403);
+
+    // Incomplete: no app address.
+    await client(t.app, admin)('PUT', '/api/settings/general', { ticketFormat: DEFAULT_TICKET_FORMAT, appUrl: '', claudeModel: '' });
+    expect(await status(t)).toMatchObject({ sso: null, passwordLogin: 'shown' });
+    expect((await tryLogin(t, 'sam')).statusCode).toBe(204);
+    await client(t.app, admin)('PUT', '/api/settings/general', { ticketFormat: DEFAULT_TICKET_FORMAT, appUrl: APP_URL, claudeModel: '' });
+    expect((await tryLogin(t, 'sam')).statusCode).toBe(403);
+
+    // Turned off: the stored choice stays, and stops applying.
+    expect((await setMode(t, admin, i, { enabled: false })).json()).toMatchObject({ enabled: false, passwordLogin: 'off' });
+    expect((await status(t)).passwordLogin).toBe('shown');
+    expect((await tryLogin(t, 'sam')).statusCode).toBe(204);
+  });
+
+  it('an admin other than the owner can only turn it off once their own account is linked', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i);
+    const ada = await addPerson(t, admin, 'ada', 'admin');
+    const refused = await setMode(t, ada.cookie, i, { passwordLogin: 'off' });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toBe('would_lock_you_out');
+    expect((await status(t)).passwordLogin).toBe('hidden');
+    // Other changes still save.
+    expect((await setMode(t, ada.cookie, i, { passwordLogin: 'shown' })).statusCode).toBe(200);
+    await link(t, i, ada.cookie, { sub: 'ada-sub', id: { preferred_username: 'ada' } });
+    expect((await setMode(t, ada.cookie, i, { passwordLogin: 'off' })).statusCode).toBe(200);
+    // The owner needs no link.
+    expect((await setMode(t, admin, i, { passwordLogin: 'hidden' })).statusCode).toBe(200);
+    expect((await setMode(t, admin, i, { passwordLogin: 'off' })).statusCode).toBe(200);
+  });
+
+  it('off refuses unlinking, which would lock a member out; the owner still can', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i);
+    const sam = await addPerson(t, admin, 'sam');
+    await link(t, i, sam.cookie, alice);
+    await link(t, i, admin, { sub: 'owner-sub', id: { preferred_username: 'admin' } });
+    await setMode(t, admin, i, { passwordLogin: 'off' });
+
+    const refused = await client(t.app, sam.cookie)('DELETE', '/api/auth/oidc/link');
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toBe('password_login_off');
+    expect((await client(t.app, sam.cookie)('GET', '/api/me')).json().ssoLinked).toBe(true);
+    expect((await client(t.app, admin)('DELETE', '/api/auth/oidc/link')).statusCode).toBe(204);
+
+    await setMode(t, admin, i, { passwordLogin: 'hidden' });
+    expect((await client(t.app, sam.cookie)('DELETE', '/api/auth/oidc/link')).statusCode).toBe(204);
   });
 });

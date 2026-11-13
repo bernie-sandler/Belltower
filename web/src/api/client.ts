@@ -3,7 +3,7 @@
 //  - Errors become ApiError { status, code, body } using the server's { error, message } shape.
 //  - A 401 'unauthenticated' anywhere notifies the auth layer (back to the login page, no reload).
 
-import { CSRF_HEADER, CSRF_VALUE } from '@tt/shared';
+import { CSRF_HEADER, CSRF_VALUE, PASSIVE_HEADER } from '@tt/shared';
 import type { ApiError as ApiErrorBody } from '@tt/shared';
 
 export class ApiError extends Error {
@@ -39,6 +39,24 @@ function isErrorBody(v: unknown): v is ApiErrorBody {
   return Boolean(v) && typeof v === 'object' && typeof (v as { error?: unknown }).error === 'string';
 }
 
+let passiveDepth = 0;
+/** Signals of fetches started passively: TanStack reuses one per fetch, so its retries stay passive too. */
+const passiveSignals = new WeakSet<AbortSignal>();
+
+/**
+ * Runs `start`, marking the GET requests it starts (synchronously, as TanStack starts a refetch's
+ * query function) as made by the app on its own: the server then doesn't slide the session's idle
+ * expiry for them, so a tab left open still signs out after 12 idle hours.
+ */
+export function passively<T>(start: () => T): T {
+  passiveDepth++;
+  try {
+    return start();
+  } finally {
+    passiveDepth--;
+  }
+}
+
 /** `keepalive` lets a small request finish after the page is hidden or closed. */
 export async function request<T>(
   method: Method,
@@ -49,6 +67,10 @@ export async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (method !== 'GET') headers[CSRF_HEADER] = CSRF_VALUE;
+  if (method === 'GET' && (passiveDepth > 0 || (signal && passiveSignals.has(signal)))) {
+    headers[PASSIVE_HEADER] = '1';
+    if (signal) passiveSignals.add(signal);
+  }
   let payload: string | undefined;
   if (body !== undefined) {
     headers['Content-Type'] = 'application/json';

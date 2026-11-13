@@ -6,7 +6,7 @@ import { hashPassword, needsRehash, setupCodeMatches, verifyDummy, verifyPasswor
 import { createSession, deleteSessionByToken, deleteUserSessions } from '../../auth/sessions';
 import { setSetting } from '../../db/connection';
 import { AppError, conflict } from '../../errors';
-import { ssoStatus } from '../../services/oidc';
+import { passwordLoginMode, ssoStatus } from '../../services/oidc';
 import { createOwner, findUser, getUser, hasUsers, loginCandidate, replacePasswordHash } from '../../services/users';
 import { clearSessionCookie, resolveSession, setSessionCookie } from '../guard';
 import { parse } from '../util';
@@ -25,6 +25,7 @@ export function startSession(req: FastifyRequest, reply: FastifyReply, deps: App
 
 export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
   const { limiter } = deps;
+  const envSecret = deps.config.oidcClientSecret;
 
   /** Applies the failed-login limiter before any expensive hashing happens. */
   async function gate(req: FastifyRequest): Promise<void> {
@@ -48,7 +49,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
       authenticated: setUp && resolveSession(req, reply, deps) !== null,
       setupRequired: !setUp,
       passwordManagedByEnv: deps.auth.passwordSource === 'env',
-      sso: setUp ? ssoStatus(req.ctx, deps.config.oidcClientSecret) : null,
+      sso: setUp ? ssoStatus(req.ctx, envSecret) : null,
+      passwordLogin: setUp ? passwordLoginMode(req.ctx, envSecret) : 'shown',
     };
   });
 
@@ -89,6 +91,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AppDeps): void {
     if (!ok || !now || now.password_hash !== stored || now.disabled_at !== null) {
       failed(req, 'login');
       throw new AppError(401, 'invalid_password', 'Incorrect username or password');
+    }
+    // Password sign-in turned off (single sign-on on and complete): only the owner, so there's
+    // always a way back in. Checked only now, so a wrong password or an unknown name still gets
+    // the same 401 and nobody learns which usernames exist. No session, no rehash, and the limiter
+    // counts neither a failure nor a success.
+    if (now.is_owner !== 1 && passwordLoginMode(req.ctx, envSecret) === 'off') {
+      req.log.warn({ ip: req.ip }, `Password sign-in refused for "${now.username}": password sign-in is turned off`);
+      throw new AppError(403, 'password_login_off', 'Password sign-in is turned off on this install. Sign in with single sign-on instead.');
     }
     limiter.recordSuccess(req.ip);
     startSession(req, reply, deps, now.id, body.remember);

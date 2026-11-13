@@ -124,6 +124,7 @@ describe('backup round trip', () => {
     json.schemaVersion = 1;
     // Tables added later didn't exist yet.
     delete json.tables.request_types;
+    delete json.tables.request_type_labels;
     delete json.tables.api_tokens;
     delete json.tables.users;
     delete json.tables.card_watchers;

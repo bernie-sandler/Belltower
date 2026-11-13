@@ -1,7 +1,7 @@
 // What `?sso_error=<code>` means, for the login page and Account → Sign-in. The server logs the
 // details; these say what to do next.
 
-import type { SsoErrorCode } from '@tt/shared';
+import type { PasswordLoginMode, SsoErrorCode } from '@tt/shared';
 
 const MESSAGES: Record<SsoErrorCode, string> = {
   not_configured: 'Single sign-on isn’t set up on this install any more. Log in with your password.',
@@ -17,7 +17,16 @@ const MESSAGES: Record<SsoErrorCode, string> = {
   taken: 'That provider account is already linked to another Belltower account.',
 };
 
+/** With password sign-in turned off, nobody but the owner can fall back on a password. */
+const WITHOUT_PASSWORD: Partial<Record<SsoErrorCode, string>> = {
+  idp: 'Couldn’t finish signing in with the provider. Try again, or ask your admin. The server log has the details.',
+  no_account: 'There’s no Belltower account linked to you yet. Ask your admin.',
+  link_required: 'A Belltower account with your email already exists, but it isn’t linked to single sign-on yet. Ask your admin.',
+};
+
 /** The message for a code from the address bar, or null for anything unknown. */
-export function ssoErrorMessage(code: string | null): string | null {
-  return code && Object.hasOwn(MESSAGES, code) ? MESSAGES[code as SsoErrorCode] : null;
+export function ssoErrorMessage(code: string | null, passwordLogin: PasswordLoginMode = 'shown'): string | null {
+  if (!code || !Object.hasOwn(MESSAGES, code)) return null;
+  const c = code as SsoErrorCode;
+  return (passwordLogin === 'off' ? WITHOUT_PASSWORD[c] : undefined) ?? MESSAGES[c];
 }

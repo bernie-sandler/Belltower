@@ -22,6 +22,7 @@ import { updateChecklistItem } from '../src/services/checklists';
 import type { Ctx } from '../src/services/context';
 import { createLink } from '../src/services/links';
 import { searchCards } from '../src/services/search';
+import { listRequestTypes } from '../src/services/requestTypes';
 import { createToken } from '../src/services/tokens';
 import { addWorklog } from '../src/services/worklog';
 
@@ -146,11 +147,25 @@ function oldDatabase(v: number): DB {
   let kuma: number | null = null;
   if (v >= 5) {
     run(`INSERT INTO settings (key, value) VALUES ('request_types_seeded', '1')`);
-    run(
-      `INSERT INTO request_types (name, title_pattern, fields, position, created_at, updated_at) VALUES ('Plex', 'Plex – {summary}', '[]', 0, ?, ?)`,
-      at(1),
-      at(1),
-    );
+    if (v < 10) {
+      // Before 1.5.0-rc.4: one "always add" label, plus labels submitters could pick as tags.
+      const video = run(`INSERT INTO labels (name, color, position, created_at) VALUES ('Video', '#579dff', 1, ?)`, at(1));
+      run(
+        `INSERT INTO request_types (name, title_pattern, fields, tag_label_ids, type_label_id, position, created_at, updated_at) VALUES ('Plex', 'Plex – {summary}', '[]', ?, ?, 0, ?, ?)`,
+        JSON.stringify([video, hardware]),
+        hardware,
+        at(1),
+        at(1),
+      );
+    } else {
+      // From 1.5.0-rc.4: the labels every ticket of the type gets.
+      const plex = run(
+        `INSERT INTO request_types (name, title_pattern, fields, position, created_at, updated_at) VALUES ('Plex', 'Plex – {summary}', '[]', 0, ?, ?)`,
+        at(1),
+        at(1),
+      );
+      run(`INSERT INTO request_type_labels (request_type_id, label_id) VALUES (?, ?)`, plex, hardware);
+    }
     kuma = run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, created_at) VALUES ('Uptime Kuma', ?, 'tt_abcd', 1, ?)`, 'b'.repeat(64), at(1));
   }
   if (v >= 7) {
@@ -182,7 +197,7 @@ function oldDatabase(v: number): DB {
     run(`INSERT INTO notifications (user_id, card_id, activity_id, type, actor_user_id, created_at) VALUES (?, ?, ?, 'assigned', ?, ?)`, sam, disk, assigned, owner, at(3));
   }
   // Tag-restricted accounts.
-  if (v >= 10) {
+  if (v >= 11) {
     // The member only sees cards with the first tag.
     db.prepare('UPDATE users SET tag_scoped = 1 WHERE id = ?').run(sam);
     run('INSERT INTO user_labels (user_id, label_id) SELECT ?, min(id) FROM labels', sam);
@@ -191,6 +206,12 @@ function oldDatabase(v: number): DB {
 }
 
 const count = (db: DB, table: string) => db.prepare(`SELECT count(*) FROM ${table}`).pluck().get() as number;
+/** Request types' labels by type name (1.5.0-rc.4 on). */
+const typeLabels = (ctx: Ctx) => Object.fromEntries(listRequestTypes(ctx).map((t) => [t.name, t.labelIds]));
+const labelId = (db: DB, name: string) => db.prepare('SELECT id FROM labels WHERE name = ?').pluck().get(name) as number;
+/** Request types still using the pre-1.5.0-rc.4 columns (emptied by schema 10, never written again). */
+const oldTypeColumns = (db: DB) =>
+  db.prepare(`SELECT count(*) FROM request_types WHERE type_label_id IS NOT NULL OR tag_label_ids <> '[]'`).pluck().get() as number;
 const COUNTED = ['columns', 'labels', 'cards', 'card_labels', 'card_links', 'checklists', 'checklist_items', 'attachments', 'activity', 'activity_revisions', 'recurring_templates', 'template_runs'];
 
 /**
@@ -281,6 +302,8 @@ function checkWorks(ctx: Ctx, marks: Record<string, ChecklistItemState>) {
     tokens: d.prepare('SELECT id, user_id FROM api_tokens ORDER BY id').all(),
   });
   expect(people(again)).toEqual(people(db));
+  const typeLabelRows = (d: DB) => d.prepare('SELECT request_type_id, label_id FROM request_type_labels ORDER BY 1, 2').all();
+  expect(typeLabelRows(again)).toEqual(typeLabelRows(db));
   expect(again.prepare('SELECT count(*) FROM users WHERE password_hash IS NOT NULL OR is_owner = 1').pluck().get()).toBe(0);
   expect(count(again, 'notifications')).toBe(0); // a personal inbox, not part of backups
 }
@@ -305,16 +328,20 @@ describe('upgrading a database left by an older version', () => {
     expect(prepared.numbered).toBe(v >= 3 ? 0 : before.cards);
     for (const t of COUNTED) expect(count(db, t), t).toBe(before[t]);
     expect(count(db, 'request_types')).toBe(v >= 5 ? 1 : 3); // older installs get the default types
+    // 1.5.0-rc.4: a request type keeps its one "always add" label; the tags submitters could pick are gone.
+    expect(typeLabels(ctx)).toEqual(v >= 5 ? { Plex: [labelId(db, 'Hardware')] } : { General: [], Plex: [], 'Game servers': [] });
+    expect(oldTypeColumns(db)).toBe(0);
 
+    // 1.4's password became the owner account `admin` (dated by the oldest column); the signed-in
+    // device and the API tokens are the owner's, so nobody is signed out and automations keep working.
+    // (A 1.5 database already has that owner.)
+    const owner = db.prepare('SELECT * FROM users WHERE is_owner = 1').get() as Record<string, unknown>;
+    expect(owner).toMatchObject({ username: 'admin', display_name: 'Admin', role: 'admin', password_hash: OLD_HASH, created_at: at(1), disabled_at: null });
+    expect(db.prepare(`SELECT key FROM settings WHERE key = 'password_hash'`).get()).toBeUndefined();
+    expect(db.prepare(`SELECT value FROM settings WHERE key = 'password_source'`).pluck().get()).toBe('ui');
+    expect(db.prepare('SELECT user_id FROM sessions').pluck().all()).toEqual([owner.id]);
+    expect(db.prepare('SELECT count(*) FROM api_tokens WHERE user_id IS NOT ?').pluck().get(owner.id)).toBe(0);
     if (v < 9) {
-      // 1.4's password became the owner account `admin` (dated by the oldest column); the signed-in
-      // device and the API tokens are the owner's, so nobody is signed out and automations keep working.
-      const owner = db.prepare('SELECT * FROM users WHERE is_owner = 1').get() as Record<string, unknown>;
-      expect(owner).toMatchObject({ username: 'admin', display_name: 'Admin', role: 'admin', password_hash: OLD_HASH, created_at: at(1), disabled_at: null });
-      expect(db.prepare(`SELECT key FROM settings WHERE key = 'password_hash'`).get()).toBeUndefined();
-      expect(db.prepare(`SELECT value FROM settings WHERE key = 'password_source'`).pluck().get()).toBe('ui');
-      expect(db.prepare('SELECT user_id FROM sessions').pluck().all()).toEqual([owner.id]);
-      expect(db.prepare('SELECT count(*) FROM api_tokens WHERE user_id IS NOT ?').pluck().get(owner.id)).toBe(0);
       expect(count(db, 'users')).toBe(1);
       // Nothing from before says who did what.
       expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(0);
@@ -323,8 +350,12 @@ describe('upgrading a database left by an older version', () => {
       expect(prepared.teams).toBe(false);
       expect(db.prepare(`SELECT value FROM settings WHERE key = 'teams_settings'`).pluck().get()).toBe('{"enabled":false}');
     } else {
-      // A 1.5 install keeps its people; nobody is restricted to tags until an admin says so.
+      // 1.5: people, who did what and the assignee stay; two active people keep Teams on.
       expect(count(db, 'users')).toBe(3);
+      expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(3);
+      expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(1);
+      expect(prepared.teams).toBe(true);
+      // Nobody is restricted to tags until an admin says so.
       expect(db.prepare('SELECT count(*) FROM users WHERE tag_scoped <> 0').pluck().get()).toBe(0);
       expect(count(db, 'user_labels')).toBe(0);
     }
@@ -347,6 +378,7 @@ describe('a database at the current schema', () => {
     const types = listActivity(ctx, disk.id).map((e) => [e.type, e.userId !== null, e.tokenId !== null]);
     expect(types).toContainEqual(['assigned', true, false]);
     expect(types).toContainEqual(['worklog', true, true]); // the token's note names its owner too
+    expect(typeLabels(ctx)).toEqual({ Plex: [labelId(db, 'Hardware')] });
     checkWorks(ctx, marksAt(LATEST_SCHEMA_VERSION));
   });
 });
@@ -366,8 +398,9 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     [9, 'activity', ['user_id', 'token_id']],
     [9, 'activity_revisions', ['user_id']],
     [9, 'api_tokens', ['user_id']],
+    // (10 added a table, request_type_labels: below.)
     // Tag-restricted accounts (see oldDatabase)
-    [10, 'users', ['tag_scoped']],
+    [11, 'users', ['tag_scoped']],
   ];
   for (const [added, table, columns] of dropColumns) {
     if (v >= added) continue;
@@ -387,8 +420,24 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     delete out.tables.card_watchers;
     out.tables.activity = (out.tables.activity ?? []).filter((row) => row.type !== 'assigned');
   }
+  if (v < 10) {
+    // Before 1.5.0-rc.4 a request type had one "always add" label (Plex: its only label) and tags
+    // submitters could pick; a second type had only tags.
+    const links = out.tables.request_type_labels ?? [];
+    const types = out.tables.request_types ?? [];
+    for (const row of types) {
+      const ids = links.filter((l) => l.request_type_id === row.id).map((l) => l.label_id);
+      row.type_label_id = ids[0] ?? null;
+      row.tag_label_ids = JSON.stringify(ids);
+    }
+    if (types.length) {
+      const id = Math.max(...types.map((r) => Number(r.id))) + 1;
+      types.push({ ...types[0], id, name: 'Game servers', position: id, type_label_id: null, tag_label_ids: JSON.stringify(links.map((l) => l.label_id)) });
+    }
+    delete out.tables.request_type_labels;
+  }
   // Tag-restricted accounts (see oldDatabase)
-  if (v < 10) delete out.tables.user_labels;
+  if (v < 11) delete out.tables.user_labels;
   return out;
 }
 
@@ -408,6 +457,13 @@ describe('restoring a backup exported by an older version', () => {
     for (const tbl of COUNTED) expect(count(restored, tbl), tbl).toBe(count(db, tbl) - (tbl === 'activity' ? dropped : 0));
     // A backup from before 1.5 has no people (confirmRestore adds the live install's accounts).
     expect(count(restored, 'users')).toBe(v >= 9 ? 3 : 0);
+    // 1.5.0-rc.4: the "always add" label carries over, the tags submitters could pick don't.
+    // (A schema-10 export already has request_type_labels, and no second type.)
+    if (v >= 5) {
+      const types = typeLabels({ db: restored, clock, tz: TZ });
+      expect(types).toEqual(v < 10 ? { Plex: [labelId(restored, 'Hardware')], 'Game servers': [] } : { Plex: [labelId(restored, 'Hardware')] });
+    }
+    expect(oldTypeColumns(restored)).toBe(0);
     // Before 1.4 the failed item was just not checked.
     checkWorks({ db: restored, clock, tz: TZ }, v >= 8 ? marksAt(v) : { 'Run a SMART long test': 'done', 'Swap the backplane': 'open' });
   });
@@ -422,6 +478,7 @@ describe('restoring a backup exported by this version', () => {
     buildRestoreDb(exportData(src, 'current'), file, TZ, clock);
     const restored = openDatabase(file);
     dbs.push(restored);
+    expect(typeLabels({ db: restored, clock, tz: TZ })).toEqual({ Plex: [labelId(restored, 'Hardware')] });
     checkWorks({ db: restored, clock, tz: TZ }, { 'Run a SMART long test': 'done', 'Swap the backplane': 'failed' });
   });
 });

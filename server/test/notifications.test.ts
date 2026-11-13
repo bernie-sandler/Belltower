@@ -1,7 +1,7 @@
 // 1.5 personal notifications: who is told about what, watching, @mentions, the bell's API, personal
 // Discord and ntfy messages (combined per person), and pruning.
 
-import { DEFAULT_NOTIFY_PREFS, findMentions, type Actor, type NotifyPrefs } from '@tt/shared';
+import { DEFAULT_NOTIFY_PREFS, findMentions, PASSIVE_HEADER, type Actor, type NotifyPrefs } from '@tt/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { listActivity } from '../src/services/activity';
 import { importCards } from '../src/services/cardImport';
@@ -558,6 +558,29 @@ describe('over HTTP', () => {
     app.clock.advance(2 * halfHour); // 12.5 hours after signing in, with only polls in between
     expect((await polled('GET', '/api/notifications')).statusCode).toBe(401);
     expect((await used('GET', '/api/notifications')).statusCode).toBe(200); // real use slides it
+  });
+
+  it('a GET marked passive (the live refresh) doesn’t slide the session either; without the mark it does', async () => {
+    app = await makeApp();
+    await setupAndLogin(app);
+    const refreshed = client(app.app, await loginAs(app, 'admin')); // not remembered: 12 hours idle
+    const used = client(app.app, await loginAs(app, 'admin'));
+    const passive = { [PASSIVE_HEADER]: '1' };
+    const halfHour = 30 * 60 * 1000;
+    for (let i = 1; i <= 23; i++) {
+      app.clock.advance(halfHour);
+      expect((await refreshed('GET', '/api/board', undefined, passive)).statusCode, `refresh ${i}`).toBe(200);
+      expect((await used('GET', '/api/board')).statusCode, `board ${i}`).toBe(200);
+    }
+    app.clock.advance(2 * halfHour);
+    expect((await refreshed('GET', '/api/board', undefined, passive)).statusCode).toBe(401);
+    expect((await used('GET', '/api/board', undefined, passive)).statusCode).toBe(200);
+    // Only a GET can be passive: a change marked so still counts as use.
+    const changed = client(app.app, await loginAs(app, 'admin'));
+    for (let i = 1; i <= 25; i++) {
+      app.clock.advance(halfHour);
+      expect((await changed('POST', '/api/notifications/read', { all: true }, passive)).statusCode, `change ${i}`).toBe(200);
+    }
   });
 
   it('watch and unwatch a card', async () => {

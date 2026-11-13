@@ -248,7 +248,7 @@ describe('status links over HTTP', () => {
         .filter((f) => f.required)
         .map((f) => [f.key, f.kind === 'choice' ? f.options[0]! : f.kind === 'multi' ? [f.options[0]!] : f.kind === 'yesno' ? true : f.kind === 'datetime' ? '2026-10-10T10:00' : 'x']),
     );
-    const body = { typeId: type.id, summary: 'No sound', description: 'Silent', answers, tagLabelIds: [], name: '', website: '' };
+    const body = { typeId: type.id, summary: 'No sound', description: 'Silent', answers, name: '', website: '' };
     const result = submitTicket(app.ctx, key, body, [], app.dir);
     expect(result.statusPath).toMatch(/^\/submit\/status\/\d+\/[\w-]{22}$/);
     const res = await app.app.inject({ method: 'GET', url: `/api/public${result.statusPath!.replace('/submit', '')}` });
