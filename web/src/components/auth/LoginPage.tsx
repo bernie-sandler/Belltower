@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type FormEvent } from 'react';
-import { useLogin } from '../../api/auth';
+import { useSearchParams } from 'react-router';
+import { useAuthStatus, useLogin } from '../../api/auth';
 import { isApiError } from '../../api/client';
 import { errorMessage, retryAfterSec } from '../../api/errors';
 import { qk } from '../../api/keys';
@@ -38,6 +39,14 @@ export function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const ssoError = useSsoError();
+  const { data: status } = useAuthStatus();
+  const [params] = useSearchParams();
+  // /login?password opens the form in every mode: how the owner signs in with password sign-in off.
+  const [askedForPassword] = useState(() => params.has('password'));
+  const [opened, setOpened] = useState(false);
+  const mode = status?.sso ? status.passwordLogin : 'shown';
+  // Hidden behind a link: it also opens by itself when the provider sent someone back with a known error.
+  const showForm = mode === 'shown' || askedForPassword || (mode === 'hidden' && (opened || ssoError.message !== null));
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -55,6 +64,8 @@ export function LoginPage() {
           lockout.lock(wait);
         } else if (isApiError(err, 'invalid_password')) {
           setError('Incorrect username or password.');
+        } else if (isApiError(err, 'password_login_off')) {
+          setError(`Password sign-in is turned off on this install. Use “Sign in with ${status?.sso?.label ?? 'single sign-on'}” instead.`);
         } else if (isApiError(err, 'setup_required')) {
           // No account exists any more (e.g. a fresh data folder): the gate shows setup.
           void qc.invalidateQueries({ queryKey: qk.auth });
@@ -69,77 +80,86 @@ export function LoginPage() {
 
   return (
     <AuthLayout title="Log in">
-      <SsoError message={ssoError} />
-      <SsoButton />
-      <form className="auth-form" onSubmit={onSubmit} noValidate>
-        <label className="field">
-          <span className="field-label">Username</span>
-          {/* Password managers file the password under this name (iOS Keychain included). */}
-          <input
-            className="input"
-            type="text"
-            name="username"
-            autoComplete="username"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            maxLength={100}
-            value={username}
-            onChange={(e) => {
-              setUsername(e.target.value);
-              setError(null);
-            }}
-            autoFocus={!username}
-            aria-invalid={error !== null || undefined}
-            aria-describedby={error ? 'login-error' : undefined}
-          />
-        </label>
-        <label className="field">
-          <span className="field-label">Password</span>
-          {/* Stays enabled during a lockout so focus and the iOS keyboard aren't lost. */}
-          <input
-            ref={inputRef}
-            className="input"
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            enterKeyHint="go"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setError(null);
-            }}
-            autoFocus={!!username}
-            required
-            aria-invalid={error !== null || undefined}
-            aria-describedby={error ? 'login-error' : undefined}
-          />
-        </label>
-        <label className="checkbox">
-          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-          <span>Remember this device</span>
-        </label>
-        <p className="field-help">
-          {remember
-            ? 'Stay signed in for 90 days on this device.'
-            : 'Sign out when the browser closes or after 12 hours idle.'}
+      <SsoError message={ssoError.message} />
+      <SsoButton orPassword={showForm} />
+      {mode === 'hidden' && !showForm && (
+        <p className="auth-password-link">
+          <button type="button" className="link-btn" onClick={() => setOpened(true)}>
+            Sign in with a password
+          </button>
         </p>
-
-        <LockoutMessage lockout={lockout} />
-        {error && (
-          <p id="login-error" className="form-error" role="alert">
-            {error}
+      )}
+      {showForm && (
+        <form className="auth-form" onSubmit={onSubmit} noValidate>
+          <label className="field">
+            <span className="field-label">Username</span>
+            {/* Password managers file the password under this name (iOS Keychain included). */}
+            <input
+              className="input"
+              type="text"
+              name="username"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={100}
+              value={username}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setError(null);
+              }}
+              autoFocus={!username}
+              aria-invalid={error !== null || undefined}
+              aria-describedby={error ? 'login-error' : undefined}
+            />
+          </label>
+          <label className="field">
+            <span className="field-label">Password</span>
+            {/* Stays enabled during a lockout so focus and the iOS keyboard aren't lost. */}
+            <input
+              ref={inputRef}
+              className="input"
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              enterKeyHint="go"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError(null);
+              }}
+              autoFocus={!!username}
+              required
+              aria-invalid={error !== null || undefined}
+              aria-describedby={error ? 'login-error' : undefined}
+            />
+          </label>
+          <label className="checkbox">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <span>Remember this device</span>
+          </label>
+          <p className="field-help">
+            {remember
+              ? 'Stay signed in for 90 days on this device.'
+              : 'Sign out when the browser closes or after 12 hours idle.'}
           </p>
-        )}
 
-        <button
-          type="submit"
-          className="btn btn-primary btn-block"
-          disabled={!password || lockout.locked || login.isPending}
-        >
-          {login.isPending ? 'Logging in…' : lockout.locked ? 'Locked — please wait' : 'Log in'}
-        </button>
-      </form>
+          <LockoutMessage lockout={lockout} />
+          {error && (
+            <p id="login-error" className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={!password || lockout.locked || login.isPending}
+          >
+            {login.isPending ? 'Logging in…' : lockout.locked ? 'Locked — please wait' : 'Log in'}
+          </button>
+        </form>
+      )}
     </AuthLayout>
   );
 }

@@ -19,6 +19,7 @@ const info: OidcSettingsInfo = {
   autoCreate: false,
   linkByEmail: false,
   allowHttpIssuer: false,
+  passwordLogin: 'hidden',
   redirectUri: 'https://belltower.example.com/api/auth/oidc/callback',
   ready: true,
 };
@@ -55,7 +56,7 @@ describe('SsoSection', () => {
     expect(secret.value).toBe('');
     expect(secret.placeholder).toMatch(/Saved/);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(sent('PUT', '/api/settings/oidc')).toMatchObject({ enabled: true, clientSecret: null, preset: 'authentik' }));
+    await waitFor(() => expect(sent('PUT', '/api/settings/oidc')).toMatchObject({ enabled: true, clientSecret: null, preset: 'authentik', passwordLogin: 'hidden' }));
   });
 
   it('tests the connection with the form’s issuer', async () => {
@@ -85,5 +86,17 @@ describe('SsoSection', () => {
     setup(() => json({ error: 'demo_unavailable', message: 'Not available in the demo: single sign-on needs the server' }, 400));
     expect(await screen.findByText(/Not available in the demo/)).toBeTruthy();
     expect(screen.queryByLabelText(/^Issuer URL/)).toBeNull();
+  });
+
+  it('offers the three password sign-in choices, hidden by default, and saves the one picked', async () => {
+    const { sent } = setup(() => json(info));
+    const hidden = (await screen.findByRole('radio', { name: /Hide it behind a link/ })) as HTMLInputElement;
+    expect(hidden.checked).toBe(true);
+    expect(screen.getByText(/\/login\?password/)).toBeTruthy();
+    expect(screen.queryByText(/an account\s+that isn’t linked can’t sign in/)).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'Turn password sign-in off' }));
+    expect(screen.getByText(/that isn’t linked can’t sign in at all/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent('PUT', '/api/settings/oidc')).toMatchObject({ passwordLogin: 'off' }));
   });
 });

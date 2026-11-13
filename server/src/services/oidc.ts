@@ -7,9 +7,11 @@ import {
   OIDC_PRESET_DEFAULTS,
   OIDC_PRESETS,
   OWNER_ALIAS,
+  PASSWORD_LOGIN_MODES,
   type OidcPreset,
   type OidcSettingsBody,
   type OidcSettingsInfo,
+  type PasswordLoginMode,
   type SsoErrorCode,
 } from '@tt/shared';
 import { getSetting, setSetting, stmt } from '../db/connection';
@@ -34,6 +36,8 @@ export interface OidcSettings {
   autoCreate: boolean;
   linkByEmail: boolean;
   allowHttpIssuer: boolean;
+  /** Password sign-in while single sign-on is on and complete (see passwordLoginMode). */
+  passwordLogin: PasswordLoginMode;
 }
 
 const DEFAULTS: OidcSettings = {
@@ -50,6 +54,7 @@ const DEFAULTS: OidcSettings = {
   autoCreate: false,
   linkByEmail: false,
   allowHttpIssuer: false,
+  passwordLogin: 'hidden',
 };
 
 /** The saved settings, each field checked (a hand-edited row can't break sign-in into a crash). */
@@ -64,6 +69,10 @@ export function getOidcSettings(ctx: Ctx): OidcSettings {
   const str = (k: keyof OidcSettings, fallback: string) => (typeof raw[k] === 'string' ? (raw[k] as string) : fallback);
   const bool = (k: keyof OidcSettings) => raw[k] === true;
   const preset = OIDC_PRESETS.includes(raw.preset as OidcPreset) ? (raw.preset as OidcPreset) : DEFAULTS.preset;
+  // Saved before this choice existed, or hand-edited: hidden.
+  const passwordLogin = PASSWORD_LOGIN_MODES.includes(raw.passwordLogin as PasswordLoginMode)
+    ? (raw.passwordLogin as PasswordLoginMode)
+    : DEFAULTS.passwordLogin;
   return {
     enabled: bool('enabled'),
     preset,
@@ -78,6 +87,7 @@ export function getOidcSettings(ctx: Ctx): OidcSettings {
     autoCreate: bool('autoCreate'),
     linkByEmail: bool('linkByEmail'),
     allowHttpIssuer: bool('allowHttpIssuer'),
+    passwordLogin,
   };
 }
 
@@ -125,6 +135,16 @@ export function ssoStatus(ctx: Ctx, envSecret: string | null): { label: string }
   return oidcReady(ctx, s, envSecret) ? { label: buttonLabel(s) } : null;
 }
 
+/**
+ * Password sign-in as it applies right now: the saved choice while single sign-on is on and
+ * complete, else 'shown' (a provider that can't be used never hides or blocks the form). The
+ * login page and the login route both go by this. 'off' never applies to the owner.
+ */
+export function passwordLoginMode(ctx: Ctx, envSecret: string | null): PasswordLoginMode {
+  const s = getOidcSettings(ctx);
+  return oidcReady(ctx, s, envSecret) ? s.passwordLogin : 'shown';
+}
+
 export function oidcInfo(ctx: Ctx, envSecret: string | null): OidcSettingsInfo {
   const { clientSecret, ...s } = getOidcSettings(ctx);
   return {
@@ -157,9 +177,10 @@ export function checkIssuer(issuer: string, allowHttp: boolean): URL {
  * Saves the settings. The issuer is normalized for its preset. Moving the issuer to another origin
  * forgets the saved secret unless a new one comes with it, so the secret can't be sent somewhere
  * else by changing only the address. Turning it on needs the issuer, client ID, a secret and the
- * app's address (the redirect URI is built from it).
+ * app's address (the redirect URI is built from it). Password sign-in can't be turned off by an admin
+ * who'd then have no way in: someone other than the owner without a linked identity.
  */
-export function updateOidcSettings(ctx: Ctx, body: OidcSettingsBody, envSecret: string | null): void {
+export function updateOidcSettings(ctx: Ctx, body: OidcSettingsBody, envSecret: string | null, byUserId?: number): void {
   const current = getOidcSettings(ctx);
   const issuer = normalizeIssuer(body.preset, body.issuer);
   if (issuer) checkIssuer(issuer, body.allowHttpIssuer);
@@ -181,7 +202,17 @@ export function updateOidcSettings(ctx: Ctx, body: OidcSettingsBody, envSecret: 
       throw badRequest('app_url_required', 'Set “This app’s address” under General first: the provider sends people back to it');
     }
   }
-  const next: OidcSettings = { ...body, issuer, clientSecret };
+  // No passwordLogin (an admin tab opened before an upgrade): the saved choice stays.
+  const next: OidcSettings = { ...body, issuer, clientSecret, passwordLogin: body.passwordLogin ?? current.passwordLogin };
+  if (next.passwordLogin === 'off' && byUserId !== undefined) {
+    const me = getUser(ctx, byUserId);
+    if (me.is_owner !== 1 && me.oidc_subject === null) {
+      throw badRequest(
+        'would_lock_you_out',
+        'Link your own account to single sign-on (Account → Sign-in) before turning password sign-in off: without it you couldn’t sign in again.',
+      );
+    }
+  }
   setSetting(ctx.db, OIDC_SETTINGS_KEY, JSON.stringify(next));
 }
 
@@ -349,10 +380,16 @@ export function linkIdentity(ctx: Ctx, userId: number, id: OidcIdentity): 'ok' |
   });
 }
 
-/** Removes your link. Refused for an account without a password, which would then have no way in. */
-export function unlinkIdentity(ctx: Ctx, userId: number): void {
+/**
+ * Removes your link. Refused when you'd then have no way in: while password sign-in is off (except
+ * for the owner, who can always use a password), or for an account without a password.
+ */
+export function unlinkIdentity(ctx: Ctx, userId: number, envSecret: string | null): void {
   const user = getUser(ctx, userId);
   if (user.oidc_subject === null) return;
+  if (user.is_owner !== 1 && passwordLoginMode(ctx, envSecret) === 'off') {
+    throw conflict('password_login_off', 'Password sign-in is turned off on this install, so unlinking would lock you out. Ask an admin.');
+  }
   if (user.password_hash === null) {
     throw conflict('needs_password', 'Your account has no password, so unlinking would lock you out. Ask an admin to set a temporary password first.');
   }

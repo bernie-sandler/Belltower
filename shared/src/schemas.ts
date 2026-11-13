@@ -109,6 +109,14 @@ export const OIDC_PRESET_DEFAULTS: Record<OidcPreset, { label: string; scopes: s
   custom: { label: 'single sign-on', scopes: 'openid profile email' },
 };
 
+/**
+ * Password sign-in while single sign-on is on (and complete): the form as before, behind a "Sign in
+ * with a password" link (the default), or off for everyone but the owner. Without single sign-on
+ * the form always shows.
+ */
+export const PASSWORD_LOGIN_MODES = ['shown', 'hidden', 'off'] as const;
+export type PasswordLoginMode = (typeof PASSWORD_LOGIN_MODES)[number];
+
 /** An http(s) issuer with no user name, query or fragment (the server parses it properly). */
 const ISSUER_URL = /^https?:\/\/[^\s/?#@]+(?:\/[^\s?#]*)?$/i;
 const ClaimName = z
@@ -149,6 +157,8 @@ export const OidcSettingsBody = z.object({
   linkByEmail: z.boolean().default(false),
   /** Allow an http:// issuer (LAN only): the token exchange then travels unencrypted. */
   allowHttpIssuer: z.boolean().default(false),
+  /** Left out (an admin tab opened before an upgrade): the saved choice stays. */
+  passwordLogin: z.enum(PASSWORD_LOGIN_MODES).optional(),
 });
 export type OidcSettingsBody = z.infer<typeof OidcSettingsBody>;
 
