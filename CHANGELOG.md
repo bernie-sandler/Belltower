@@ -38,8 +38,26 @@ the container log on start, and in every backup export.
 - **Personal notifications.** **Account → Notifications** chooses, for each kind of event, the bell, a Discord ping in
   the install's channel, or your own ntfy topic. See
   [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md#personal-notifications).
-- **Single sign-on (optional).** Sign in through Authentik, Authelia or another OpenID Connect provider. Signing in with
-  a password always stays available. See [docs/SSO.md](docs/SSO.md).
+- **Tag-restricted accounts.** In **Settings → People**, an admin can restrict a member to certain tags. They then see
+  only tickets that carry one of those tags, everywhere: board, search, calendar, history, the bell, their own
+  notifications and their API tokens. Untagged tickets are hidden from them, and with no tags left they see nothing.
+  See [docs/USING.md](docs/USING.md).
+  - Cards they create get their tags, and they can't manage tags, columns, board-wide actions or recurring templates.
+  - A ticket can't be assigned to someone who can't see it. Retagging a ticket, or narrowing someone's tags,
+    unassigns them from tickets they can no longer see, and the history says so.
+  - Admins and the owner can't be restricted. It works whether Teams is on or off.
+- **Request types label their tickets.** Each request type on the submit page has a list of labels that go on every
+  ticket filed with it, so tickets can land straight with the right tag (and the people restricted to it).
+  Submitters no longer pick tags. See [docs/SUBMIT-PAGE.md](docs/SUBMIT-PAGE.md).
+- **The board keeps itself up to date.** While the tab is visible, the board, lists, calendar and the open card
+  refresh every 15 seconds, and a new ticket now lands on the board together with the bell's chime. These refreshes
+  don't keep an idle tab signed in. If someone changes a card's title while you're editing it, you're told before
+  your save replaces it.
+- **Single sign-on (optional).** Sign in through Authentik, Authelia or another OpenID Connect provider. See
+  [docs/SSO.md](docs/SSO.md).
+  - With single sign-on on, the login page shows the sign-on button and keeps the password form behind a
+    **Sign in with a password** link. **Settings → Single sign-on** can show the form again, or turn password sign-in
+    off for everyone but the owner, who can still use it at `/login?password`. `APP_PASSWORD` still resets the owner.
   - With a required group set, Belltower also asks for the `groups` scope when the provider offers one (VoidAuth and
     Pocket ID send groups only then), and the log says why someone failed the group check.
 - **API tokens belong to a person.** Members see their own under **Account**, and admins see everyone's under
@@ -54,8 +72,14 @@ the container log on start, and in every backup export.
   - `APP_PASSWORD` now sets the owner's password only, and "set it and restart" still gets you back in.
   - Backups now include people, but never their passwords. Restoring keeps the accounts of the install you restore
     into, and backups from every earlier version still restore.
-  - The database moves to layout 9. Going back to 1.4 means putting back the copy saved before the upgrade, and any
+  - Each request type keeps its "Always add the label" as its one label. The lists of tags submitters could pick
+    are dropped; add any you still want to the type's labels.
+  - Nobody is restricted to tags until an admin sets it.
+  - If you already use single sign-on, the password form moves behind a link on the login page. Nothing else
+    changes until an admin turns password sign-in off.
+  - The database moves to layout 11. Going back to 1.4 means putting back the copy saved before the upgrade, and any
     accounts created since are lost (see [docs/UPGRADING.md](docs/UPGRADING.md#upgrading-to-15-people)).
+  - **From a 1.5.0 release candidate (rc.1 to rc.3):** the same notes apply; the database moves from layout 9 to 11.
 
 ## 1.4.0: Not every check passes
 

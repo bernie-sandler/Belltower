@@ -84,8 +84,9 @@ together with the safety copy:
    return to anything older you'd have to build it yourself from its commit in the git history.
 
 For example, 1.3 upgrades the database to layout 7 (for read-only API tokens), so a 1.2 image refuses to start on it
-until you put the `pre-migrate-v6-to-v7-…db` copy back. Likewise 1.5 upgrades to layout 9 (people), and going back to
-1.4 means putting the `pre-migrate-v8-to-v9-…db` copy back.
+until you put the `pre-migrate-v6-to-v7-…db` copy back. Likewise 1.5 upgrades to layout 11 (people, request type labels and
+tag-restricted accounts), and going back to 1.4 means putting the `pre-migrate-v8-to-v11-…db` copy back (from a
+1.5.0 release candidate it's named after the layout you came from, such as `pre-migrate-v9-to-v11-…db`).
 
 Anything you changed after the upgrade is lost this way. Export a backup first if that matters, then open an issue so
 it can be fixed. Rolling back from 1.5 also loses the accounts created since the upgrade (and who did what), and 1.4
