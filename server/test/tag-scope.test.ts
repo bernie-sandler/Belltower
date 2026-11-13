@@ -3,6 +3,7 @@
 
 import { DEFAULT_NOTIFY_PREFS } from '@tt/shared';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { TicketDrafter } from '../src/services/aiDraft';
 import { getSubmitSettings, updateSubmitSettings } from '../src/services/settings';
 import { listRequestTypes } from '../src/services/requestTypes';
 import { addPerson, client, enableTeams, makeApp, setupAndLogin, type TestApp } from './helpers';
@@ -33,8 +34,8 @@ function upload(app: TestApp, cookie: string, url: string, filename: string, con
  * note, a file and a due date; it blocks `a` and is linked to it), `untagged`, a work card `w` (A)
  * with a hidden child `child` (B), and B-tagged cards in the Archive and the Trash.
  */
-async function setup() {
-  t = await makeApp();
+async function setup(ai?: TicketDrafter) {
+  t = await makeApp(ai ? { ai } : {});
   const admin = await setupAndLogin(t);
   enableTeams(t.ctx);
   const api = client(t.app, admin);
@@ -321,5 +322,132 @@ describe('a tag-restricted member', () => {
     expect((await s.as('GET', '/api/board')).json().cards.length).toBe(5);
     // Members can't restrict anyone.
     expect((await s.as('PATCH', `/api/users/${s.sam.id}`, { tagScope: [s.A] })).statusCode).toBe(403);
+  });
+
+  it('history doesn’t keep the ids of hidden cards either', async () => {
+    const s = await setup();
+    const history = (await s.as('GET', `/api/cards/${s.a.id}/activity`)).json() as { type: string; data: Record<string, unknown> }[];
+    const linked = history.find((e) => e.type === 'linked')!;
+    expect(linked.data).toMatchObject({ otherId: null, otherTitle: 'Hidden ticket' });
+    const child = (await s.api('POST', '/api/cards', { title: 'Bravo kid', labelIds: [s.B], parentId: s.w.id })).json();
+    void child;
+    const w = (await s.as('GET', `/api/cards/${s.w.id}/activity`)).json() as { type: string; data: { child?: { id: unknown } } }[];
+    for (const e of w.filter((x) => x.type === 'child_added')) expect(e.data.child!.id).toBeNull();
+  });
+
+  it('the directory shows a restriction only to admins and to the person themselves', async () => {
+    const s = await setup();
+    const kim = await addPerson(s.t, s.admin, 'kim');
+    await s.api('PATCH', `/api/users/${kim.id}`, { tagScope: [s.B] });
+    const seenBySam = (await s.as('GET', '/api/users')).json() as { id: number; tagScope: number[] | null }[];
+    expect(seenBySam.find((u) => u.id === s.sam.id)!.tagScope).toEqual([s.A]);
+    expect(seenBySam.find((u) => u.id === kim.id)!.tagScope).toBeNull();
+    const seenByAdmin = (await s.api('GET', '/api/users')).json() as { id: number; tagScope: number[] | null }[];
+    expect(seenByAdmin.find((u) => u.id === kim.id)!.tagScope).toEqual([s.B]);
+  });
+
+  it('a card that loses the assignee’s tag is unassigned, and logged', async () => {
+    const s = await setup();
+    await s.api('PATCH', `/api/cards/${s.a.id}`, { expectedVersion: version(s.a.id), assigneeId: s.sam.id });
+    const after = (await s.api('PATCH', `/api/cards/${s.a.id}`, { expectedVersion: version(s.a.id), labelIds: [s.B] })).json();
+    expect(after.assigneeId).toBeNull();
+    const history = (await s.api('GET', `/api/cards/${s.a.id}/activity`)).json() as { type: string; data: Record<string, unknown> }[];
+    expect(history.find((e) => e.type === 'assigned')!.data).toMatchObject({ from: s.sam.id, to: null });
+  });
+
+  it('narrowing someone’s tags takes them off the cards they can no longer see', async () => {
+    const s = await setup();
+    await s.api('PATCH', `/api/users/${s.sam.id}`, { tagScope: [s.A, s.B] });
+    await s.api('PATCH', `/api/cards/${s.a.id}`, { expectedVersion: version(s.a.id), assigneeId: s.sam.id });
+    await s.api('PATCH', `/api/cards/${s.b.id}`, { expectedVersion: version(s.b.id), assigneeId: s.sam.id });
+    const res = (await s.api('PATCH', `/api/users/${s.sam.id}`, { tagScope: [s.A] })).json();
+    expect(res).toMatchObject({ tagScope: [s.A], unassigned: 1 });
+    const assignee = (id: number) => s.t.ctx.db.prepare('SELECT assignee_id FROM cards WHERE id = ?').pluck().get(id);
+    expect(assignee(s.a.id)).toBe(s.sam.id);
+    expect(assignee(s.b.id)).toBeNull();
+    const history = (await s.api('GET', `/api/cards/${s.b.id}/activity`)).json() as { type: string; data: Record<string, unknown> }[];
+    expect(history.find((e) => e.type === 'assigned' && e.data.to === null)).toBeTruthy();
+    expect((await s.api('PATCH', `/api/users/${s.sam.id}`, { displayName: 'Sam R' })).json().unassigned).toBe(0);
+  });
+
+  it('links, checklist order, mark-read, Add ticket and import treat hidden cards as missing', async () => {
+    const s = await setup();
+    const link = (await s.api('GET', `/api/cards/${s.a.id}`)).json().links[0];
+    const linkId = link.id as number;
+    const del = await s.as('DELETE', `/api/cards/${s.a.id}/links/${linkId}`);
+    expect(del.statusCode).toBe(404);
+    expect(del.json().message).toBe('Link not found');
+    const order = await s.as('PUT', `/api/checklists/${s.checklist.id}/items/order`, { ids: [s.item.id] });
+    expect(order.statusCode).toBe(404);
+    expect(order.body).not.toMatch(/Bravo/);
+
+    // Mark-read counts only what the bell shows.
+    await s.as('PUT', `/api/cards/${s.a.id}/watch`);
+    await s.api('POST', `/api/cards/${s.a.id}/worklog`, { bodyMd: 'Alpha note' });
+    s.t.ctx.db
+      .prepare(`INSERT INTO notifications (user_id, card_id, type, data, created_at) VALUES (?, ?, 'watching', '{}', '2026-10-10T15:00:00.000Z')`)
+      .run(s.sam.id, s.b.id);
+    expect((await s.as('GET', '/api/notifications')).json().unread).toBe(1);
+    expect((await s.as('POST', '/api/notifications/read', { cardId: s.b.id })).json()).toEqual({ unread: 1 });
+    expect((await s.as('POST', '/api/notifications/read', { all: true })).json()).toEqual({ unread: 0 });
+
+    // Add ticket: a hidden work card or link target is missing.
+    expect((await s.as('POST', '/api/tickets', { title: 'x', parentId: s.w.id })).statusCode).toBe(201);
+    const hiddenParent = await s.as('POST', '/api/tickets', { title: 'y', parentId: s.child.id });
+    expect(hiddenParent.statusCode).toBe(400);
+    expect(hiddenParent.body).not.toMatch(/Bravo/);
+    const hiddenLink = await s.as('POST', '/api/tickets', { title: 'z', links: [{ direction: 'relates', cardId: s.b.id }] });
+    expect(hiddenLink.statusCode).toBe(404);
+    expect(hiddenLink.body).not.toMatch(/Bravo/);
+
+    // Import: a hidden ticket number is unknown, and new tags can't be made.
+    const bTicket = s.t.ctx.db.prepare('SELECT ticket_no FROM cards WHERE id = ?').pluck().get(s.b.id) as string;
+    const preview = await s.as('POST', '/api/import/cards', { data: [{ title: 'Imported', relatedTo: [bTicket], labels: ['Brand new tag'] }], dryRun: true });
+    expect(preview.body).not.toMatch(/Bravo/);
+    expect(preview.body).toMatch(/can’t create labels|can't create labels/);
+  });
+
+  it('a restricted token: v1 intake and the Uptime Kuma hook only match visible cards, and can’t make tags', async () => {
+    const s = await setup();
+    const token = (await s.as('POST', '/api/tokens', { name: 'Sam kuma' })).json().token as string;
+    const v1 = (url: string, body: unknown) =>
+      s.t.app.inject({ method: 'POST', url, payload: body as object, headers: { authorization: `Bearer ${token}` } });
+    // A hidden open card with the same dedupe key: a new card, not a note on the hidden one.
+    s.t.ctx.db.prepare(`UPDATE cards SET source = 'api', source_ref = 'nas-down' WHERE id = ?`).run(s.b.id);
+    const made = await v1('/api/v1/cards', { title: 'NAS down', dedupeKey: 'nas-down' });
+    expect(made.statusCode).toBe(201);
+    expect(made.json().card.id).not.toBe(s.b.id);
+    expect(made.body).not.toMatch(/Bravo/);
+    const newTag = await v1('/api/v1/cards', { title: 'With a new tag', labels: ['Never seen before'] });
+    expect([400, 403]).toContain(newTag.statusCode);
+    expect(newTag.body).toMatch(/create labels/);
+    const kuma = await v1('/api/v1/hooks/uptime-kuma', {
+      heartbeat: { status: 0, msg: 'down', time: '2026-10-10 10:00:00' },
+      monitor: { id: 7, name: 'Plex', url: 'http://tower:32400' },
+      msg: '[Plex] down',
+    });
+    expect(kuma.statusCode).toBeLessThan(300);
+    const kumaCard = s.t.ctx.db.prepare(`SELECT id FROM cards WHERE source_ref LIKE 'uptime-kuma:%' ORDER BY id DESC`).pluck().get() as number;
+    expect((await s.as('GET', `/api/cards/${kumaCard}`)).json().labelIds).toContain(s.A);
+  });
+
+  it('AI drafting never sends hidden cards to the model', async () => {
+    const calls: string[] = [];
+    const ai: TicketDrafter = {
+      model: 'claude-test',
+      async complete<T>(_system: string, user: string): Promise<T> {
+        calls.push(user);
+        throw new Error('stop here');
+      },
+    };
+    const s = await setup(ai);
+    await s.as('POST', '/api/ai/draft', { text: 'Plex keeps buffering again' });
+    await s.as('POST', '/api/ai/draft-many', { text: 'Plex keeps buffering again' });
+    expect(calls.length).toBeGreaterThan(0);
+    for (const prompt of calls) {
+      // Tag names may be sent (they aren't cards); hidden card titles never are.
+      expect(prompt).toMatch(/Alpha router reboot/);
+      expect(prompt).not.toMatch(/Bravo secret|Bravo hidden|Bravo archived|Untagged furnace/);
+    }
   });
 });
