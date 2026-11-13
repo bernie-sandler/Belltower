@@ -181,6 +181,13 @@ function oldDatabase(v: number): DB {
     );
     run(`INSERT INTO notifications (user_id, card_id, activity_id, type, actor_user_id, created_at) VALUES (?, ?, ?, 'assigned', ?, ?)`, sam, disk, assigned, owner, at(3));
   }
+  // ---- Tag-restricted accounts (migration 10 on feat/tag-restricted-accounts; renumbered once the
+  // other branch's migration 10 merges) ----
+  if (v >= 10) {
+    // The member only sees cards with the first tag.
+    db.prepare('UPDATE users SET tag_scoped = 1 WHERE id = ?').run(sam);
+    run('INSERT INTO user_labels (user_id, label_id) SELECT ?, min(id) FROM labels', sam);
+  }
   return db;
 }
 
@@ -300,21 +307,28 @@ describe('upgrading a database left by an older version', () => {
     for (const t of COUNTED) expect(count(db, t), t).toBe(before[t]);
     expect(count(db, 'request_types')).toBe(v >= 5 ? 1 : 3); // older installs get the default types
 
-    // 1.4's password became the owner account `admin` (dated by the oldest column); the signed-in
-    // device and the API tokens are the owner's, so nobody is signed out and automations keep working.
-    const owner = db.prepare('SELECT * FROM users WHERE is_owner = 1').get() as Record<string, unknown>;
-    expect(owner).toMatchObject({ username: 'admin', display_name: 'Admin', role: 'admin', password_hash: OLD_HASH, created_at: at(1), disabled_at: null });
-    expect(db.prepare(`SELECT key FROM settings WHERE key = 'password_hash'`).get()).toBeUndefined();
-    expect(db.prepare(`SELECT value FROM settings WHERE key = 'password_source'`).pluck().get()).toBe('ui');
-    expect(db.prepare('SELECT user_id FROM sessions').pluck().all()).toEqual([owner.id]);
-    expect(db.prepare('SELECT count(*) FROM api_tokens WHERE user_id IS NOT ?').pluck().get(owner.id)).toBe(0);
-    expect(count(db, 'users')).toBe(1);
-    // Nothing from before says who did what.
-    expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(0);
-    expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(0);
-    // One person: Teams starts off, so the board looks as before.
-    expect(prepared.teams).toBe(false);
-    expect(db.prepare(`SELECT value FROM settings WHERE key = 'teams_settings'`).pluck().get()).toBe('{"enabled":false}');
+    if (v < 9) {
+      // 1.4's password became the owner account `admin` (dated by the oldest column); the signed-in
+      // device and the API tokens are the owner's, so nobody is signed out and automations keep working.
+      const owner = db.prepare('SELECT * FROM users WHERE is_owner = 1').get() as Record<string, unknown>;
+      expect(owner).toMatchObject({ username: 'admin', display_name: 'Admin', role: 'admin', password_hash: OLD_HASH, created_at: at(1), disabled_at: null });
+      expect(db.prepare(`SELECT key FROM settings WHERE key = 'password_hash'`).get()).toBeUndefined();
+      expect(db.prepare(`SELECT value FROM settings WHERE key = 'password_source'`).pluck().get()).toBe('ui');
+      expect(db.prepare('SELECT user_id FROM sessions').pluck().all()).toEqual([owner.id]);
+      expect(db.prepare('SELECT count(*) FROM api_tokens WHERE user_id IS NOT ?').pluck().get(owner.id)).toBe(0);
+      expect(count(db, 'users')).toBe(1);
+      // Nothing from before says who did what.
+      expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(0);
+      expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(0);
+      // One person: Teams starts off, so the board looks as before.
+      expect(prepared.teams).toBe(false);
+      expect(db.prepare(`SELECT value FROM settings WHERE key = 'teams_settings'`).pluck().get()).toBe('{"enabled":false}');
+    } else {
+      // A 1.5 install keeps its people; nobody is restricted to tags until an admin says so.
+      expect(count(db, 'users')).toBe(3);
+      expect(db.prepare('SELECT count(*) FROM users WHERE tag_scoped <> 0').pluck().get()).toBe(0);
+      expect(count(db, 'user_labels')).toBe(0);
+    }
     checkWorks(ctx, marksAt(v));
   });
 });
@@ -353,6 +367,8 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     [9, 'activity', ['user_id', 'token_id']],
     [9, 'activity_revisions', ['user_id']],
     [9, 'api_tokens', ['user_id']],
+    // Tag-restricted accounts (see oldDatabase)
+    [10, 'users', ['tag_scoped']],
   ];
   for (const [added, table, columns] of dropColumns) {
     if (v >= added) continue;
@@ -372,6 +388,8 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     delete out.tables.card_watchers;
     out.tables.activity = (out.tables.activity ?? []).filter((row) => row.type !== 'assigned');
   }
+  // Tag-restricted accounts (see oldDatabase)
+  if (v < 10) delete out.tables.user_labels;
   return out;
 }
 
