@@ -154,11 +154,13 @@ export function useUpdateCard(id: number) {
       if (Object.keys(fields).length === 0) return;
       // A refetch already on its way (a live refresh) would land on top of these values, and a
       // quick second change (another label) would start from what it brought back.
+      const boardFetching = qc.getQueryState(qk.board)?.fetchStatus === 'fetching';
       for (const queryKey of [qk.card(id), qk.board]) {
         if (qc.getQueryData(queryKey) !== undefined) void qc.cancelQueries({ queryKey });
       }
       qc.setQueryData<CardDetail>(qk.card(id), (c) => (c ? { ...c, ...fields } : c));
       setBoard(qc, (b) => ({ ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, ...fields } : c)) }));
+      return { boardCancelled: boardFetching && qc.getQueryData(qk.board) !== undefined };
     },
     onSuccess: (card, patch) => {
       if (patch.parentId !== undefined || patch.kind !== undefined) {
@@ -201,7 +203,15 @@ export function useUpdateCard(id: number) {
       void qc.invalidateQueries({ queryKey: qk.board });
       toast(errorMessage(err), { kind: 'error' });
     },
-    onSettled: () => invalidateActivity(qc, id),
+    onSettled: (_d, _e, _patch, context) => {
+      invalidateActivity(qc, id);
+      // The board refetch cancelled above may have been a repair (after a failed move, say): run
+      // it again, once the board-order queue is empty.
+      if (context?.boardCancelled) {
+        wantBoardRefetch();
+        flushBoardRefetch(qc, undefined);
+      }
+    },
   });
 }
 
