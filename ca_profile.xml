@@ -1,0 +1,13 @@
+<CommunityApplications>
+  <Profile>
+    Self-hosted ticketing for homelabs and small teams.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/bernie-sandler/Belltower/748fd6ce3432dec9115bbe04e37fff50dc520d4e/assets/belltower-logo.svg</Icon>
+  <WebPage>https://github.com/bernie-sandler/Belltower/</WebPage>
+  <!-- Optional support links -->
+  <Forum>https://github.com/bernie-sandler/Belltower/issues</Forum>
+  <!-- <Discord>https://discord.gg/YOUR_INVITE_CODE</Discord> -->
+  <!-- Optional profile extras -->
+  <!-- <DonateLink>https://github.com/sponsors/YOUR_GITHUB_USERNAME</DonateLink> -->
+  <!-- <DonateText>Support this project</DonateText> -->
+</CommunityApplications>

@@ -15,7 +15,7 @@
 Optional extras: a public submit page so friends and family can report problems (e.g. "Plex is down"), API tokens and an Uptime Kuma webhook that open tickets automatically, Discord notifications, nightly backups, and Claude-drafted tickets if you add an Anthropic API key.&#xD;
 &#xD;
 On first start the container log prints a one-time setup code; open the WebUI and use it to choose your password (or set Password below).</Overview>
-  <Category>Productivity: Tools:Utilities</Category>
+  <Category>Productivity</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/bernie-sandler/Belltower/main/unraid/belltower.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/bernie-sandler/Belltower/main/web/public/icon-512.png</Icon>
