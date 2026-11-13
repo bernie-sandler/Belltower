@@ -19,8 +19,14 @@ page offers the password form:
 The owner can always sign in with a password at `/login?password`, and `APP_PASSWORD` resets the owner's password
 ([INSTALL.md](INSTALL.md#forgot-the-password)), so a broken provider can't lock you out. Before turning password
 sign-in off, make sure everyone else has [linked their account](#linking-an-account) (or turn on account creation or
-linking by email): an account that isn't linked can't sign in at all. If single sign-on is turned off, or stops being
-complete (no issuer, client ID, secret or app address), the password form is back for everyone.
+linking by email): an account that isn't linked can't sign in at all. An admin other than the owner can only turn it
+off once their own account is linked.
+
+Turning it off doesn't sign anyone out: people already signed in with a password stay signed in, and API tokens keep
+working. To end someone's sessions, deactivate their account or reset their password.
+
+If single sign-on is turned off, or stops being complete (no issuer, client ID, secret or app address), the password
+form is back for everyone.
 
 ## How it works
 

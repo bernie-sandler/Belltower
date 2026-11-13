@@ -301,7 +301,8 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
       {passwordLogin === 'off' && (
         <p className="notice notice-warning">
           Everyone else needs a linked single sign-on account first (or account creation or linking by email on): an account
-          that isn’t linked can’t sign in at all.
+          that isn’t linked can’t sign in at all. People already signed in with a password stay signed in, and API tokens keep
+          working: deactivate an account or reset its password to end its sessions.
         </p>
       )}
 
