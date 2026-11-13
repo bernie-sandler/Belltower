@@ -1,7 +1,16 @@
 // Settings → Single sign-on (admins): sign in with Authentik, Authelia or another OpenID Connect
-// provider. The client secret is write-only; password login always stays. See docs/SSO.md.
+// provider. The client secret is write-only. While it's on, password sign-in is shown, hidden behind
+// a link (the default) or off; the owner can always use a password at /login?password. See docs/SSO.md.
 
-import { OIDC_PRESET_DEFAULTS, OIDC_PRESETS, type OidcPreset, type OidcSettingsInfo, type OidcTestResult } from '@tt/shared';
+import {
+  OIDC_PRESET_DEFAULTS,
+  OIDC_PRESETS,
+  PASSWORD_LOGIN_MODES,
+  type OidcPreset,
+  type OidcSettingsInfo,
+  type OidcTestResult,
+  type PasswordLoginMode,
+} from '@tt/shared';
 import { Copy, KeyRound, PlugZap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { isApiError } from '../../api/client';
@@ -17,6 +26,12 @@ const ISSUER_PLACEHOLDER: Record<OidcPreset, string> = {
   authentik: 'https://auth.example.com/application/o/belltower/',
   authelia: 'https://auth.example.com',
   custom: 'https://id.example.com/realms/home',
+};
+
+const PASSWORD_LOGIN_NAMES: Record<PasswordLoginMode, string> = {
+  shown: 'Show the password form',
+  hidden: 'Hide it behind a link',
+  off: 'Turn password sign-in off',
 };
 
 const icon = <KeyRound size={16} aria-hidden />;
@@ -61,6 +76,7 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
   const [autoCreate, setAutoCreate] = useState(info.autoCreate);
   const [linkByEmail, setLinkByEmail] = useState(info.linkByEmail);
   const [allowHttpIssuer, setAllowHttpIssuer] = useState(info.allowHttpIssuer);
+  const [passwordLogin, setPasswordLogin] = useState<PasswordLoginMode>(info.passwordLogin);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<OidcTestResult | null>(null);
   // The server normalizes the issuer (the preset's trailing slash): show what it saved.
@@ -110,6 +126,7 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
         autoCreate,
         linkByEmail,
         allowHttpIssuer,
+        passwordLogin,
       },
       {
         onSuccess: () => {
@@ -134,8 +151,7 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
   return (
     <Section icon={icon} title={TITLE}>
       <p className="muted">
-        Let people sign in with your identity provider. Password login always stays available, so a broken provider can’t lock
-        anyone out.
+        Let people sign in with your identity provider. Choose below what happens to password sign-in while it’s on.
       </p>
       <label className="checkbox">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
@@ -263,6 +279,30 @@ function SsoForm({ info }: { info: OidcSettingsInfo }) {
       </label>
       {allowHttpIssuer && (
         <p className="notice notice-warning">The client secret and tokens then cross the network unencrypted. Use it only on a network you trust.</p>
+      )}
+
+      <fieldset className="ticket-fieldset">
+        <legend className="field-label">Password sign-in</legend>
+        {PASSWORD_LOGIN_MODES.map((m) => (
+          <label key={m} className="checkbox">
+            <input type="radio" name="sso-password-login" checked={passwordLogin === m} onChange={() => setPasswordLogin(m)} />
+            <span>
+              {PASSWORD_LOGIN_NAMES[m]}
+              {m === 'hidden' && ' (default)'}
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <p className="field-help">
+        Only while single sign-on is on and complete; otherwise the password form always shows. Hidden, the login page shows a
+        “Sign in with a password” link. Off, nobody but the owner can sign in with a password. The owner can always sign in
+        at <code>/login?password</code>, and <code>APP_PASSWORD</code> resets the owner’s password.
+      </p>
+      {passwordLogin === 'off' && (
+        <p className="notice notice-warning">
+          Everyone else needs a linked single sign-on account first (or account creation or linking by email on): an account
+          that isn’t linked can’t sign in at all.
+        </p>
       )}
 
       {error && (

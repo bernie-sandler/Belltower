@@ -20,7 +20,7 @@ export function SignInSection({ me }: { me: MeResponse }) {
   const unlink = useUnlinkSso();
   const [params, setParams] = useSearchParams();
   const [justLinked] = useState(() => params.get('sso') === 'linked');
-  const [error, setError] = useState<string | null>(() => ssoErrorMessage(params.get('sso_error')));
+  const [error, setError] = useState<string | null>(() => ssoErrorMessage(params.get('sso_error'), status?.passwordLogin));
   // Read the result once, then clean the address so a reload doesn't repeat it.
   useEffect(() => {
     if (!params.has('sso') && !params.has('sso_error')) return;
@@ -37,6 +37,9 @@ export function SignInSection({ me }: { me: MeResponse }) {
   const sso = status?.sso ?? null;
   if (!sso && !me.ssoLinked && !error) return null;
   const label = sso?.label ?? 'single sign-on';
+  // Password sign-in turned off: only the owner's password still works.
+  const passwordOff = status?.passwordLogin === 'off' && !me.isOwner;
+  const canUnlink = me.hasPassword && !passwordOff;
 
   function startLink() {
     setError(null);
@@ -52,10 +55,14 @@ export function SignInSection({ me }: { me: MeResponse }) {
       {me.ssoLinked ? (
         <p className="muted">
           You can sign in with {label}.{' '}
-          {me.hasPassword ? 'Your password works too.' : 'Your account has no password, so this is your way in.'}
+          {passwordOff
+            ? 'Password sign-in is turned off on this install, so this is your way in.'
+            : me.hasPassword
+              ? 'Your password works too.'
+              : 'Your account has no password, so this is your way in.'}
         </p>
       ) : (
-        <p className="muted">Link your {label} account to sign in with it. Your password keeps working.</p>
+        <p className="muted">Link your {label} account to sign in with it.{passwordOff ? '' : ' Your password keeps working.'}</p>
       )}
       {justLinked && me.ssoLinked && (
         <p className="notice" role="status">
@@ -72,8 +79,14 @@ export function SignInSection({ me }: { me: MeResponse }) {
           <button
             type="button"
             className="btn"
-            disabled={!me.hasPassword || unlink.isPending}
-            title={me.hasPassword ? undefined : 'Without a password you would have no way in. Ask an admin to set one first.'}
+            disabled={!canUnlink || unlink.isPending}
+            title={
+              canUnlink
+                ? undefined
+                : passwordOff
+                  ? 'Password sign-in is turned off, so you would have no way in.'
+                  : 'Without a password you would have no way in. Ask an admin to set one first.'
+            }
             onClick={() => {
               setError(null);
               unlink.mutate(undefined, {

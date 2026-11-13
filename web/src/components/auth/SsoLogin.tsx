@@ -8,10 +8,14 @@ import { useSearchParams } from 'react-router';
 import { useAuthStatus } from '../../api/auth';
 import { ssoErrorMessage } from './ssoMessages';
 
-/** The message for `?sso_error=` (read once; the address is cleaned so a reload doesn't repeat it). */
-export function useSsoError(): string | null {
+/**
+ * The `?sso_error=` code, read once (the address is cleaned so a reload doesn't repeat it). The
+ * message follows the password sign-in mode, which may load after the code was read.
+ */
+export function useSsoError(): { code: string | null; message: string | null } {
   const [params, setParams] = useSearchParams();
-  const [message] = useState(() => ssoErrorMessage(params.get('sso_error')));
+  const [code] = useState(() => params.get('sso_error'));
+  const { data } = useAuthStatus();
   useEffect(() => {
     if (!params.has('sso_error')) return;
     setParams(
@@ -22,7 +26,7 @@ export function useSsoError(): string | null {
       { replace: true },
     );
   }, [params, setParams]);
-  return message;
+  return { code, message: ssoErrorMessage(code, data?.passwordLogin) };
 }
 
 export function SsoError({ message }: { message: string | null }) {
@@ -34,8 +38,8 @@ export function SsoError({ message }: { message: string | null }) {
   );
 }
 
-/** "Sign in with Authentik", when single sign-on is set up. Password login stays below it. */
-export function SsoButton() {
+/** "Sign in with Authentik", when single sign-on is set up. `orPassword`: the password form follows. */
+export function SsoButton({ orPassword }: { orPassword: boolean }) {
   const { data } = useAuthStatus();
   if (!data?.sso) return null;
   return (
@@ -43,9 +47,11 @@ export function SsoButton() {
       <a className="btn btn-block" href="/api/auth/oidc/start">
         <LogIn size={16} aria-hidden /> Sign in with {data.sso.label}
       </a>
-      <p className="auth-sso-or" aria-hidden>
-        or log in with your password
-      </p>
+      {orPassword && (
+        <p className="auth-sso-or" aria-hidden>
+          or log in with your password
+        </p>
+      )}
     </div>
   );
 }
