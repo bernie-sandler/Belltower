@@ -70,6 +70,8 @@ async function setup() {
 /** A card's current version, for PATCH bodies. */
 const version = (id: number) => t!.ctx.db.prepare('SELECT version FROM cards WHERE id = ?').pluck().get(id) as number;
 
+type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+
 const ids = (list: { id: number }[]) => list.map((c) => c.id).sort((x, y) => x - y);
 
 describe('a tag-restricted member', () => {
@@ -97,7 +99,7 @@ describe('a tag-restricted member', () => {
     const s = await setup();
     const hidden = [s.b.id, s.untagged.id, s.child.id, s.archived.id, s.trashed.id];
     for (const id of hidden) {
-      const calls: [string, string, unknown?][] = [
+      const calls: [Method, string, unknown?][] = [
         ['GET', `/api/cards/${id}`],
         ['PATCH', `/api/cards/${id}`, { title: 'x', expectedVersion: version(id) }],
         ['POST', `/api/cards/${id}/move`, { toColumnId: s.a.columnId, afterCardId: null }],
@@ -124,7 +126,7 @@ describe('a tag-restricted member', () => {
         expect(res.body).not.toMatch(/Bravo|Untagged/);
       }
     }
-    const byChildId: [string, string, unknown?][] = [
+    const byChildId: [Method, string, unknown?][] = [
       ['PATCH', `/api/checklists/${s.checklist.id}`, { title: 'x' }],
       ['DELETE', `/api/checklists/${s.checklist.id}`],
       ['POST', `/api/checklists/${s.checklist.id}/items`, { text: 'x' }],
@@ -273,7 +275,7 @@ describe('a tag-restricted member', () => {
     const s = await setup();
     const columns = (await s.api('GET', '/api/board')).json().columns as { id: number }[];
     const labels = (await s.api('GET', '/api/board')).json().labels as { id: number }[];
-    const calls: [string, string, unknown?][] = [
+    const calls: [Method, string, unknown?][] = [
       ['POST', '/api/labels', { name: 'New', color: '#123456' }],
       ['PATCH', `/api/labels/${s.A}`, { name: 'Renamed' }],
       ['DELETE', `/api/labels/${s.A}`],
