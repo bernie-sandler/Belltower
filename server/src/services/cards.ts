@@ -609,7 +609,13 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       if (kind === 'ticket' && card.kind === 'work') {
         const n = openChildCount(ctx, id);
         if (n) {
-          throw badRequest('invalid_parent', `This work card still has ${n} ticket${n === 1 ? '' : 's'}; move ${n === 1 ? 'it' : 'them'} out first`);
+          // A tag-restricted person isn't told how many (some may be hidden from them).
+          throw badRequest(
+            'invalid_parent',
+            ctx.scope
+              ? 'This work card still has tickets filed under it; they have to be moved out first'
+              : `This work card still has ${n} ticket${n === 1 ? '' : 's'}; move ${n === 1 ? 'it' : 'them'} out first`,
+          );
         }
       }
       if (kind === 'work' && parentId !== null && patch.parentId === undefined) {
