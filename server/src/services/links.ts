@@ -86,9 +86,9 @@ export function createLink(ctx: Ctx, cardId: number, otherId: number, direction:
 /** Removes a link; `cardId` is the card the request came from (its detail is returned). */
 export function deleteLink(ctx: Ctx, cardId: number, linkId: number): CardDetail {
   return tx(ctx, () => {
+    const card = getEditableCard(ctx, cardId);
     const link = stmt(ctx.db, 'SELECT * FROM card_links WHERE id = ?').get(linkId) as LinkRow | undefined;
     if (!link || (link.from_card_id !== cardId && link.to_card_id !== cardId)) throw notFound('Link not found');
-    const card = getEditableCard(ctx, cardId);
     const other = getCardRow(ctx, link.from_card_id === cardId ? link.to_card_id : link.from_card_id);
     stmt(ctx.db, 'DELETE FROM card_links WHERE id = ?').run(linkId);
     logBoth(ctx, 'unlinked', link, card, other);

@@ -14,6 +14,7 @@ import { getSetting, setSetting, stmt } from '../db/connection';
 import { conflict, notFound, pageNotFound } from '../errors';
 import { safeEqual } from '../lib/safeEqual';
 import type { Ctx } from './context';
+import { canSeeCard } from './scope';
 import { getSubmitSettings } from './settings';
 import { ticketState } from './ticketState';
 
@@ -63,7 +64,7 @@ const linksActive = (ctx: Ctx) => {
 /** The status link for a ticket (Copy status link on the card, and the submit page's thank-you screen). */
 export function statusLink(ctx: Ctx, cardId: number): StatusLinkInfo {
   const card = getRow(ctx, cardId);
-  if (!card) throw notFound('Card not found');
+  if (!card || !canSeeCard(ctx, cardId)) throw notFound('Card not found');
   if (card.kind !== 'ticket') throw conflict('not_ticket', 'Only tickets have status links');
   if (card.deleted_at) throw conflict('deleted', 'This card is in the Trash');
   return { path: `/submit/status/${card.id}/${sign(secret(ctx, true)!, card.id, card.created_at)}`, active: linksActive(ctx) };

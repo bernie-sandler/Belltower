@@ -11,6 +11,7 @@ import { AppError, badRequest, conflict, notFound } from '../errors';
 import { ACTIVITY_SELECT, recordEvent, toActivityEntry, type ActivityRow } from './activity';
 import { FUTURE_SLACK_MS, getCardRow, getEditableCard, touchCard } from './cards';
 import { actorTokenId, actorUserId, nowIso, tx, type Ctx } from './context';
+import { canSeeCard, visibleSql } from './scope';
 import { notifyNoteAdded, notifyNoteEdited } from './notifications';
 import { reindexCard } from './search';
 import { actorIsAdmin } from './users';
@@ -27,8 +28,11 @@ function excerpt(body: string): string {
   return t.length > 80 ? `${t.slice(0, 79)}…` : t;
 }
 
+/** One history entry; 404 when it doesn't exist or `ctx` can't see its card (a tag-restricted account). */
 export function getActivityEntry(ctx: Ctx, id: number): ActivityEntry {
-  const row = stmt(ctx.db, `${ACTIVITY_SELECT} WHERE a.id = ?`).get(id) as ActivityRow | undefined;
+  const row = stmt(ctx.db, `${ACTIVITY_SELECT} JOIN cards c ON c.id = a.card_id WHERE a.id = ? AND ${visibleSql(ctx)}`).get(id) as
+    | ActivityRow
+    | undefined;
   if (!row) throw notFound('Log entry not found');
   return toActivityEntry(row);
 }
@@ -82,7 +86,8 @@ export function updateWorklog(
 ): ActivityEntry {
   return tx(ctx, () => {
     const row = stmt(ctx.db, 'SELECT * FROM activity WHERE id = ?').get(id) as ActivityRow | undefined;
-    if (!row) throw notFound('Log entry not found');
+    // A card the person can't see: the same 404, before any answer that would tell the entry exists.
+    if (!row || !canSeeCard(ctx, row.card_id)) throw notFound('Log entry not found');
     if (row.kind !== 'worklog') throw conflict('not_worklog', 'Only work-log entries can be edited');
     if (!mayChangeWorklog(ctx, row.user_id)) {
       throw new AppError(

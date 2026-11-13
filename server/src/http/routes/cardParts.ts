@@ -134,7 +134,8 @@ export function registerCardPartRoutes(app: FastifyInstance, deps: AppDeps): voi
       .header('Content-Security-Policy', ATTACHMENT_CSP)
       .header('Cross-Origin-Resource-Policy', 'same-origin')
       // An attachment id always refers to the same bytes.
-      .header('Cache-Control', 'private, max-age=31536000, immutable')
+      // A tag-restricted account may lose sight of the card later, so its browser keeps no copy.
+      .header('Cache-Control', req.ctx.scope ? 'private, no-store' : 'private, max-age=31536000, immutable')
       .send(createReadStream(file));
   });
 }

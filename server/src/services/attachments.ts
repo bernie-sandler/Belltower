@@ -16,6 +16,7 @@ import type { AttachmentRow } from './cardParts';
 import { getCard, getEditableCard, touchCard } from './cards';
 import { nowIso, tx, type Ctx } from './context';
 import { reindexCard } from './search';
+import { visibleSql } from './scope';
 
 export interface Sniffed {
   kind: AttachmentKind;
@@ -48,8 +49,11 @@ export function cleanFilename(name: string | undefined): string {
   return clean || 'file';
 }
 
+/** An attachment; 404 when it doesn't exist or `ctx` can't see its card (a tag-restricted account). */
 export function attachmentRow(ctx: Ctx, id: number): AttachmentRow {
-  const row = stmt(ctx.db, 'SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow | undefined;
+  const row = stmt(ctx.db, `SELECT a.* FROM attachments a JOIN cards c ON c.id = a.card_id WHERE a.id = ? AND ${visibleSql(ctx)}`).get(id) as
+    | AttachmentRow
+    | undefined;
   if (!row) throw notFound('Attachment not found');
   return row;
 }
