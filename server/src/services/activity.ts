@@ -97,18 +97,21 @@ function refsOf(e: ActivityEntry): Ref[] {
 }
 
 /**
- * Keeps every entry of a visible card, but takes out the title and ticket number of each other card
+ * Keeps every entry of a visible card, but takes out the id, title and ticket number of each other card
  * named in it that `ctx` can't see (leaving the entry out would misstate the card's own history).
  */
 function hideOtherCards(ctx: Ctx, entries: ActivityEntry[]): ActivityEntry[] {
   const ids = entries.flatMap((e) => refsOf(e).map((r) => r.id)).filter((id): id is number => typeof id === 'number');
   const seen = visibleIds(ctx, ids);
-  const hide = (r: unknown) => (isRef(r) && typeof r.id === 'number' && !seen.has(r.id) ? { ...r, title: HIDDEN_CARD_TITLE, ticketNo: null } : r);
+  const hide = (r: unknown) => (isRef(r) && typeof r.id === 'number' && !seen.has(r.id) ? { ...r, id: null, title: HIDDEN_CARD_TITLE, ticketNo: null } : r);
   return entries.map((e) => {
     if (!refsOf(e).some((r) => typeof r.id !== 'number' || !seen.has(r.id))) return e;
     const d = { ...e.data };
     for (const k of CARD_KEYS[e.type] ?? []) d[k] = Array.isArray(d[k]) ? (d[k] as unknown[]).map(hide) : hide(d[k]);
-    if ((e.type === 'linked' || e.type === 'unlinked') && !(typeof d.otherId === 'number' && seen.has(d.otherId))) d.otherTitle = HIDDEN_CARD_TITLE;
+    if ((e.type === 'linked' || e.type === 'unlinked') && !(typeof d.otherId === 'number' && seen.has(d.otherId))) {
+      d.otherId = null;
+      d.otherTitle = HIDDEN_CARD_TITLE;
+    }
     return { ...e, data: d };
   });
 }

@@ -192,7 +192,9 @@ function normalizeOne(
     .map((s) => s.slice(0, LIMITS.labelName));
   const labels = [...new Map(labelNames.map((n) => [n.toLowerCase(), n])).values()].map((name) => {
     const existing = Boolean(stmt(ctx.db, 'SELECT 1 FROM labels WHERE name = ? COLLATE NOCASE').get(name));
-    if (!existing) warnings.push(`New label "${name}" will be created`);
+    // A tag-restricted person can't create tags (the import would be refused), so say so up front.
+    if (!existing && ctx.scope) errors.push(`There's no label "${name}", and your account can't create labels`);
+    else if (!existing) warnings.push(`New label "${name}" will be created`);
     return { name, existing };
   });
 

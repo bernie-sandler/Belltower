@@ -262,9 +262,11 @@ function restrictedMatches(ctx: Ctx, fts: string, where: string[], params: unkno
                 AND NOT EXISTS (SELECT 1 FROM cards o WHERE o.id = json_extract(a.data, '$.otherId') AND ${visibleSql(ctx, 'o')})) AS hides
          FROM card_search JOIN cards c ON c.id = card_search.rowid JOIN columns col ON col.id = c.column_id
         WHERE card_search MATCH ? AND ${where.join(' AND ')}
-        ORDER BY ${RANK}`,
+        ORDER BY ${RANK}
+        LIMIT ?`,
     )
-    .all(fts, ...params) as { id: number; hides: 0 | 1 }[];
+    // Candidates are capped: rechecking a card costs a small temporary index, and a search needs only `limit` hits.
+    .all(fts, ...params, limit * 10) as { id: number; hides: 0 | 1 }[];
 
   const picked: number[] = [];
   const rechecked = new Map<number, Snippets>();
