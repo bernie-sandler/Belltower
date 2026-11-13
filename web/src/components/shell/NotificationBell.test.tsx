@@ -1,14 +1,15 @@
 // The bell: polls every 30 seconds (background tabs too), rings only when the unread count rises
 // from a known baseline, in one tab only, and opening an item opens its card and marks it read.
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import type { NotificationItem, NotificationsResponse } from '@tt/shared';
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { qk } from '../../api/keys';
 import { BELL_POLL_MS, useMarkCardSeen } from '../../api/notifications';
 import { canPlay, CLAIM_STALE_MS, LAST_ID_KEY, playSound, resetSoundForTests, setSound } from '../../lib/sound';
-import { CLAIM_JITTER_MS, NotificationBell, useRingOnNew } from './NotificationBell';
+import { CHIME_WAIT_MS, CLAIM_JITTER_MS, NotificationBell, useRingOnNew } from './NotificationBell';
 
 vi.mock('../../lib/sound', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/sound')>();
@@ -48,12 +49,23 @@ function OpenCard({ id }: { id: number }) {
   return null;
 }
 
-/** A fake server: answers the polls in turn, remembering what was marked read. */
-function setup(openCardId?: number) {
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+
+/** Stands in for the board on screen: its refetch is what the sound waits for. */
+function BoardProbe() {
+  useQuery({ queryKey: qk.board, queryFn: () => fetch('/api/board').then((r) => r.json() as Promise<unknown>) });
+  return null;
+}
+
+/**
+ * A fake server: answers the polls in turn, remembering what was marked read. With `board`, a
+ * board is on screen too, and `board(n)` answers its nth request (from 1).
+ */
+function setup(openCardId?: number, board?: (n: number) => Promise<Response>) {
   let served = 0;
   let allRead = false;
+  let boardRequests = 0;
   const readIds = new Set<number>();
-  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
   const current = () => {
     const base = polls[Math.min(served++, polls.length - 1)]!;
     return answer(base.items.map((n) => (allRead || readIds.has(n.id) ? { ...n, readAt: n.readAt ?? '2026-11-10T15:05:00.000Z' } : n)));
@@ -67,6 +79,7 @@ function setup(openCardId?: number) {
       return json({ unread: current().unread });
     }
     if (url.startsWith('/api/notifications')) return json(current());
+    if (url === '/api/board' && board) return board(++boardRequests);
     return json({});
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -74,6 +87,7 @@ function setup(openCardId?: number) {
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter>
         <NotificationBell />
+        {board && <BoardProbe />}
         {openCardId !== undefined && <OpenCard id={openCardId} />}
         <Routes>
           <Route path="*" element={<Where />} />
@@ -81,7 +95,10 @@ function setup(openCardId?: number) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { pollCount: () => fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/notifications?')).length };
+  return {
+    pollCount: () => fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/notifications?')).length,
+    boardRequests: () => boardRequests,
+  };
 }
 
 /** Lets timers (the poll, the jitter) and the fetches they start run. */
@@ -127,6 +144,51 @@ describe('NotificationBell', () => {
 
     await advance(BELL_POLL_MS); // same answer again: no second ring
     await advance(CLAIM_JITTER_MS);
+    expect(playSound).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches the board first and rings once it has landed, so the new ticket is there with the sound', async () => {
+    polls = [answer([item(1)]), answer([item(2), item(1)])];
+    let land = () => {};
+    const { boardRequests } = setup(undefined, (n) =>
+      n === 1 ? Promise.resolve(json({ cards: [] })) : new Promise((resolve) => (land = () => resolve(json({ cards: [] })))),
+    );
+    await advance(0);
+    expect(boardRequests()).toBe(1);
+
+    await advance(BELL_POLL_MS + 10); // the poll, and a moment for its answer to land
+    expect(bellName()).toBe('Notifications, 2 unread');
+    expect(boardRequests()).toBe(2); // asked for the board as soon as the news came
+    expect(screen.getByTestId('bell-announcement').textContent).toMatch(/^New notification:/);
+    await advance(CHIME_WAIT_MS / 2);
+    expect(playSound).not.toHaveBeenCalled(); // still waiting for it
+
+    land();
+    await advance(CLAIM_JITTER_MS);
+    expect(playSound).toHaveBeenCalledTimes(1);
+    expect(claim()!.id).toBe(2);
+    await advance(CHIME_WAIT_MS); // the cap doesn't ring it a second time
+    expect(playSound).toHaveBeenCalledTimes(1);
+  });
+
+  it('still rings after CHIME_WAIT_MS when the board refetch hangs', async () => {
+    polls = [answer([item(1)]), answer([item(2), item(1)])];
+    const { boardRequests } = setup(undefined, (n) => (n === 1 ? Promise.resolve(json({ cards: [] })) : new Promise<Response>(() => {})));
+    await advance(0);
+    await advance(BELL_POLL_MS + 10);
+    expect(bellName()).toBe('Notifications, 2 unread');
+    expect(boardRequests()).toBe(2);
+    await advance(CHIME_WAIT_MS - 100);
+    expect(playSound).not.toHaveBeenCalled();
+    await advance(200 + CLAIM_JITTER_MS);
+    expect(playSound).toHaveBeenCalledTimes(1);
+  });
+
+  it('rings right away when the board refetch fails', async () => {
+    polls = [answer([item(1)]), answer([item(2), item(1)])];
+    setup(undefined, (n) => (n === 1 ? Promise.resolve(json({ cards: [] })) : Promise.reject(new TypeError('Failed to fetch'))));
+    await advance(0);
+    await advance(BELL_POLL_MS + CLAIM_JITTER_MS);
     expect(playSound).toHaveBeenCalledTimes(1);
   });
 

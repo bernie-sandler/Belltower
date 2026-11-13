@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MARK_SAVE_DELAY_MS, useChecklistActions } from '../../api/cardParts';
 import { api } from '../../api/client';
 import { qk } from '../../api/keys';
+import { liveRefreshBlocked } from '../../api/liveRefresh';
 import { itemStateIn, withItemState } from '../../lib/checkState';
 import { cardDetail, checklistItem } from '../../test/fixtures';
 import { Checklists } from './Checklists';
@@ -172,6 +173,33 @@ describe('Checklists', () => {
       { id: 2, state: 'failed' },
     ]);
     expect(nameOf('Swap battery')).toBe('Swap battery, failed');
+  });
+
+  it('keeps live refreshes off while a mark waits for its save, so a refetch can’t bring the old mark back', async () => {
+    const { qc, control } = renderList();
+    control.holdNext = true;
+    await click('Order battery');
+    expect(liveRefreshBlocked(qc)).toBe(true); // resting before its save
+    await wait(MARK_SAVE_DELAY_MS);
+    expect(liveRefreshBlocked(qc)).toBe(true); // the save is on its way
+    control.release();
+    await wait(0);
+    expect(liveRefreshBlocked(qc)).toBe(false);
+
+    // Clicks that end where they started save nothing, and let refreshes run again too.
+    await click('Swap battery', 4);
+    expect(liveRefreshBlocked(qc)).toBe(true);
+    await wait(MARK_SAVE_DELAY_MS);
+    expect(liveRefreshBlocked(qc)).toBe(false);
+  });
+
+  it('lets live refreshes run again when the card closes with a mark waiting', async () => {
+    const { qc, view } = renderList();
+    await click('Order battery');
+    expect(liveRefreshBlocked(qc)).toBe(true);
+    view.unmount(); // saves it at once
+    await wait(0);
+    expect(liveRefreshBlocked(qc)).toBe(false);
   });
 
   it('saves the next mark after a failed save, even if it matches the unsaved one', async () => {
