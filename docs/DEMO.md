@@ -83,6 +83,10 @@ message that starts "Not available in the demo":
 - changing the password (there are none)
 - single sign-on: its settings and linking an account (the login page never offers it)
 
+Tag-restricted accounts: an admin can set **Restrict to tags** on a demo person, and it's saved, but the demo
+doesn't filter anything by it: the demo always signs in as the owner, who can't be restricted, so there's nobody to
+hide tickets from.
+
 Card import (JSON) works, all in the browser. Recurring templates run when the board loads instead of on a timer.
 The submit page has no rate limit.
 

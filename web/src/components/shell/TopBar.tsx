@@ -5,7 +5,7 @@ import { backgroundOf } from '../../lib/navigation';
 import { useState } from 'react';
 import { useLogout } from '../../api/auth';
 import { useBellShown, useTeams } from '../../api/config';
-import { useIsAdmin } from '../../api/me';
+import { useIsAdmin, useIsRestricted } from '../../api/me';
 import { useAiStatus } from '../../api/tickets';
 import { useIsMobile } from '../../lib/useMediaQuery';
 import { BrandMark } from '../common/BrandMark';
@@ -49,6 +49,8 @@ export function TopBar() {
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
   const aiEnabled = useAiStatus().data?.enabled === true;
   const isAdmin = useIsAdmin();
+  // Tags and columns are everyone's: tag-restricted people can't change them.
+  const restricted = useIsRestricted();
   const location = useLocation();
   const navigate = useNavigate();
   const page = (backgroundOf(location) ?? location).pathname;
@@ -170,8 +172,12 @@ export function TopBar() {
           label="Main menu"
           items={[
             ...phonePages,
-            { key: 'labels', label: 'Manage labels', icon: <Tag size={16} />, onSelect: shell.openLabels },
-            { key: 'column', label: 'Add column', icon: <Columns3 size={16} />, onSelect: shell.requestAddColumn },
+            ...(restricted
+              ? []
+              : [
+                  { key: 'labels', label: 'Manage labels', icon: <Tag size={16} />, onSelect: shell.openLabels },
+                  { key: 'column', label: 'Add column', icon: <Columns3 size={16} />, onSelect: shell.requestAddColumn },
+                ]),
             { key: 'archive', label: 'Archive', icon: <Archive size={16} />, onSelect: () => void navigate('/archive') },
             { key: 'trash', label: 'Trash', icon: <Trash2 size={16} />, onSelect: () => void navigate('/trash') },
             'separator',

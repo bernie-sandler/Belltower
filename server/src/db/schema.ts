@@ -363,6 +363,21 @@ SELECT id, type_label_id FROM request_types WHERE type_label_id IN (SELECT id FR
 UPDATE request_types SET type_label_id = NULL, tag_label_ids = '[]';
 `;
 
+// 1.5 (rc.4): tag-restricted accounts. An admin can limit a member to cards carrying one of their tags.
+//  - users.tag_scoped: 1 = restricted. Kept apart from the tag list so a restricted account whose
+//    tags were all deleted still counts as restricted and sees nothing (fails closed).
+//  - user_labels: the tags a restricted account sees. Deleting a tag or a person removes the rows.
+const v11 = `
+ALTER TABLE users ADD COLUMN tag_scoped INTEGER NOT NULL DEFAULT 0 CHECK (tag_scoped IN (0, 1));
+
+CREATE TABLE user_labels (
+  user_id  INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  label_id INTEGER NOT NULL REFERENCES labels (id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, label_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX ix_user_labels_label ON user_labels (label_id);
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -374,6 +389,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 8, name: 'checklist item states', sql: v8 },
   { version: 9, name: 'people', sql: v9 },
   { version: 10, name: 'request type labels', sql: v10 },
+  { version: 11, name: 'tag-restricted accounts', sql: v11 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

@@ -1,6 +1,7 @@
 // Calendar: for a range of local days, the cards due, the cards completed (moved to Done), and the
 // work logged, each placed on its local day in the app time zone. Archived cards count (the
-// calendar is the "what did I do" record); cards in the Trash and retracted work logs don't.
+// calendar is the "what did I do" record); cards in the Trash and retracted work logs don't, and
+// neither do cards a tag-restricted person can't see.
 
 import type { CalendarItem } from '@tt/shared';
 import { stmt } from '../db/connection';
@@ -8,6 +9,7 @@ import { badRequest } from '../errors';
 import { addDays, localDateOf, toEpochDay } from '../lib/localdate';
 import { localTimeOf, startOfLocalDay } from '../lib/tz';
 import type { Ctx } from './context';
+import { visibleSql } from './scope';
 
 /** A month view shows 6 weeks; allow some slack but keep requests bounded. */
 const MAX_DAYS = 100;
@@ -39,12 +41,13 @@ export function calendarItems(ctx: Ctx, from: string, to: string): CalendarItem[
     completed: r.completed_at !== null,
     archived: r.archived_at !== null,
   });
+  const visible = visibleSql(ctx);
 
   const due = (
     stmt(
       ctx.db,
       `SELECT ${CARD_COLS}, c.due_date, c.due_time FROM cards c JOIN columns col ON col.id = c.column_id
-        WHERE c.deleted_at IS NULL AND c.due_date >= ? AND c.due_date <= ?`,
+        WHERE c.deleted_at IS NULL AND c.due_date >= ? AND c.due_date <= ? AND ${visible}`,
     ).all(from, to) as (Row & { due_date: string; due_time: string | null })[]
   ).map((r): CalendarItem => ({ kind: 'due', date: r.due_date, time: r.due_time, ...base(r) }));
 
@@ -52,7 +55,7 @@ export function calendarItems(ctx: Ctx, from: string, to: string): CalendarItem[
     stmt(
       ctx.db,
       `SELECT ${CARD_COLS} FROM cards c JOIN columns col ON col.id = c.column_id
-        WHERE c.deleted_at IS NULL AND c.completed_at >= ? AND c.completed_at < ?`,
+        WHERE c.deleted_at IS NULL AND c.completed_at >= ? AND c.completed_at < ? AND ${visible}`,
     ).all(fromI, toI) as Row[]
   ).map(
     (r): CalendarItem => ({
@@ -69,7 +72,7 @@ export function calendarItems(ctx: Ctx, from: string, to: string): CalendarItem[
       `SELECT ${CARD_COLS}, a.id AS activity_id, a.occurred_at, a.body_md
          FROM activity a JOIN cards c ON c.id = a.card_id JOIN columns col ON col.id = c.column_id
         WHERE a.kind = 'worklog' AND a.retracted_at IS NULL AND c.deleted_at IS NULL
-          AND a.occurred_at >= ? AND a.occurred_at < ?`,
+          AND a.occurred_at >= ? AND a.occurred_at < ? AND ${visible}`,
     ).all(fromI, toI) as (Row & { activity_id: number; occurred_at: string; body_md: string })[]
   ).map(
     (r): CalendarItem => ({

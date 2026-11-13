@@ -28,6 +28,7 @@ import { createCard, FUTURE_SLACK_MS, resolveCard } from './cards';
 import { getBlockedColumnId } from './columns';
 import { createLink } from './links';
 import { tx, type Ctx } from './context';
+import { visibleSql } from './scope';
 import { getResolutionReasons } from './settings';
 import { addWorklog } from './worklog';
 
@@ -191,7 +192,9 @@ function normalizeOne(
     .map((s) => s.slice(0, LIMITS.labelName));
   const labels = [...new Map(labelNames.map((n) => [n.toLowerCase(), n])).values()].map((name) => {
     const existing = Boolean(stmt(ctx.db, 'SELECT 1 FROM labels WHERE name = ? COLLATE NOCASE').get(name));
-    if (!existing) warnings.push(`New label "${name}" will be created`);
+    // A tag-restricted person can't create tags (the import would be refused), so say so up front.
+    if (!existing && ctx.scope) errors.push(`There's no label "${name}", and your account can't create labels`);
+    else if (!existing) warnings.push(`New label "${name}" will be created`);
     return { name, existing };
   });
 
@@ -351,10 +354,12 @@ function resolveRelations(ctx: Ctx, items: Pending[], columns: ColumnInfo[]): vo
     const titled = (byTitle.get(key) ?? []).filter((p) => !onlyWork || p.card?.kind === 'work');
     return titled.length === 1 ? titled[0] : undefined;
   };
+  // A card a tag-restricted person can't see answers as if there were no such ticket number.
   const onBoard = (ticketNo: string) =>
-    stmt(ctx.db, 'SELECT id, ticket_no, title, kind, completed_at FROM cards WHERE ticket_no = ? AND deleted_at IS NULL').get(ticketNo) as
-      | ExistingCard
-      | undefined;
+    stmt(
+      ctx.db,
+      `SELECT c.id, c.ticket_no, c.title, c.kind, c.completed_at FROM cards c WHERE c.ticket_no = ? AND c.deleted_at IS NULL AND ${visibleSql(ctx)}`,
+    ).get(ticketNo) as ExistingCard | undefined;
 
   for (const it of items) {
     if (!it.card) continue;

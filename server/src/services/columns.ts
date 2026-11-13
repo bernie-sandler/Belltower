@@ -4,6 +4,7 @@ import { AppError, badRequest, conflict, notFound } from '../errors';
 import { columnRef, recordEvent } from './activity';
 import { assertNotBlocked } from './cardParts';
 import { nowIso, tx, type Ctx } from './context';
+import { assertUnrestricted } from './scope';
 
 export interface ColumnRow {
   id: number;
@@ -34,6 +35,8 @@ export function getRoleColumn(ctx: Ctx, role: ColumnRole): ColumnRow {
 }
 
 export function createColumn(ctx: Ctx, name: string): Column {
+  // The board layout is everyone's, so tag-restricted people can't change it.
+  assertUnrestricted(ctx, 'add columns');
   return tx(ctx, () => {
     const pos = stmt(ctx.db, 'SELECT coalesce(max(position), -1) + 1 FROM columns').pluck().get() as number;
     const info = stmt(ctx.db, 'INSERT INTO columns (name, position, role, created_at) VALUES (?, ?, NULL, ?)').run(
@@ -46,6 +49,7 @@ export function createColumn(ctx: Ctx, name: string): Column {
 }
 
 export function renameColumn(ctx: Ctx, id: number, name: string): Column {
+  assertUnrestricted(ctx, 'rename columns');
   return tx(ctx, () => {
     getColumnRow(ctx, id);
     stmt(ctx.db, 'UPDATE columns SET name = ? WHERE id = ?').run(name, id);
@@ -60,6 +64,7 @@ function renumberColumns(ctx: Ctx, orderedIds: number[]): void {
 
 /** `ids` must list every column exactly once, in the new left-to-right order. */
 export function reorderColumns(ctx: Ctx, ids: number[]): Column[] {
+  assertUnrestricted(ctx, 'reorder columns');
   return tx(ctx, () => {
     const existing = stmt(ctx.db, 'SELECT id FROM columns ORDER BY id').pluck().all() as number[];
     const given = [...ids].sort((a, b) => a - b);
@@ -103,6 +108,7 @@ export function getBlockedColumnId(ctx: Ctx): number | null {
 
 /** Chooses the blocked column (null turns automatic moving off). Triage and Done can't be it. */
 export function setBlockedColumn(ctx: Ctx, columnId: number | null): void {
+  assertUnrestricted(ctx, 'change the blocked column');
   if (columnId !== null) {
     const col = stmt(ctx.db, 'SELECT * FROM columns WHERE id = ?').get(columnId) as ColumnRow | undefined;
     if (!col) throw notFound('Column not found');
@@ -135,6 +141,7 @@ function forgetSubmitColumn(ctx: Ctx, id: number): void {
 }
 
 export function deleteColumn(ctx: Ctx, id: number, targetColumnId?: number): void {
+  assertUnrestricted(ctx, 'delete columns');
   tx(ctx, () => {
     const col = getColumnRow(ctx, id);
     if (col.role) {

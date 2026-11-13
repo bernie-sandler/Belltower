@@ -17,6 +17,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Spinner } from '../common/Status';
 import { LabelChip } from '../labels/LabelChip';
 import { TicketTitle } from '../common/TicketTitle';
+import { useIsRestricted } from '../../api/me';
 
 type Kind = 'archived' | 'trashed';
 
@@ -40,6 +41,7 @@ export function CardListPage({ kind }: { kind: Kind }) {
   const qc = useQueryClient();
   const restore = useRestoreCard(kind === 'archived' ? 'restore' : 'undelete');
   const archiveAll = useArchiveAllDone();
+  const restricted = useIsRestricted();
   const [confirmArchiveAll, setConfirmArchiveAll] = useState(false);
   const doneColumn = board?.columns.find((c) => c.role === 'done');
   const doneCount = doneColumn ? (board?.cards.filter((c) => c.columnId === doneColumn.id).length ?? 0) : 0;
@@ -60,7 +62,7 @@ export function CardListPage({ kind }: { kind: Kind }) {
         <h2 className="list-page-title">
           <Icon size={20} aria-hidden /> {COPY[kind].title}
         </h2>
-        {kind === 'archived' && doneCount > 0 && (
+        {kind === 'archived' && doneCount > 0 && !restricted && (
           <button type="button" className="btn" onClick={() => setConfirmArchiveAll(true)}>
             <Archive size={16} aria-hidden /> Archive all in {doneColumn?.name ?? 'Done'} ({doneCount})
           </button>

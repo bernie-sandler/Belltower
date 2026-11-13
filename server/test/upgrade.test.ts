@@ -196,6 +196,12 @@ function oldDatabase(v: number): DB {
     );
     run(`INSERT INTO notifications (user_id, card_id, activity_id, type, actor_user_id, created_at) VALUES (?, ?, ?, 'assigned', ?, ?)`, sam, disk, assigned, owner, at(3));
   }
+  // Tag-restricted accounts.
+  if (v >= 11) {
+    // The member only sees cards with the first tag.
+    db.prepare('UPDATE users SET tag_scoped = 1 WHERE id = ?').run(sam);
+    run('INSERT INTO user_labels (user_id, label_id) SELECT ?, min(id) FROM labels', sam);
+  }
   return db;
 }
 
@@ -349,6 +355,9 @@ describe('upgrading a database left by an older version', () => {
       expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(3);
       expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(1);
       expect(prepared.teams).toBe(true);
+      // Nobody is restricted to tags until an admin says so.
+      expect(db.prepare('SELECT count(*) FROM users WHERE tag_scoped <> 0').pluck().get()).toBe(0);
+      expect(count(db, 'user_labels')).toBe(0);
     }
     checkWorks(ctx, marksAt(v));
   });
@@ -390,6 +399,8 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     [9, 'activity_revisions', ['user_id']],
     [9, 'api_tokens', ['user_id']],
     // (10 added a table, request_type_labels: below.)
+    // Tag-restricted accounts (see oldDatabase)
+    [11, 'users', ['tag_scoped']],
   ];
   for (const [added, table, columns] of dropColumns) {
     if (v >= added) continue;
@@ -425,6 +436,8 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     }
     delete out.tables.request_type_labels;
   }
+  // Tag-restricted accounts (see oldDatabase)
+  if (v < 11) delete out.tables.user_labels;
   return out;
 }
 
@@ -445,7 +458,11 @@ describe('restoring a backup exported by an older version', () => {
     // A backup from before 1.5 has no people (confirmRestore adds the live install's accounts).
     expect(count(restored, 'users')).toBe(v >= 9 ? 3 : 0);
     // 1.5.0-rc.4: the "always add" label carries over, the tags submitters could pick don't.
-    if (v >= 5) expect(typeLabels({ db: restored, clock, tz: TZ })).toEqual({ Plex: [labelId(restored, 'Hardware')], 'Game servers': [] });
+    // (A schema-10 export already has request_type_labels, and no second type.)
+    if (v >= 5) {
+      const types = typeLabels({ db: restored, clock, tz: TZ });
+      expect(types).toEqual(v < 10 ? { Plex: [labelId(restored, 'Hardware')], 'Game servers': [] } : { Plex: [labelId(restored, 'Hardware')] });
+    }
     expect(oldTypeColumns(restored)).toBe(0);
     // Before 1.4 the failed item was just not checked.
     checkWorks({ db: restored, clock, tz: TZ }, v >= 8 ? marksAt(v) : { 'Run a SMART long test': 'done', 'Swap the backplane': 'open' });

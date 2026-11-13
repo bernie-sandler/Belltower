@@ -3,6 +3,7 @@ import { Archive, ArrowDownWideNarrow, ArrowLeft, ArrowRight, Ban, CircleCheck, 
 import { useEffect, useRef, useState } from 'react';
 import { useArchiveAllDone } from '../../api/cardParts';
 import { useBoard } from '../../api/board';
+import { useIsRestricted } from '../../api/me';
 import { useRenameColumn, useReorderColumns, useSetBlockedColumn, useSortColumnByPriority } from '../../api/columns';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -35,6 +36,8 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
   const sortByPriority = useSortColumnByPriority();
   const setBlockedColumn = useSetBlockedColumn();
   const isBlockedColumn = useBoard().data?.blockedColumnId === column.id;
+  // Everything in the column menu (and renaming) changes the board for everyone: not for tag-restricted people.
+  const restricted = useIsRestricted();
 
   const role = column.role ? ROLE_INFO[column.role] : null;
   // Set once the edit is resolved (saved or cancelled): the blur fired as the input unmounts must
@@ -97,6 +100,10 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
           }}
           onBlur={() => finish(true, false)}
         />
+      ) : restricted ? (
+        <span id={nameId} className="column-name">
+          {column.name}
+        </span>
       ) : (
         <button
           ref={nameButton}
@@ -124,16 +131,18 @@ export function ColumnHeader({ column, columns, index, cardCount, nameId }: Prop
       <span className="column-count" title={`${cardCount} card${cardCount === 1 ? '' : 's'}`}>
         {cardCount}
       </span>
-      <button
-        type="button"
-        className="icon-btn column-menu-btn"
-        aria-label={`Actions for column “${column.name}”`}
-        aria-haspopup="menu"
-        aria-expanded={menuAnchor !== null}
-        onClick={(e) => setMenuAnchor(menuAnchor ? null : e.currentTarget)}
-      >
-        <Ellipsis size={18} aria-hidden />
-      </button>
+      {!restricted && (
+        <button
+          type="button"
+          className="icon-btn column-menu-btn"
+          aria-label={`Actions for column “${column.name}”`}
+          aria-haspopup="menu"
+          aria-expanded={menuAnchor !== null}
+          onClick={(e) => setMenuAnchor(menuAnchor ? null : e.currentTarget)}
+        >
+          <Ellipsis size={18} aria-hidden />
+        </button>
+      )}
 
       {menuAnchor && (
         <Menu

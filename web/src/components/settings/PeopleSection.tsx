@@ -1,12 +1,14 @@
 // Settings → People (admins): everyone who can sign in. Add someone with a temporary password,
-// change their display name or role, deactivate or re-enable them, and reset their password.
+// change their display name or role, restrict a member to some tags, deactivate or re-enable them,
+// and reset their password.
 // Controls that could only fail are hidden: the owner stays an active admin, nobody deactivates
 // themselves or resets their own password here (that's under Account), and the last active admin
 // stays one.
 
-import { CreateUserBody, PASSWORD_MIN_LENGTH, type MeResponse, type UserInfo, type UserRole } from '@tt/shared';
+import { CreateUserBody, PASSWORD_MIN_LENGTH, type MeResponse, type UpdateUserResponse, type UserInfo, type UserRole } from '@tt/shared';
 import { Dices, Eye, EyeOff, KeyRound, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
+import { useBoard } from '../../api/board';
 import { useTeams } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { useMe, useUsers } from '../../api/me';
@@ -105,6 +107,7 @@ function PersonRow({
           <span className="tag">{ROLE_LABEL[user.role]}</span>
           {user.isOwner && <span className="tag tag-success">Owner</span>}
           {self && <span className="tag">You</span>}
+          {user.tagScope !== null && <RestrictionTag tagScope={user.tagScope} />}
           {user.disabled && <span className="tag tag-off">Deactivated</span>}
         </span>
         {!editing && (
@@ -118,11 +121,31 @@ function PersonRow({
   );
 }
 
+/** "Only: A, B" for a tag-restricted member ("Sees nothing" when none of their tags exist any more). */
+function RestrictionTag({ tagScope }: { tagScope: number[] }) {
+  const labels = useBoard().data?.labels ?? [];
+  const names = tagScope.map((id) => labels.find((l) => l.id === id)?.name).filter((n): n is string => n !== undefined);
+  return (
+    <span className="tag tag-off" title="Sees only tickets with one of these tags">
+      {tagScope.length ? `Only: ${names.join(', ')}` : 'Sees nothing (no tags)'}
+    </span>
+  );
+}
+
+/** Two tag restrictions are the same whatever the order (null = not restricted). */
+function sameTags(a: number[] | null, b: number[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
+
 function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self: boolean; lastAdmin: boolean; onDone: () => void }) {
   const ids = useId();
   const update = useUpdateUser();
   const [displayName, setDisplayName] = useState(user.displayName);
   const [role, setRole] = useState<UserRole>(user.role);
+  const [restrict, setRestrict] = useState(user.tagScope !== null);
+  const [tags, setTags] = useState<number[]>(user.tagScope ?? []);
+  const labels = useBoard().data?.labels ?? [];
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
@@ -131,9 +154,13 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
   const roleLocked = user.isOwner || lastAdmin;
   const canDeactivate = !user.disabled && !user.isOwner && !self && !lastAdmin;
   const canReset = !user.isOwner && !self;
-  const dirty = displayName.trim() !== user.displayName || role !== user.role;
+  // Tag restriction: members only (admins and the owner always see every ticket).
+  const canRestrict = role === 'member' && !user.isOwner;
+  const tagScope = canRestrict && restrict ? tags : null;
+  const scopeChanged = canRestrict && !sameTags(tagScope, user.tagScope);
+  const dirty = displayName.trim() !== user.displayName || role !== user.role || scopeChanged;
 
-  function run(patch: { displayName?: string; role?: UserRole; disabled?: boolean; password?: string }, done: (u: UserInfo) => void) {
+  function run(patch: { displayName?: string; role?: UserRole; disabled?: boolean; password?: string; tagScope?: number[] | null }, done: (u: UpdateUserResponse) => void) {
     setError(null);
     update.mutate({ id: user.id, ...patch }, { onSuccess: done, onError: (err) => setError(peopleErrorMessage(err)) });
   }
@@ -145,9 +172,13 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
       {
         ...(displayName.trim() !== user.displayName ? { displayName: displayName.trim() } : {}),
         ...(role !== user.role ? { role } : {}),
+        ...(scopeChanged ? { tagScope } : {}),
       },
-      () => {
-        toast('Saved', { kind: 'success', durationMs: 2000 });
+      (u) => {
+        toast(
+          u.unassigned ? `Saved. ${u.unassigned} ticket${u.unassigned === 1 ? '' : 's'} they can no longer see ${u.unassigned === 1 ? 'was' : 'were'} unassigned.` : 'Saved',
+          { kind: 'success', durationMs: u.unassigned ? 5000 : 2000 },
+        );
         onDone();
       },
     );
@@ -175,6 +206,41 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
             ))}
             {self && role === 'member' && user.role === 'admin' && (
               <span className="field-help is-error">You’ll lose access to People and the install’s settings straight away.</span>
+            )}
+          </fieldset>
+        )}
+        {canRestrict && (
+          <fieldset className="ticket-fieldset">
+            <legend className="field-label">Tickets they see</legend>
+            <label className="checkbox">
+              <input type="checkbox" checked={restrict} onChange={(e) => setRestrict(e.target.checked)} aria-describedby={`${ids}-scope-help`} />
+              <span>Restrict to tags</span>
+            </label>
+            {restrict && (
+              <>
+                <div className="label-picker" role="group" aria-label="Tags they see" aria-describedby={`${ids}-scope-help`}>
+                  {labels.map((l) => (
+                    <label key={l.id} className="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={tags.includes(l.id)}
+                        onChange={() => setTags((ids) => (ids.includes(l.id) ? ids.filter((x) => x !== l.id) : [...ids, l.id]))}
+                      />
+                      <span>{l.name}</span>
+                    </label>
+                  ))}
+                </div>
+                <span id={`${ids}-scope-help`} className="field-help">
+                  They see only tickets with at least one of these tags; tickets without tags are hidden from them. They
+                  can’t change tags or columns. If all of these tags are deleted, they see nothing. Tickets they can no
+                  longer see are unassigned from them.
+                </span>
+                {tags.length === 0 && (
+                  <span className="field-help is-error" role="status">
+                    With no tags ticked they see nothing.
+                  </span>
+                )}
+              </>
             )}
           </fieldset>
         )}

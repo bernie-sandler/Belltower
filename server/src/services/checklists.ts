@@ -11,15 +11,23 @@ import type { ChecklistItemRow, ChecklistRow } from './cardParts';
 import { getCard, getEditableCard, touchCard } from './cards';
 import { nowIso, tx, type Ctx } from './context';
 import { reindexCard } from './search';
+import { visibleSql } from './scope';
 
+// Lists and items on a card `ctx` can't see (a tag-restricted account) are "not found" too.
 function checklistRow(ctx: Ctx, id: number): ChecklistRow {
-  const row = stmt(ctx.db, 'SELECT * FROM checklists WHERE id = ?').get(id) as ChecklistRow | undefined;
+  const row = stmt(ctx.db, `SELECT l.* FROM checklists l JOIN cards c ON c.id = l.card_id WHERE l.id = ? AND ${visibleSql(ctx)}`).get(id) as
+    | ChecklistRow
+    | undefined;
   if (!row) throw notFound('Checklist not found');
   return row;
 }
 
 function itemRow(ctx: Ctx, id: number): ChecklistItemRow {
-  const row = stmt(ctx.db, 'SELECT * FROM checklist_items WHERE id = ?').get(id) as ChecklistItemRow | undefined;
+  const row = stmt(
+    ctx.db,
+    `SELECT i.* FROM checklist_items i JOIN checklists l ON l.id = i.checklist_id JOIN cards c ON c.id = l.card_id
+      WHERE i.id = ? AND ${visibleSql(ctx)}`,
+  ).get(id) as ChecklistItemRow | undefined;
   if (!row) throw notFound('Checklist item not found');
   return row;
 }

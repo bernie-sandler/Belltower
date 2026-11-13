@@ -3,6 +3,7 @@ import { stmt } from '../db/connection';
 import { badRequest, conflict, notFound } from '../errors';
 import { labelRef, recordEvent } from './activity';
 import { nowIso, tx, type Ctx } from './context';
+import { assertUnrestricted } from './scope';
 
 export interface LabelRow {
   id: number;
@@ -34,6 +35,8 @@ function assertNameFree(ctx: Ctx, name: string, exceptId?: number): void {
 }
 
 export function createLabel(ctx: Ctx, name: string, color: string): Label {
+  // Tags decide who sees what, so tag-restricted people can't change them.
+  assertUnrestricted(ctx, 'add tags');
   return tx(ctx, () => {
     assertNameFree(ctx, name);
     const pos = stmt(ctx.db, 'SELECT coalesce(max(position), -1) + 1 FROM labels').pluck().get() as number;
@@ -48,6 +51,7 @@ export function createLabel(ctx: Ctx, name: string, color: string): Label {
 }
 
 export function updateLabel(ctx: Ctx, id: number, patch: { name?: string; color?: string }): Label {
+  assertUnrestricted(ctx, 'change tags');
   return tx(ctx, () => {
     const row = getLabelRow(ctx, id);
     if (patch.name !== undefined && patch.name !== row.name) assertNameFree(ctx, patch.name, id);
@@ -65,6 +69,7 @@ export function updateLabel(ctx: Ctx, id: number, patch: { name?: string; color?
  * history explains the missing label) records the removal in its log.
  */
 export function deleteLabel(ctx: Ctx, id: number): void {
+  assertUnrestricted(ctx, 'delete tags');
   tx(ctx, () => {
     const row = getLabelRow(ctx, id);
     const cardIds = stmt(ctx.db, 'SELECT card_id FROM card_labels WHERE label_id = ? ORDER BY card_id')
@@ -83,6 +88,7 @@ export function deleteLabel(ctx: Ctx, id: number): void {
 }
 
 export function reorderLabels(ctx: Ctx, ids: number[]): Label[] {
+  assertUnrestricted(ctx, 'reorder tags');
   return tx(ctx, () => {
     const existing = stmt(ctx.db, 'SELECT id FROM labels ORDER BY id').pluck().all() as number[];
     const given = [...ids].sort((a, b) => a - b);

@@ -29,6 +29,7 @@ import { localDateOf } from '../lib/localdate';
 import { CARD_IMPORT_FORMAT, importCards } from './cardImport';
 import type { Ctx } from './context';
 import { listLabels } from './labels';
+import { visibleSql } from './scope';
 
 /**
  * What Claude must return. Plain strings only: the SDK passes enums and limits to the model as
@@ -144,11 +145,16 @@ interface OpenCardRef extends DraftCardRef {
   column: string;
 }
 
+/**
+ * Only cards the person can see: their titles go to Anthropic, and the draft's work card and links
+ * are picked from these lists, so a hidden card can't come back in the answer either.
+ */
 function openCards(ctx: Ctx, kind: 'work' | 'any', limit: number): OpenCardRef[] {
   return stmt(
     ctx.db,
     `SELECT c.id, c.ticket_no AS ticketNo, c.title, c.kind, col.name AS "column" FROM cards c JOIN columns col ON col.id = c.column_id
       WHERE c.deleted_at IS NULL AND c.archived_at IS NULL AND c.completed_at IS NULL ${kind === 'work' ? "AND c.kind = 'work'" : ''}
+        AND ${visibleSql(ctx)}
       ORDER BY c.updated_at DESC, c.id DESC LIMIT ${limit}`,
   ).all() as OpenCardRef[];
 }

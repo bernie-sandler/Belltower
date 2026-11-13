@@ -1,7 +1,8 @@
 // GET /api/v1/summary: ticket counts for dashboards (Homepage, Home Assistant…). It reuses the rules
 // the rest of the app already applies, so the numbers agree with what people see elsewhere:
 // ticketState() for received / in progress / waiting (the status page), isUrgent() with the
-// notification alert levels, and the daily summary's due-date filter.
+// notification alert levels, and the daily summary's due-date filter. A token of a tag-restricted
+// member counts only the cards that member can see.
 
 import { PRIORITY_CODES, SEVERITY_CODES, type ApiSummary, type Priority, type Severity } from '@tt/shared';
 import { stmt } from '../db/connection';
@@ -9,6 +10,7 @@ import { addDays, localDateOf, toEpochDay } from '../lib/localdate';
 import { startOfLocalDay } from '../lib/tz';
 import type { Ctx } from './context';
 import { DUE_WHERE, isUrgent } from './notify';
+import { visibleSql } from './scope';
 import { getAlertSettings } from './settings';
 import { ticketStates } from './ticketState';
 
@@ -24,10 +26,11 @@ interface OpenRow {
 export function apiSummary(ctx: Ctx): ApiSummary {
   const now = ctx.clock.now();
   const today = localDateOf(now, ctx.tz);
+  const visible = visibleSql(ctx);
   const open = stmt(
     ctx.db,
-    `SELECT id, column_id, completed_at, priority, severity, created_at FROM cards
-      WHERE kind = 'ticket' AND deleted_at IS NULL AND archived_at IS NULL AND completed_at IS NULL`,
+    `SELECT c.id, c.column_id, c.completed_at, c.priority, c.severity, c.created_at FROM cards c
+      WHERE c.kind = 'ticket' AND c.deleted_at IS NULL AND c.archived_at IS NULL AND c.completed_at IS NULL AND ${visible}`,
   ).all() as OpenRow[];
 
   const states = ticketStates(ctx, open);
@@ -46,10 +49,11 @@ export function apiSummary(ctx: Ctx): ApiSummary {
 
   const due = stmt(
     ctx.db,
-    `SELECT coalesce(sum(c.due_date < ?), 0) AS overdue, coalesce(sum(c.due_date = ?), 0) AS dueToday FROM cards c WHERE ${DUE_WHERE}`,
+    `SELECT coalesce(sum(c.due_date < ?), 0) AS overdue, coalesce(sum(c.due_date = ?), 0) AS dueToday FROM cards c
+      WHERE ${DUE_WHERE} AND ${visible}`,
   ).get(today, today, today) as { overdue: number; dueToday: number };
   const completedSince = (date: string) =>
-    stmt(ctx.db, `SELECT count(*) FROM cards WHERE kind = 'ticket' AND deleted_at IS NULL AND completed_at >= ?`)
+    stmt(ctx.db, `SELECT count(*) FROM cards c WHERE c.kind = 'ticket' AND c.deleted_at IS NULL AND c.completed_at >= ? AND ${visible}`)
       .pluck()
       .get(startOfLocalDay(date, ctx.tz)) as number;
 

@@ -88,6 +88,7 @@ import {
   type PublicTicketStatus,
   type TextPreview,
   type TicketDraft,
+  type UpdateUserResponse,
   type UserInfo,
 } from '@tt/shared';
 import { version as APP_VERSION } from '../../../../package.json';
@@ -293,7 +294,7 @@ export interface DemoApi {
   'PATCH /api/me': MeResponse;
   'GET /api/users': UserInfo[];
   'POST /api/users': UserInfo;
-  'PATCH /api/users/:id': UserInfo;
+  'PATCH /api/users/:id': UpdateUserResponse;
   // ---- personal notifications (routes/notifications.ts) ----
   'GET /api/notifications': NotificationsResponse;
   'POST /api/notifications/read': { unread: number };
@@ -633,7 +634,8 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   'PATCH /api/users/:id': admin(
     ok((ctx, req) => {
       const { password, ...patch } = parse(UpdateUserBody, req.body);
-      return updateUser(ctx, id(req), patch, password !== undefined);
+      // The demo doesn't filter by tags (it always signs in as the owner), so nobody is unassigned.
+      return { ...updateUser(ctx, id(req), patch, password !== undefined), unassigned: 0 };
     }),
   ),
 

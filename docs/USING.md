@@ -199,6 +199,19 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
   password or deactivating someone signs them out everywhere. A deactivated person can't sign in and their API tokens
   stop working, but they keep their name in the history. **Re-enable** brings them and their tokens back. Nobody is
   ever deleted.
+- **Restrict to tags** (members only) limits someone to tickets that carry at least one of the tags you pick, say a
+  family member who should only see Plex requests. With Teams on or off:
+  - They see a ticket only if it has one of their tags. **Tickets without tags are hidden from them.** Everything else
+    follows: the board, search, the calendar, Archive and Trash, linked and parent tickets (left out, or shown as
+    "Hidden ticket" in history), the bell, their API tokens and the automation API.
+  - If every one of their tags is deleted, they see nothing (never everything).
+  - A ticket they create gets their tags if it has none of them. They can take their own tag off a ticket; it then
+    leaves their view.
+  - They can't add, rename or delete tags, change columns, set the blocked column, archive all of Done, sort a column,
+    or manage recurring templates. The board hides those controls for them.
+  - They're only told about tickets they can see, and a ticket can only be given to them if it carries one of their
+    tags (an admin's assignee list leaves them out otherwise; for anyone else the app explains the refusal). Narrowing their tags, or taking their tag off a ticket they\n    have, unassigns them from tickets they can no longer see; each shows in the ticket's history.
+  - Admins and the owner always see every ticket; making someone an admin lifts their restriction.
 - What can't work isn't offered: the owner can't be demoted or deactivated, you can't deactivate yourself or reset
   your own password there (that's under Account), and the last active admin stays an admin.
 

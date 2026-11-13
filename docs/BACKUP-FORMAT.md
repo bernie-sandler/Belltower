@@ -35,7 +35,7 @@ A JSON-only export restores fine too: the cards keep their attachment entries, a
 ```json
 {
   "format": "tower-tracker-backup",
-  "schemaVersion": 10,
+  "schemaVersion": 11,
   "appVersion": "1.5.0",
   "appTz": "America/Chicago",
   "exportedAt": "2026-10-28T05:18:00.239Z",
@@ -66,14 +66,14 @@ Rows are ordered by `id`, or by their key for tables without one.
 
 ## Tables
 
-Listed in the order restore loads them (parents first). Columns are those of the current schema (10); the full
+Listed in the order restore loads them (parents first). Columns are those of the current schema (11); the full
 definitions, with every constraint, are the migrations in
 [`server/src/db/schema.ts`](../server/src/db/schema.ts).
 
 | Table | What it holds | Notable columns |
 |---|---|---|
 | `settings` | App settings, one JSON or text value per key | `key`, `value` |
-| `users` | People: admins and members (deactivated, never deleted). **No passwords** | `username`, `display_name`, `email`, `role` (`admin`, `member`), `is_owner`, `oidc_issuer`, `oidc_subject` (a single sign-on link; exported, but restore takes links from the server you restore into), `discord_user_id`, `ntfy_topic`, `notify_prefs` (JSON), `disabled_at` |
+| `users` | People: admins and members (deactivated, never deleted). **No passwords** | `username`, `display_name`, `email`, `role` (`admin`, `member`), `is_owner`, `oidc_issuer`, `oidc_subject` (a single sign-on link; exported, but restore takes links from the server you restore into), `discord_user_id`, `ntfy_topic`, `notify_prefs` (JSON), `disabled_at`, `tag_scoped` (1 = restricted to the tags in `user_labels`; restore takes it from the server you restore into) |
 | `columns` | Board columns | `name`, `position`, `role` (`triage`, `done` or null) |
 | `labels` | Labels | `name`, `color` (`#rrggbb`), `position` |
 | `recurring_templates` | Recurring maintenance | `title`, `interval_unit`, `interval_count`, `next_run_date`, `checklist_template` (JSON), `enabled` |
@@ -81,6 +81,7 @@ definitions, with every constraint, are the migrations in
 | `cards` | Every card, including archived and trashed ones | `column_id`, `title`, `description_md`, `priority`, `severity`, `due_date`, `due_time`, `position`, `completed_at`, `archived_at`, `deleted_at`, `source` (`manual`, `recurring`, `api`), `source_ref` (an automation `dedupeKey`), `ticket_no`, `kind` (`ticket`, `work`), `parent_id`, `resolution`, `resolution_md`, `assignee_id` (a user) |
 | `card_labels` | Labels on cards | `card_id`, `label_id` |
 | `card_watchers` | Who watches which card | `card_id`, `user_id` |
+| `user_labels` | The tags a restricted member sees | `user_id`, `label_id` |
 | `checklists` | Checklists | `card_id`, `title`, `position` |
 | `checklist_items` | Their items | `checklist_id`, `text`, `state` (`open`, `done`, `failed`, `unverified`), `checked` (`1` only when `done`), `checked_at` (when the current mark was set), `position` |
 | `attachments` | Attachment metadata (the file is in the ZIP) | `card_id`, `original_name`, `stored_name` (UUID), `mime_type`, `kind` (`image`, `text`, `file`), `size_bytes`, `sha256` |
@@ -109,7 +110,8 @@ links), `app_tz_at_seed`, `seeded` and `request_types_seeded`.
 
 - **Passwords** (`users.password_hash`; before 1.5 the `password_hash` setting), `password_source`, and **signed-in
   devices** (`sessions`). On restore, the server you restore into decides who can sign in: each of its people is
-  matched to the backup's by username and keeps their own password, role, deactivation and single sign-on link, its
+  matched to the backup's by username and keeps their own password, role, deactivation, single sign-on link and tag restriction (its tags are matched to the
+  backup's by name; a tag the backup doesn't have is dropped, and a restricted person left with none sees nothing), its
   people the backup doesn't have are added, and everyone stays signed in. People only in the backup come back without a
   password or single sign-on link until an admin gives them a new password. A `password_hash`, `is_owner`,
   `oidc_issuer` or `oidc_subject` in a backup (say, a hand-edited one) is ignored on restore.
@@ -136,3 +138,4 @@ tokens and API token hashes, keep exports somewhere private.
 | 8 | 1.4 | `checklist_items.state` (`open`, `done`, `failed` or `unverified`; checked items from older backups come back as `done`) |
 | 9 | 1.5 | `users` (people; exported without passwords), `card_watchers`, `cards.assignee_id`, `activity.user_id` and `token_id`, `activity_revisions.user_id`, `api_tokens.user_id`. Backups from older versions have no people: the server you restore into adds its own, and their API tokens go to its owner |
 | 10 | 1.5 | `request_type_labels` (the labels every ticket of a request type gets; from 1.5.0-rc.4). From older backups, a type's "always add" label (`type_label_id`) moves here; the tags submitters could pick (`tag_label_ids`) are dropped |
+| 11 | 1.5 | `users.tag_scoped`, `user_labels` (members restricted to some tags; from 1.5.0-rc.4) |

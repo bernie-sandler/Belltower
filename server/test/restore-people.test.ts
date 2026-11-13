@@ -151,4 +151,43 @@ describe('restore with people', () => {
     expect(await restore(dst, cookies.admin, data)).toBe(200);
     expect(dst.ctx.db.prepare('SELECT username FROM users WHERE oidc_subject IS NOT NULL').pluck().all()).toEqual(['casey']);
   });
+
+  it('tag restrictions come from the live install, matched by tag name; a restricted person never ends up seeing more', async () => {
+    const { data } = await source();
+    // In the backup, sam is restricted (the destination's sam is an admin, who never is).
+    const backupLabel = data.tables.labels[0];
+    for (const u of data.tables.users) if (u.username === 'sam') u.tag_scoped = 1;
+    data.tables.user_labels = [{ user_id: data.tables.users.find((u: { username: string }) => u.username === 'sam').id, label_id: backupLabel.id }];
+    const { dst, cookies } = await destination();
+    const api = client(dst.app, cookies.admin);
+    // Both installs have the backup's first tag (the same seed); the destination also has its own.
+    const live = (name: string) => dst.ctx.db.prepare('SELECT id FROM labels WHERE name = ? COLLATE NOCASE').pluck().get(name) as number;
+    const gone = (await api('POST', '/api/labels', { name: 'Only on the destination', color: '#445566' })).json().id as number;
+    const users = (await api('GET', '/api/users')).json() as { id: number; username: string }[];
+    const casey = users.find((u) => u.username === 'casey')!.id;
+    expect((await api('PATCH', `/api/users/${casey}`, { tagScope: [live(String(backupLabel.name)), gone] })).statusCode).toBe(200);
+
+    expect(await restore(dst, cookies.admin, data)).toBe(200);
+    const after = (await client(dst.app, cookies.admin)('GET', '/api/users')).json() as { username: string; tagScope: number[] | null }[];
+    const restoredLabel = dst.ctx.db.prepare('SELECT id FROM labels WHERE name = ? COLLATE NOCASE').pluck().get(backupLabel.name) as number;
+    // casey keeps the tag the backup has, loses the one it doesn't; sam is an admin live, so unrestricted.
+    expect(after.find((u) => u.username === 'casey')!.tagScope).toEqual([restoredLabel]);
+    expect(after.find((u) => u.username === 'sam')!.tagScope).toBeNull();
+    expect(dst.ctx.db.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('a live restricted person whose tags the backup lacks stays restricted and sees nothing', async () => {
+    const { data } = await source();
+    const { dst, cookies } = await destination();
+    const api = client(dst.app, cookies.admin);
+    const gone = (await api('POST', '/api/labels', { name: 'Only on the destination', color: '#445566' })).json().id as number;
+    const users = (await api('GET', '/api/users')).json() as { id: number; username: string }[];
+    const casey = users.find((u) => u.username === 'casey')!.id;
+    expect((await api('PATCH', `/api/users/${casey}`, { tagScope: [gone] })).statusCode).toBe(200);
+    expect(await restore(dst, cookies.admin, data)).toBe(200);
+    const after = (await api('GET', '/api/users')).json() as { username: string; tagScope: number[] | null }[];
+    expect(after.find((u) => u.username === 'casey')!.tagScope).toEqual([]);
+    const board = (await client(dst.app, cookies.casey)('GET', '/api/board')).json();
+    expect(board.cards).toEqual([]);
+  });
 });

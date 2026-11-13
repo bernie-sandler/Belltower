@@ -1,10 +1,12 @@
 // People: your own account (/api/me), the directory everyone can read (for pickers and mentions),
 // and adding or changing people (admins). Your own password stays at POST /api/auth/password.
 
-import { CreateUserBody, UpdateMeBody, UpdateUserBody, type MeResponse, type UserInfo } from '@tt/shared';
+import { CreateUserBody, UpdateMeBody, UpdateUserBody, type MeResponse, type UpdateUserResponse, type UserInfo } from '@tt/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppDeps } from '../../app';
 import { hashPassword } from '../../auth/password';
+import { unassignHiddenCards } from '../../services/cards';
+import { tx } from '../../services/context';
 import { createUser, getUser, listUsers, meResponse, updateMe, updateUser } from '../../services/users';
 import { ADMIN } from '../guard';
 import { idParam, parse } from '../util';
@@ -26,12 +28,17 @@ export function registerUserRoutes(app: FastifyInstance, deps: AppDeps): void {
     req.log.info(`Added "${created.username}" (${created.role})`);
     return reply.status(201).send(created);
   });
-  app.patch('/api/users/:id', ADMIN, async (req): Promise<UserInfo> => {
+  app.patch('/api/users/:id', ADMIN, async (req): Promise<UpdateUserResponse> => {
     const id = idParam(req);
     const { password, ...patch } = parse(UpdateUserBody, req.body);
     // Who the id means now: hashing takes a while, and a restore meanwhile could renumber people.
     const expectedUsername = getUser(req.ctx, id).username;
     const passwordHash = password === undefined ? undefined : await hashPassword(password);
-    return updateUser(req.ctx, id, patch, { passwordHash, ownerPasswordFromEnv: envOwner(), expectedUsername });
+    return tx(req.ctx, () => {
+      const info = updateUser(req.ctx, id, patch, { passwordHash, ownerPasswordFromEnv: envOwner(), expectedUsername });
+      // Narrowing someone's tags takes them off the cards they can no longer see, in the same change.
+      const unassigned = patch.tagScope !== undefined && patch.tagScope !== null ? unassignHiddenCards(req.ctx, id) : 0;
+      return { ...info, unassigned };
+    });
   });
 }

@@ -45,6 +45,7 @@ import {
 import { stmt } from '../db/connection';
 import { badRequest } from '../errors';
 import { actorUserId, nowIso, type Ctx } from './context';
+import { userCanSeeCard, visibleSql } from './scope';
 import { channelReady, getChannelSettings, getDiscordSettings, teamsEnabled } from './settings';
 import { getUser } from './users';
 
@@ -107,7 +108,8 @@ export function notifyPeople(ctx: Ctx, input: NotifyInput): { id: number; userId
   const teams = teamsEnabled(ctx);
   if (!teams && input.type !== 'submitted') return [];
   const me = selfId(ctx);
-  const userIds = [...new Set(input.userIds)].filter((id) => id !== me);
+  // Nobody hears about a card they can't see (a tag-restricted member without its tags).
+  const userIds = [...new Set(input.userIds)].filter((id) => id !== me && userCanSeeCard(ctx, id, input.cardId));
   if (!userIds.length) return [];
   const people = stmt(
     ctx.db,
@@ -315,7 +317,9 @@ export function toItem(r: ItemRow): NotificationItem {
 export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuery): NotificationsResponse {
   const teams = teamsEnabled(ctx);
   const where = inBell(ctx);
-  const rows = stmt(ctx.db, `${ITEM_SELECT} WHERE n.user_id = ? AND n.id > ? AND ${where} ORDER BY n.id DESC LIMIT ?`).all(
+  // Only cards the person can see now: a card's tags can change after its notification was written.
+  const seen = visibleSql(ctx);
+  const rows = stmt(ctx.db, `${ITEM_SELECT} WHERE n.user_id = ? AND n.id > ? AND ${where} AND ${seen} ORDER BY n.id DESC LIMIT ?`).all(
     userId,
     q.after ?? 0,
     q.limit,
@@ -323,7 +327,7 @@ export function listNotifications(ctx: Ctx, userId: number, q: NotificationsQuer
   const counts = stmt(
     ctx.db,
     `SELECT count(*) FILTER (WHERE n.read_at IS NULL) AS unread, coalesce(max(n.id), 0) AS latest
-       FROM notifications n WHERE n.user_id = ? AND ${where}`,
+       FROM notifications n JOIN cards c ON c.id = n.card_id WHERE n.user_id = ? AND ${where} AND ${seen}`,
   ).get(userId) as { unread: number; latest: number };
   return { items: rows.map(toItem), unread: counts.unread, latestId: counts.latest, teams };
 }
@@ -347,7 +351,13 @@ export function markNotificationsRead(ctx: Ctx, userId: number, body: MarkNotifi
       JSON.stringify(body.ids ?? []),
     );
   }
-  return stmt(ctx.db, `SELECT count(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL AND ${inBell(ctx)}`).pluck().get(userId) as number;
+  return stmt(
+    ctx.db,
+    `SELECT count(*) FROM notifications n JOIN cards c ON c.id = n.card_id
+      WHERE n.user_id = ? AND n.read_at IS NULL AND ${inBell(ctx)} AND ${visibleSql(ctx)}`,
+  )
+    .pluck()
+    .get(userId) as number;
 }
 
 /** Notifications for personal channels: these rows (if they still exist), oldest first, retracted notes left out. */
@@ -355,7 +365,8 @@ export function notificationsById(ctx: Ctx, ids: number[]): (NotificationItem & 
   const rows = stmt(ctx.db, `${ITEM_SELECT} WHERE n.id IN (SELECT value FROM json_each(?)) AND ${NOT_RETRACTED} ORDER BY n.id`).all(
     JSON.stringify(ids),
   ) as ItemRow[];
-  return rows.map((r) => ({ ...toItem(r), userId: r.user_id }));
+  // Judged now, for each person: the card's tags may have changed since the row was written.
+  return rows.filter((r) => userCanSeeCard(ctx, r.user_id, r.card_id)).map((r) => ({ ...toItem(r), userId: r.user_id }));
 }
 
 /** Read ones after READ_KEEP_DAYS, any after UNREAD_KEEP_DAYS. Returns how many went. */

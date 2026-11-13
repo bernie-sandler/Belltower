@@ -9,6 +9,7 @@ import { linkDirection, type LinkRow } from './cardParts';
 import { getCard, getCardRow, getEditableCard, parkIfBlocked, touchCard } from './cards';
 import { nowIso, tx, type Ctx } from './context';
 import { reindexCard } from './search';
+import { canSeeCard } from './scope';
 
 const OPPOSITE: Record<LinkDirection, LinkDirection> = { relates: 'relates', blocks: 'blocked_by', blocked_by: 'blocks' };
 
@@ -86,10 +87,12 @@ export function createLink(ctx: Ctx, cardId: number, otherId: number, direction:
 /** Removes a link; `cardId` is the card the request came from (its detail is returned). */
 export function deleteLink(ctx: Ctx, cardId: number, linkId: number): CardDetail {
   return tx(ctx, () => {
-    const link = stmt(ctx.db, 'SELECT * FROM card_links WHERE id = ?').get(linkId) as LinkRow | undefined;
-    if (!link || (link.from_card_id !== cardId && link.to_card_id !== cardId)) throw notFound('Link not found');
     const card = getEditableCard(ctx, cardId);
-    const other = getCardRow(ctx, link.from_card_id === cardId ? link.to_card_id : link.from_card_id);
+    const link = stmt(ctx.db, 'SELECT * FROM card_links WHERE id = ?').get(linkId) as LinkRow | undefined;
+    const otherId = link && (link.from_card_id === cardId ? link.to_card_id : link.from_card_id);
+    // A link to a card the person can't see isn't shown to them, so it's "not found" too.
+    if (!link || (link.from_card_id !== cardId && link.to_card_id !== cardId) || !canSeeCard(ctx, otherId!)) throw notFound('Link not found');
+    const other = getCardRow(ctx, otherId!);
     stmt(ctx.db, 'DELETE FROM card_links WHERE id = ?').run(linkId);
     logBoth(ctx, 'unlinked', link, card, other);
     touchCard(ctx, card.id);

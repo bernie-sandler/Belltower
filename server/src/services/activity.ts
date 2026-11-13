@@ -1,6 +1,7 @@
 import type { ActivityEntry, ActivityEventType, ColumnRef, LabelRef } from '@tt/shared';
 import { stmt } from '../db/connection';
 import { actorTokenId, actorUserId, nowIso, type Ctx } from './context';
+import { visibleIds } from './scope';
 
 export interface ActivityRow {
   id: number;
@@ -68,7 +69,51 @@ export function toActivityEntry(row: ActivityRow): ActivityEntry {
 /** Newest first, by effective time. */
 export function listActivity(ctx: Ctx, cardId: number): ActivityEntry[] {
   const rows = stmt(ctx.db, `${ACTIVITY_SELECT} WHERE a.card_id = ? ORDER BY a.occurred_at DESC, a.id DESC`).all(cardId) as ActivityRow[];
-  return rows.map(toActivityEntry);
+  const entries = rows.map(toActivityEntry);
+  return ctx.scope ? hideOtherCards(ctx, entries) : entries;
+}
+
+/** What history shows instead of the title of another card a tag-restricted person can't see. */
+export const HIDDEN_CARD_TITLE = 'Hidden ticket';
+
+type Ref = { id?: unknown; title?: unknown; ticketNo?: unknown };
+const isRef = (v: unknown): v is Ref => typeof v === 'object' && v !== null && 'id' in v;
+
+/** Where each event type names other cards ({ id, title, ticketNo? } objects; `moved` has a list). */
+const CARD_KEYS: Partial<Record<string, readonly string[]>> = {
+  created: ['parent'],
+  parent_changed: ['from', 'to'],
+  child_added: ['child'],
+  child_removed: ['child'],
+  moved: ['blockedBy'],
+};
+
+/** The other cards an entry names: linked cards, parents, children and blockers. */
+function refsOf(e: ActivityEntry): Ref[] {
+  const d = e.data;
+  const refs = (CARD_KEYS[e.type] ?? []).flatMap((k) => (Array.isArray(d[k]) ? (d[k] as unknown[]) : [d[k]])).filter(isRef);
+  if (e.type === 'linked' || e.type === 'unlinked') refs.push({ id: d.otherId });
+  return refs;
+}
+
+/**
+ * Keeps every entry of a visible card, but takes out the id, title and ticket number of each other card
+ * named in it that `ctx` can't see (leaving the entry out would misstate the card's own history).
+ */
+function hideOtherCards(ctx: Ctx, entries: ActivityEntry[]): ActivityEntry[] {
+  const ids = entries.flatMap((e) => refsOf(e).map((r) => r.id)).filter((id): id is number => typeof id === 'number');
+  const seen = visibleIds(ctx, ids);
+  const hide = (r: unknown) => (isRef(r) && typeof r.id === 'number' && !seen.has(r.id) ? { ...r, id: null, title: HIDDEN_CARD_TITLE, ticketNo: null } : r);
+  return entries.map((e) => {
+    if (!refsOf(e).some((r) => typeof r.id !== 'number' || !seen.has(r.id))) return e;
+    const d = { ...e.data };
+    for (const k of CARD_KEYS[e.type] ?? []) d[k] = Array.isArray(d[k]) ? (d[k] as unknown[]).map(hide) : hide(d[k]);
+    if ((e.type === 'linked' || e.type === 'unlinked') && !(typeof d.otherId === 'number' && seen.has(d.otherId))) {
+      d.otherId = null;
+      d.otherTitle = HIDDEN_CARD_TITLE;
+    }
+    return { ...e, data: d };
+  });
 }
 
 export function columnRef(col: { id: number; name: string; role: string | null }): ColumnRef {

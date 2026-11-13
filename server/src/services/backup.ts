@@ -51,6 +51,7 @@ export const BACKUP_TABLES = [
   'cards',
   'card_labels',
   'card_watchers',
+  'user_labels',
   'checklists',
   'checklist_items',
   'attachments',
@@ -76,6 +77,7 @@ const EXPORT_ORDER: Partial<Record<(typeof BACKUP_TABLES)[number], string>> = {
   card_labels: 'card_id, label_id',
   card_watchers: 'card_id, user_id',
   recurring_template_labels: 'template_id, label_id',
+  user_labels: 'user_id, label_id',
   request_type_labels: 'request_type_id, label_id',
 };
 
@@ -365,7 +367,7 @@ type LiveUser = Omit<UserRow, 'is_owner'> & { is_owner: number };
  * Who can sign in after a restore comes from the live install, not the backup (which never has
  * passwords). In the restored database `next`:
  *  - each live person is matched to a restored one by username; the match gets the live password,
- *    role, deactivation and single-sign-on link (the backup keeps the profile). Live people the
+ *    role, deactivation, single-sign-on link and tag restriction (the backup keeps the profile). Live people the
  *    backup doesn't have are added;
  *  - the live owner's match becomes the owner;
  *  - live sessions move over to the matching people (any that can't be matched end);
@@ -383,6 +385,13 @@ function carryOverAccess(live: DB, next: DB): void {
   );
   const settingOf = (db: DB, key: string) => (db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get(key) as string | undefined) ?? null;
   const liveTeams = settingOf(live, TEAMS_SETTINGS_KEY);
+  const liveTags = new Map<number, string[]>();
+  for (const r of live.prepare('SELECT ul.user_id, l.name FROM user_labels ul JOIN labels l ON l.id = ul.label_id').all() as {
+    user_id: number;
+    name: string;
+  }[]) {
+    liveTags.set(r.user_id, [...(liveTags.get(r.user_id) ?? []), r.name]);
+  }
   next.transaction(() => {
     const restoredId = new Map<number, number>();
     for (const u of users) {
@@ -406,6 +415,19 @@ function carryOverAccess(live: DB, next: DB): void {
           .prepare(`INSERT INTO users (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`)
           .run(...(Object.values(cols) as Parameters<Database.Statement['run']>));
         restoredId.set(u.id, Number(added.lastInsertRowid));
+      }
+      // Tag restriction, like the role, comes from the live install. Tags are matched by name; one
+      // the restored data doesn't have is dropped, and a restricted person left with no tags stays
+      // restricted and sees nothing.
+      const id = restoredId.get(u.id)!;
+      next.prepare('UPDATE users SET tag_scoped = ? WHERE id = ?').run(u.tag_scoped, id);
+      next.prepare('DELETE FROM user_labels WHERE user_id = ?').run(id);
+      if (u.tag_scoped === 1) {
+        for (const name of liveTags.get(u.id) ?? []) {
+          next
+            .prepare('INSERT OR IGNORE INTO user_labels (user_id, label_id) SELECT ?, id FROM labels WHERE name = ? COLLATE NOCASE')
+            .run(id, name);
+        }
       }
     }
     next.prepare('UPDATE users SET is_owner = 0 WHERE is_owner = 1').run();

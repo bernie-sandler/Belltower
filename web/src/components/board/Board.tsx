@@ -20,7 +20,7 @@ import { useTeams } from '../../api/config';
 import { useDeleteCard, useCompleteCard,
   useMoveCard, useMoveCards, useRestoreCard } from '../../api/cards';
 import { errorMessage } from '../../api/errors';
-import { useMe } from '../../api/me';
+import { useIsRestricted, useMe } from '../../api/me';
 import { cls } from '../../lib/cls';
 import { useShortcut } from '../../lib/keyboard';
 import { useOpenCard } from '../../lib/navigation';
@@ -177,6 +177,7 @@ function BoardView({ board }: { board: BoardResponse }) {
 
   const [composerColumn, setComposerColumn] = useState<number | null>(null);
   const [addingColumn, setAddingColumn] = useState(false);
+  const restricted = useIsRestricted();
   const [tileMenu, setTileMenu] = useState<{ cardId: number; anchor: HTMLElement } | null>(null);
   const [moveTarget, setMoveTarget] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
@@ -381,15 +382,17 @@ function BoardView({ board }: { board: BoardResponse }) {
               registerElement={registerElement}
             />
           ))}
-          <AddColumn
-            open={addingColumn}
-            onOpen={() => {
-              setComposerColumn(null);
-              setAddingColumn(true);
-            }}
-            onClose={() => setAddingColumn(false)}
-            onAdded={scrollToEnd}
-          />
+          {!restricted && (
+            <AddColumn
+              open={addingColumn}
+              onOpen={() => {
+                setComposerColumn(null);
+                setAddingColumn(true);
+              }}
+              onClose={() => setAddingColumn(false)}
+              onAdded={scrollToEnd}
+            />
+          )}
         </div>
         {createPortal(
           <DragOverlay dropAnimation={dropAnimation}>

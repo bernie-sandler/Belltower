@@ -19,6 +19,7 @@ import { nowIso, tx, type Ctx } from './context';
 import { listLabels, resolveLabels, type LabelRow } from './labels';
 import { isWatching, notifyAssigned, notifyMoved, notifyNewUnassigned, notifySubmitted, watchOwnNewCard } from './notifications';
 import { reindexCard } from './search';
+import { assertUnrestricted, restrictedVisibleSql, userCanSeeCard, userTagScope, visibleIds, visibleOrders, visibleSql } from './scope';
 import { findUser, type UserRow } from './users';
 import { localDateOf } from '../lib/localdate';
 import { getGeneralSettings, getResolutionReasons } from './settings';
@@ -68,22 +69,29 @@ interface TileRow extends CardRow {
  */
 type ChecklistCounts = [total: number, done: number, failed: number, unverified: number];
 
-const TILE_SELECT = `
+/**
+ * The tile query. Counts and the parent id only see cards `ctx` may see (scope.ts), so a
+ * restricted account never learns about hidden linked, parent or child cards. `blocked_by` counts
+ * every open blocker: it is the visible card's own state (it can't be completed yet).
+ */
+const tileSelect = (ctx: Ctx) => `
 SELECT c.*,
   (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
      FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids,
   (SELECT count(*) FROM attachments a WHERE a.card_id = c.id) AS attachment_count,
   (SELECT count(*) FROM card_links k
      JOIN cards o ON o.id = CASE WHEN k.from_card_id = c.id THEN k.to_card_id ELSE k.from_card_id END
-    WHERE (k.from_card_id = c.id OR k.to_card_id = c.id) AND o.deleted_at IS NULL) AS link_count,
+    WHERE (k.from_card_id = c.id OR k.to_card_id = c.id) AND o.deleted_at IS NULL AND ${visibleSql(ctx, 'o')}) AS link_count,
   (SELECT json_array(count(*), count(*) FILTER (WHERE i.state IN ('done', 'failed')),
           count(*) FILTER (WHERE i.state = 'failed'), count(*) FILTER (WHERE i.state = 'unverified'))
      FROM checklist_items i JOIN checklists ch ON ch.id = i.checklist_id WHERE ch.card_id = c.id) AS checklist_counts,
   (SELECT count(*) FROM card_links k JOIN cards b ON b.id = k.from_card_id
     WHERE k.to_card_id = c.id AND k.type = 'blocks' AND b.deleted_at IS NULL AND b.completed_at IS NULL) AS blocked_by,
-  (SELECT p.id FROM cards p WHERE p.id = c.parent_id AND p.deleted_at IS NULL AND p.archived_at IS NULL) AS eff_parent_id,
-  (SELECT count(*) FROM cards k WHERE k.parent_id = c.id AND k.deleted_at IS NULL) AS child_count,
-  (SELECT count(*) FROM cards k WHERE k.parent_id = c.id AND k.deleted_at IS NULL AND k.completed_at IS NULL) AS child_open
+  (SELECT p.id FROM cards p WHERE p.id = c.parent_id AND p.deleted_at IS NULL AND p.archived_at IS NULL
+      AND ${visibleSql(ctx, 'p')}) AS eff_parent_id,
+  (SELECT count(*) FROM cards k WHERE k.parent_id = c.id AND k.deleted_at IS NULL AND ${visibleSql(ctx, 'k')}) AS child_count,
+  (SELECT count(*) FROM cards k WHERE k.parent_id = c.id AND k.deleted_at IS NULL AND k.completed_at IS NULL
+      AND ${visibleSql(ctx, 'k')}) AS child_open
 FROM cards c`;
 
 /** Cards shown on the board: not archived, not in Trash. */
@@ -181,6 +189,33 @@ function checkAssignee(ctx: Ctx, userId: number): UserRow {
   return user;
 }
 
+/** A tag-restricted person can only be given cards they can see (400 assignee_cant_see). */
+function assertAssigneeSees(ctx: Ctx, user: UserRow, cardId: number): void {
+  if (!userCanSeeCard(ctx, user.id, cardId)) {
+    throw badRequest('assignee_cant_see', `${user.display_name} can’t see this ticket: it has none of their tags`);
+  }
+}
+
+/**
+ * After someone's tags were narrowed (or set): takes them off every card (not in the Trash) they
+ * can no longer see, logging each as unassigned. Inside the caller's transaction. Returns how many.
+ */
+export function unassignHiddenCards(ctx: Ctx, userId: number): number {
+  if (userTagScope(ctx, userId) === null) return 0;
+  const ids = stmt(
+    ctx.db,
+    `SELECT c.id FROM cards c WHERE c.assignee_id = ? AND c.deleted_at IS NULL AND NOT ${restrictedVisibleSql(userId)} ORDER BY c.id`,
+  )
+    .pluck()
+    .all(userId) as number[];
+  const now = nowIso(ctx);
+  for (const id of ids) {
+    stmt(ctx.db, 'UPDATE cards SET assignee_id = NULL, version = version + 1, updated_at = ? WHERE id = ?').run(now, id);
+    recordAssigned(ctx, id, userId, null);
+  }
+  return ids.length;
+}
+
 /** Logs and announces an assignee change, and tells the people concerned (inside the change's transaction). */
 function recordAssigned(ctx: Ctx, cardId: number, from: number | null, to: UserRow | null): void {
   const fromName = from !== null ? (findUser(ctx, from)?.display_name ?? null) : null;
@@ -194,7 +229,7 @@ function checkFamily(ctx: Ctx, kind: CardKind, parentId: number | null, selfId: 
   if (parentId === null) return null;
   if (kind === 'work') throw badRequest('invalid_parent', "A work card can't be part of another card");
   if (parentId === selfId) throw badRequest('invalid_parent', "A card can't be part of itself");
-  const parent = stmt(ctx.db, 'SELECT * FROM cards WHERE id = ?').get(parentId) as CardRow | undefined;
+  const parent = stmt(ctx.db, `SELECT * FROM cards c WHERE c.id = ? AND ${visibleSql(ctx)}`).get(parentId) as CardRow | undefined;
   if (!parent || parent.deleted_at) throw badRequest('invalid_parent', 'That work card no longer exists');
   if (parent.kind !== 'work') throw badRequest('invalid_parent', 'Tickets can only be filed under a work card');
   return parent;
@@ -204,13 +239,25 @@ function openChildCount(ctx: Ctx, id: number): number {
   return stmt(ctx.db, 'SELECT count(*) FROM cards WHERE parent_id = ? AND deleted_at IS NULL').pluck().get(id) as number;
 }
 
-function tileRow(ctx: Ctx, id: number): TileRow {
-  const row = stmt(ctx.db, `${TILE_SELECT} WHERE c.id = ?`).get(id) as TileRow | undefined;
+/** A card as a tile; 404 when it doesn't exist or `ctx` can't see it (unless `raw`). */
+function tileRow(ctx: Ctx, id: number, raw = false): TileRow {
+  const row = stmt(ctx.db, `${tileSelect(ctx)} WHERE c.id = ? AND ${raw ? '1' : visibleSql(ctx)}`).get(id) as TileRow | undefined;
   if (!row) throw notFound('Card not found');
   return row;
 }
 
+/**
+ * The card a request names: 404 when it doesn't exist or the acting account can't see it (a
+ * tag-restricted account, scope.ts), the same answer for both.
+ */
 export function getCardRow(ctx: Ctx, id: number): CardRow {
+  const row = stmt(ctx.db, `SELECT * FROM cards c WHERE c.id = ? AND ${visibleSql(ctx)}`).get(id) as CardRow | undefined;
+  if (!row) throw notFound('Card not found');
+  return row;
+}
+
+/** getCardRow without the visibility check: only for knock-on changes to other cards (parking blocked cards). */
+export function rawCardRow(ctx: Ctx, id: number): CardRow {
   const row = stmt(ctx.db, 'SELECT * FROM cards WHERE id = ?').get(id) as CardRow | undefined;
   if (!row) throw notFound('Card not found');
   return row;
@@ -218,6 +265,14 @@ export function getCardRow(ctx: Ctx, id: number): CardRow {
 
 export function getCard(ctx: Ctx, id: number): CardDetail {
   return toDetail(ctx, tileRow(ctx, id));
+}
+
+/**
+ * The card a person just changed, even if the change took it out of their view (they removed their
+ * own tag). Its links, parent and children are still only the ones they can see.
+ */
+function changedCard(ctx: Ctx, id: number): CardDetail {
+  return toDetail(ctx, tileRow(ctx, id, true));
 }
 
 /** Marks a card as changed (updated_at) for edits that live in other tables. */
@@ -239,8 +294,8 @@ export function getCardTile(ctx: Ctx, id: number): CardTile {
 export function getBoard(ctx: Ctx): BoardResponse {
   const rows = stmt(
     ctx.db,
-    `${TILE_SELECT} JOIN columns col ON col.id = c.column_id
-      WHERE c.deleted_at IS NULL AND c.archived_at IS NULL
+    `${tileSelect(ctx)} JOIN columns col ON col.id = c.column_id
+      WHERE c.deleted_at IS NULL AND c.archived_at IS NULL AND ${visibleSql(ctx)}
       ORDER BY col.position, c.position, c.id`,
   ).all() as TileRow[];
   return {
@@ -375,6 +430,12 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     const assignee = input.assigneeId != null ? checkAssignee(ctx, input.assigneeId) : null;
     const column = input.columnId !== undefined ? targetColumn(ctx, input.columnId) : getRoleColumn(ctx, 'triage');
     const labels = resolveLabels(ctx, input.labelIds, input.labelNames);
+    // A tag-restricted person's new card carries at least one of their tags, so they can see it.
+    const scope = ctx.scope;
+    if (scope && !labels.some((l) => scope.labelIds.includes(l.id))) {
+      if (!scope.labelIds.length) assertUnrestricted(ctx, 'create tickets while none of your tags exist');
+      labels.push(...resolveLabels(ctx, scope.labelIds));
+    }
     const now = nowIso(ctx);
 
     let position: number;
@@ -416,6 +477,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
 
     const addLabel = stmt(ctx.db, 'INSERT INTO card_labels (card_id, label_id) VALUES (?, ?)');
     for (const l of labels) addLabel.run(id, l.id);
+    if (assignee) assertAssigneeSees(ctx, assignee, id);
 
     input.checklists?.forEach((cl, i) => {
       const listId = Number(
@@ -567,11 +629,21 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
       if (kind === 'ticket' && card.kind === 'work') {
         const n = openChildCount(ctx, id);
         if (n) {
-          throw badRequest('invalid_parent', `This work card still has ${n} ticket${n === 1 ? '' : 's'}; move ${n === 1 ? 'it' : 'them'} out first`);
+          // A tag-restricted person isn't told how many (some may be hidden from them).
+          throw badRequest(
+            'invalid_parent',
+            ctx.scope
+              ? 'This work card still has tickets filed under it; they have to be moved out first'
+              : `This work card still has ${n} ticket${n === 1 ? '' : 's'}; move ${n === 1 ? 'it' : 'them'} out first`,
+          );
         }
       }
       if (kind === 'work' && parentId !== null && patch.parentId === undefined) {
-        throw badRequest('invalid_parent', 'Take this ticket out of its work card before making it a work card');
+        // A tag-restricted person may not see the work card, so they aren't told it's there.
+        throw badRequest(
+          'invalid_parent',
+          ctx.scope ? 'This ticket can’t be made a work card right now' : 'Take this ticket out of its work card before making it a work card',
+        );
       }
       const parent = checkFamily(ctx, kind, parentId, id);
       if (kind !== card.kind) {
@@ -600,14 +672,21 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
     let assigned: { from: number | null; to: UserRow | null } | null = null;
     if (patch.assigneeId !== undefined && patch.assigneeId !== card.assignee_id) {
       const to = patch.assigneeId !== null ? checkAssignee(ctx, patch.assigneeId) : null;
+      // Judged after the label change above, which runs first.
+      if (to) assertAssigneeSees(ctx, to, id);
       sets.push('assignee_id = ?');
       params.push(to?.id ?? null);
       assigned = { from: card.assignee_id, to };
+    } else if (patch.labelIds !== undefined && card.assignee_id !== null && !userCanSeeCard(ctx, card.assignee_id, id)) {
+      // The new tags took the card out of a tag-restricted assignee's view: nobody has it now.
+      sets.push('assignee_id = ?');
+      params.push(null);
+      assigned = { from: card.assignee_id, to: null };
     }
 
     if (patch.resolution !== undefined) {
       if (!card.completed_at) throw conflict('not_done', 'Only a done card has a resolution');
-      setResolution(ctx, getCardRow(ctx, id), patch.resolution);
+      setResolution(ctx, rawCardRow(ctx, id), patch.resolution);
     }
 
     if (patch.completedAt !== undefined && patch.completedAt !== card.completed_at) {
@@ -636,7 +715,7 @@ export function updateCard(ctx: Ctx, id: number, patch: UpdateCardInput): CardDe
         ctx.emit?.({ type: 'card_raised', cardId: id, from: { priority: card.priority, severity: card.severity }, to: now, actor: ctx.actor });
       }
     }
-    return getCard(ctx, id);
+    return changedCard(ctx, id);
   });
 }
 
@@ -663,13 +742,14 @@ export function moveCard(
 
     // "After itself" in its own column means "stay put" (e.g. Move to… → Bottom on the last card).
     if (input.afterCardId === id && card.column_id === target.id) {
-      return { card: getCardTile(ctx, id), orders: { [String(target.id)]: visibleIdsInColumn(ctx, target.id) } };
+      return { card: getCardTile(ctx, id), orders: visibleOrders(ctx, { [String(target.id)]: visibleIdsInColumn(ctx, target.id) }) };
     }
 
     const targetIds = visibleIdsInColumn(ctx, target.id).filter((cid) => cid !== id);
     let index = 0;
     if (input.afterCardId !== null) {
-      const i = targetIds.indexOf(input.afterCardId);
+      // A card the person can't see is no anchor (the same answer as a card that isn't there).
+      const i = visibleIds(ctx, [input.afterCardId]).has(input.afterCardId) ? targetIds.indexOf(input.afterCardId) : -1;
       if (i < 0) {
         throw badRequest('anchor_not_found', 'That position no longer exists; refresh the board and try again');
       }
@@ -713,7 +793,7 @@ export function moveCard(
     }
     writePositions(ctx, targetIds);
     orders[String(target.id)] = targetIds;
-    return { card: getCardTile(ctx, id), orders };
+    return { card: getCardTile(ctx, id), orders: visibleOrders(ctx, orders) };
   });
 }
 
@@ -748,7 +828,7 @@ export function moveCards(
     for (const columnId of new Set([target.id, ...cards.map((c) => c.column_id)])) {
       orders[String(columnId)] = visibleIdsInColumn(ctx, columnId);
     }
-    return { cards: ids.map((id) => getCardTile(ctx, id)), orders };
+    return { cards: ids.map((id) => getCardTile(ctx, id)), orders: visibleOrders(ctx, orders) };
   });
 }
 
@@ -771,8 +851,9 @@ export function completeCard(
       opts.includeChildren && card.kind === 'work'
         ? (stmt(
             ctx.db,
-            `SELECT * FROM cards WHERE parent_id = ? AND deleted_at IS NULL AND archived_at IS NULL AND completed_at IS NULL
-              ORDER BY position, id`,
+            `SELECT * FROM cards c WHERE c.parent_id = ? AND c.deleted_at IS NULL AND c.archived_at IS NULL AND c.completed_at IS NULL
+                AND ${visibleSql(ctx)}
+              ORDER BY c.position, c.id`,
           ).all(id) as CardRow[])
         : [];
     // Children first, the work card last, so it ends up on top of Done.
@@ -783,6 +864,9 @@ export function completeCard(
       .map((c) => ({ id: c.id, ticketNo: c.ticket_no, title: c.title, blockers: openBlockers(ctx, c.id).filter((b) => !ids.has(b.id)) }))
       .filter((s) => s.blockers.length);
     if (stuck.length) {
+      // Blockers the person can't see still block, but aren't named.
+      const seen = visibleIds(ctx, stuck.flatMap((s) => s.blockers.map((b) => b.id)));
+      for (const s of stuck) s.blockers = s.blockers.filter((b) => seen.has(b.id));
       const names = stuck.slice(0, 3).map((s) => `“${s.title}”`).join(', ');
       const more = stuck.length > 3 ? ` and ${stuck.length - 3} more` : '';
       throw conflict(
@@ -799,7 +883,7 @@ export function completeCard(
     if (opts.resolution) {
       for (const t of targets) setResolution(ctx, getCardRow(ctx, t.id), opts.resolution);
     }
-    return { card: getCard(ctx, id), orders, completed: targets.map((t) => t.id) };
+    return { card: getCard(ctx, id), orders: visibleOrders(ctx, orders), completed: targets.map((t) => t.id) };
   });
 }
 
@@ -808,7 +892,8 @@ export function completeCard(
  * Done, archived and trashed cards stay put, as do cards already there. Returns whether it moved.
  */
 export function parkIfBlocked(ctx: Ctx, id: number): boolean {
-  const card = getCardRow(ctx, id);
+  // A knock-on change: the blocked card may be one the acting person can't see.
+  const card = rawCardRow(ctx, id);
   if (card.deleted_at || card.archived_at || card.completed_at) return false;
   const targetId = getBlockedColumnId(ctx);
   if (targetId === null || card.column_id === targetId) return false;
@@ -897,6 +982,7 @@ export function restoreCard(ctx: Ctx, id: number): CardDetail {
 
 /** Archives every card in the Done column ("Archive all in Done"). Returns how many. */
 export function archiveAllDone(ctx: Ctx): number {
+  assertUnrestricted(ctx, 'archive every card in Done');
   return tx(ctx, () => {
     const done = getRoleColumn(ctx, 'done');
     const ids = visibleIdsInColumn(ctx, done.id);
@@ -912,6 +998,7 @@ const rank = <T extends string>(order: readonly T[], v: T | null) => (v === null
  * neither go last. Ties keep their current order. A reorder, so nothing is logged.
  */
 export function sortColumnByPriority(ctx: Ctx, columnId: number): Record<string, number[]> {
+  assertUnrestricted(ctx, 'sort a whole column');
   return tx(ctx, () => {
     getColumnRow(ctx, columnId);
     const rows = stmt(

@@ -18,6 +18,18 @@ export interface Ctx {
   emit?: (event: AppEvent) => void;
   /** Who is acting. Absent means the system (startup, timers, recurring templates, tests). */
   actor?: Actor;
+  /**
+   * Set when the acting person is a tag-restricted member (services/scope.ts): they see only cards
+   * carrying at least one of their tags. Absent means every card (admins, the owner, unrestricted
+   * members, the system and the public).
+   */
+  scope?: TagScope;
+}
+
+/** A tag-restricted person's view. `labelIds` empty = they see nothing (their tags were deleted). */
+export interface TagScope {
+  userId: number;
+  labelIds: number[];
 }
 
 export type AppEvent = (
@@ -45,8 +57,9 @@ export type AppEvent = (
  * access, never copied: a restore closes the database and puts a new handle on the base context,
  * and a copy would keep using the closed one.
  */
-export function withActor(base: Ctx, actor: Actor): Ctx {
+export function withActor(base: Ctx, actor: Actor, scope?: TagScope): Ctx {
   return {
+    ...(scope ? { scope } : {}),
     get db() {
       return base.db;
     },
