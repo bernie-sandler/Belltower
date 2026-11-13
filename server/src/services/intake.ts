@@ -8,6 +8,7 @@ import { AppError, badRequest } from '../errors';
 import { createImported, prepareImport } from './cardImport';
 import { completeCard, getCard } from './cards';
 import { tx, type Ctx } from './context';
+import { visibleSql } from './scope';
 import { getResolutionReasons } from './settings';
 import type { TokenIdentity } from './tokens';
 import { addWorklog } from './worklog';
@@ -27,13 +28,16 @@ const brief = (c: CardDetail): IntakeResult['card'] => ({
   completedAt: c.completedAt,
 });
 
-/** The newest open ticket an automation opened with this key. */
+/**
+ * The newest open ticket an automation opened with this key, among the cards the token's owner
+ * can see (for a tag-restricted owner, a hidden one counts as no match and a new card is made).
+ */
 function openCardFor(ctx: Ctx, key: string): number | null {
   return (
     (stmt(
       ctx.db,
-      `SELECT id FROM cards WHERE source = 'api' AND source_ref = ? AND deleted_at IS NULL AND archived_at IS NULL
-         AND completed_at IS NULL ORDER BY id DESC LIMIT 1`,
+      `SELECT c.id FROM cards c WHERE c.source = 'api' AND c.source_ref = ? AND c.deleted_at IS NULL AND c.archived_at IS NULL
+         AND c.completed_at IS NULL AND ${visibleSql(ctx)} ORDER BY c.id DESC LIMIT 1`,
     )
       .pluck()
       .get(key) as number | undefined) ?? null

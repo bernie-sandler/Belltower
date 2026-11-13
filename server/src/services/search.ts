@@ -13,6 +13,7 @@ import { stmt } from '../db/connection';
 import { addDays } from '../lib/localdate';
 import { startOfLocalDay } from '../lib/tz';
 import type { Ctx } from './context';
+import { canSeeCard, visibleSql } from './scope';
 
 /**
  * Rebuilds a card's single row in the FTS index (rowid = card id). One row per card means a
@@ -62,10 +63,21 @@ export function reindexCard(ctx: Ctx, cardId: number): void {
     ).all(cardId) as { body_md: string }[]
   ).map((r) => r.body_md);
 
-  // Extra searchable history: the ticket number, previous titles, attachment filenames, linked card titles.
-  const history: string[] = card.ticket_no ? [card.ticket_no] : [];
-  const events = stmt(
+  stmt(
     db,
+    'INSERT INTO card_search (rowid, title, description, checklists, worklogs, history) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(cardId, card.title, withResolution(card), checklistText.join('\n'), worklogs.join('\n\n'), historyText(ctx, cardId, card.ticket_no));
+}
+
+/**
+ * Extra searchable history: the ticket number, previous titles, attachment filenames, linked card
+ * titles. `keepLinked` decides per linked card (by its id) whether its title is kept: the index
+ * keeps them all, a restricted search leaves out the cards the person can't see (restrictedMatch).
+ */
+function historyText(ctx: Ctx, cardId: number, ticketNo: string | null, keepLinked: (otherId: unknown) => boolean = () => true): string {
+  const history: string[] = ticketNo ? [ticketNo] : [];
+  const events = stmt(
+    ctx.db,
     `SELECT type, data FROM activity
       WHERE card_id = ? AND type IN ('title_changed', 'attachment_added', 'linked') ORDER BY id`,
   ).all(cardId) as { type: string; data: string }[];
@@ -73,13 +85,9 @@ export function reindexCard(ctx: Ctx, cardId: number): void {
     const d = JSON.parse(e.data) as Record<string, unknown>;
     if (e.type === 'title_changed' && typeof d.from === 'string') history.push(d.from);
     if (e.type === 'attachment_added' && typeof d.name === 'string') history.push(d.name);
-    if (e.type === 'linked' && typeof d.otherTitle === 'string') history.push(d.otherTitle);
+    if (e.type === 'linked' && typeof d.otherTitle === 'string' && keepLinked(d.otherId)) history.push(d.otherTitle);
   }
-
-  stmt(
-    db,
-    'INSERT INTO card_search (rowid, title, description, checklists, worklogs, history) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run(cardId, card.title, withResolution(card), checklistText.join('\n'), worklogs.join('\n\n'), [...new Set(history)].join('\n'));
+  return [...new Set(history)].join('\n');
 }
 
 /** The description as indexed: plus the resolution, so "how did I fix this?" searches find it. */
@@ -144,6 +152,18 @@ interface SearchRow {
   s4?: string;
 }
 
+type Snippets = Pick<SearchRow, 's0' | 's1' | 's2' | 's3' | 's4'>;
+
+const RESULT_COLUMNS = `c.id, c.ticket_no, c.kind, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.completed_at,
+    c.archived_at, c.updated_at,
+    (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
+       FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids`;
+
+const RANK = 'bm25(card_search, 10.0, 4.0, 2.0, 3.0, 1.0), c.updated_at DESC';
+
+const snippetColumns = (table: string) =>
+  FIELDS.map((_, i) => `snippet(${table}, ${i}, char(2), char(3), '…', 16) AS s${i}`).join(', ');
+
 export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
   const fts = toFtsQuery(q.q);
   const where: string[] = ['c.deleted_at IS NULL'];
@@ -180,30 +200,29 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
     );
     params.push(from, to);
   }
-
-  const base = `c.id, c.ticket_no, c.kind, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.completed_at,
-    c.archived_at, c.updated_at,
-    (SELECT group_concat(cl.label_id, ',' ORDER BY l.position, l.id)
-       FROM card_labels cl JOIN labels l ON l.id = cl.label_id WHERE cl.card_id = c.id) AS label_ids`;
+  const filtered = where.length > 1;
+  // A tag-restricted person only finds the cards they can see.
+  where.push(visibleSql(ctx));
 
   let rows: SearchRow[];
-  if (fts) {
-    const snippets = FIELDS.map((_, i) => `snippet(card_search, ${i}, char(2), char(3), '…', 16) AS s${i}`).join(', ');
+  if (fts && ctx.scope) {
+    rows = restrictedMatches(ctx, fts, where, params, q.limit);
+  } else if (fts) {
     rows = ctx.db
       .prepare(
-        `SELECT ${base}, ${snippets}
+        `SELECT ${RESULT_COLUMNS}, ${snippetColumns('card_search')}
            FROM card_search JOIN cards c ON c.id = card_search.rowid JOIN columns col ON col.id = c.column_id
           WHERE card_search MATCH ? AND ${where.join(' AND ')}
-          ORDER BY bm25(card_search, 10.0, 4.0, 2.0, 3.0, 1.0), c.updated_at DESC
+          ORDER BY ${RANK}
           LIMIT ?`,
       )
       .all(fts, ...params, q.limit) as SearchRow[];
   } else {
     // Filters only (no text): most recently changed first.
-    if (where.length === 1) return [];
+    if (!filtered) return [];
     rows = ctx.db
       .prepare(
-        `SELECT ${base} FROM cards c JOIN columns col ON col.id = c.column_id
+        `SELECT ${RESULT_COLUMNS} FROM cards c JOIN columns col ON col.id = c.column_id
           WHERE ${where.join(' AND ')} ORDER BY c.updated_at DESC LIMIT ?`,
       )
       .all(...params, q.limit) as SearchRow[];
@@ -227,6 +246,100 @@ export function searchCards(ctx: Ctx, q: SearchQuery): SearchResult[] {
       return s && s.includes('\u0002') ? [{ field, snippet: s }] : [];
     }),
   }));
+}
+
+/**
+ * Text search for a tag-restricted person. The index is shared, and a card's history there holds
+ * the titles of cards linked to it, which may be cards the person can't see: no match or snippet
+ * may come from those. A card linked to a hidden card is checked again on its own text without the
+ * hidden titles (restrictedMatch), which also gives its snippets; the others answer from the index
+ * as usual. The order stays the index's.
+ */
+function restrictedMatches(ctx: Ctx, fts: string, where: string[], params: unknown[], limit: number): SearchRow[] {
+  const ranked = ctx.db
+    .prepare(
+      `SELECT c.id, EXISTS (SELECT 1 FROM activity a WHERE a.card_id = c.id AND a.type = 'linked'
+                AND NOT EXISTS (SELECT 1 FROM cards o WHERE o.id = json_extract(a.data, '$.otherId') AND ${visibleSql(ctx, 'o')})) AS hides
+         FROM card_search JOIN cards c ON c.id = card_search.rowid JOIN columns col ON col.id = c.column_id
+        WHERE card_search MATCH ? AND ${where.join(' AND ')}
+        ORDER BY ${RANK}`,
+    )
+    .all(fts, ...params) as { id: number; hides: 0 | 1 }[];
+
+  const picked: number[] = [];
+  const rechecked = new Map<number, Snippets>();
+  for (const r of ranked) {
+    if (picked.length >= limit) break;
+    if (!r.hides) {
+      picked.push(r.id);
+      continue;
+    }
+    const snippets = restrictedMatch(ctx, r.id, fts);
+    if (snippets) {
+      picked.push(r.id);
+      rechecked.set(r.id, snippets);
+    }
+  }
+
+  const rows = new Map<number, SearchRow>();
+  const plain = picked.filter((id) => !rechecked.has(id));
+  if (plain.length) {
+    const found = stmt(
+      ctx.db,
+      `SELECT ${RESULT_COLUMNS}, ${snippetColumns('card_search')}
+         FROM card_search JOIN cards c ON c.id = card_search.rowid JOIN columns col ON col.id = c.column_id
+        WHERE card_search MATCH ? AND c.id IN (SELECT value FROM json_each(?))`,
+    ).all(fts, JSON.stringify(plain)) as SearchRow[];
+    for (const r of found) rows.set(r.id, r);
+  }
+  if (rechecked.size) {
+    const found = stmt(
+      ctx.db,
+      `SELECT ${RESULT_COLUMNS} FROM cards c JOIN columns col ON col.id = c.column_id WHERE c.id IN (SELECT value FROM json_each(?))`,
+    ).all(JSON.stringify([...rechecked.keys()])) as SearchRow[];
+    for (const r of found) rows.set(r.id, { ...r, ...rechecked.get(r.id) });
+  }
+  return picked.flatMap((id) => rows.get(id) ?? []);
+}
+
+/** A one-row copy of the index (same columns and tokenizer as card_search in db/schema.ts). */
+const RECHECK_TABLE = 'card_search_recheck';
+
+/**
+ * The snippets if card `cardId` matches `fts` on its own indexed text with the titles of linked
+ * cards `ctx` can't see left out, else null. The text goes into a one-row FTS table with the
+ * index's tokenizer, so matching and snippets work exactly as in the index. A temp table: per
+ * connection, nothing on disk, nothing in backups; emptied again straight away.
+ */
+function restrictedMatch(ctx: Ctx, cardId: number, fts: string): Snippets | null {
+  const stored = stmt(ctx.db, 'SELECT title, description, checklists, worklogs FROM card_search WHERE rowid = ?').get(cardId) as
+    | { title: string; description: string; checklists: string; worklogs: string }
+    | undefined;
+  const ticketNo = stmt(ctx.db, 'SELECT ticket_no FROM cards WHERE id = ?').pluck().get(cardId) as string | null | undefined;
+  if (!stored || ticketNo === undefined) return null;
+  const history = historyText(ctx, cardId, ticketNo, (otherId) => typeof otherId === 'number' && canSeeCard(ctx, otherId));
+
+  ctx.db.exec(
+    `CREATE VIRTUAL TABLE IF NOT EXISTS temp.${RECHECK_TABLE} USING fts5 (
+       title, description, checklists, worklogs, history, tokenize = 'unicode61 remove_diacritics 2')`,
+  );
+  const clear = stmt(ctx.db, `DELETE FROM temp.${RECHECK_TABLE}`);
+  clear.run();
+  try {
+    stmt(ctx.db, `INSERT INTO temp.${RECHECK_TABLE} (rowid, title, description, checklists, worklogs, history) VALUES (1, ?, ?, ?, ?, ?)`).run(
+      stored.title,
+      stored.description,
+      stored.checklists,
+      stored.worklogs,
+      history,
+    );
+    const hit = stmt(ctx.db, `SELECT ${snippetColumns(RECHECK_TABLE)} FROM temp.${RECHECK_TABLE} WHERE ${RECHECK_TABLE} MATCH ?`).get(fts) as
+      | Snippets
+      | undefined;
+    return hit ?? null;
+  } finally {
+    clear.run();
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -254,12 +367,34 @@ const AFTER_PREFIX = String.fromCodePoint(0x10ffff);
  * word is.
  */
 function commonWords(ctx: Ctx, terms: string[]): Set<string> {
+  if (ctx.scope) return commonVisibleWords(ctx, terms);
   const total = stmt(ctx.db, 'SELECT count(*) FROM card_search').pluck().get() as number;
   if (total < COMMON_MIN_CARDS || !terms.length) return new Set();
   // A temp table: per connection, nothing on disk, nothing in backups.
   ctx.db.exec('CREATE VIRTUAL TABLE IF NOT EXISTS temp.card_search_vocab USING fts5vocab(main, card_search, row)');
   const exact = stmt(ctx.db, 'SELECT coalesce(max(doc), 0) FROM temp.card_search_vocab WHERE term = ?').pluck();
   const prefix = stmt(ctx.db, 'SELECT coalesce(max(doc), 0) FROM temp.card_search_vocab WHERE term >= ? AND term < ?').pluck();
+  const docs = (t: string) => (t.length >= 4 ? prefix.get(t, `${t}${AFTER_PREFIX}`) : exact.get(t)) as number;
+  return new Set(terms.filter((t) => docs(t) / total > COMMON_SHARE));
+}
+
+/**
+ * commonWords among the cards a tag-restricted person can see, so how often a word appears on
+ * cards hidden from them can't change what they're shown. Counted per card from the index's
+ * word instances, which (unlike the per-word totals) can be narrowed to some cards.
+ */
+function commonVisibleWords(ctx: Ctx, terms: string[]): Set<string> {
+  if (!terms.length) return new Set();
+  const visible = `SELECT c.id FROM cards c WHERE c.deleted_at IS NULL AND ${visibleSql(ctx)}`;
+  const total = stmt(ctx.db, `SELECT count(*) FROM (${visible})`).pluck().get() as number;
+  if (total < COMMON_MIN_CARDS) return new Set();
+  ctx.db.exec('CREATE VIRTUAL TABLE IF NOT EXISTS temp.card_search_instances USING fts5vocab(main, card_search, instance)');
+  const exact = stmt(ctx.db, `SELECT count(DISTINCT doc) FROM temp.card_search_instances WHERE term = ? AND doc IN (${visible})`).pluck();
+  const prefix = stmt(
+    ctx.db,
+    `SELECT coalesce(max(n), 0) FROM (SELECT count(DISTINCT doc) AS n FROM temp.card_search_instances
+      WHERE term >= ? AND term < ? AND doc IN (${visible}) GROUP BY term)`,
+  ).pluck();
   const docs = (t: string) => (t.length >= 4 ? prefix.get(t, `${t}${AFTER_PREFIX}`) : exact.get(t)) as number;
   return new Set(terms.filter((t) => docs(t) / total > COMMON_SHARE));
 }
@@ -307,11 +442,13 @@ export function similarCards(
       WHERE card_search MATCH ? AND c.completed_at IS NOT NULL AND c.deleted_at IS NULL AND c.kind = 'ticket' AND c.id <> ?
         AND NOT EXISTS (SELECT 1 FROM card_links k
                          WHERE (k.from_card_id = ? AND k.to_card_id = c.id) OR (k.to_card_id = ? AND k.from_card_id = c.id))
+        AND ${visibleSql(ctx)}
       ORDER BY bm25(card_search, 10.0, 4.0, 1.0, 1.0, 1.0), c.completed_at DESC
       LIMIT ${SIMILAR_CANDIDATES}`,
   ).all(match, self, self, self) as SimilarRow[];
 
-  const parentOf = stmt(ctx.db, 'SELECT id, ticket_no, title FROM cards WHERE id = ? AND deleted_at IS NULL');
+  // A work card the person can't see isn't named (the ticket shows without one).
+  const parentOf = stmt(ctx.db, `SELECT c.id, c.ticket_no, c.title FROM cards c WHERE c.id = ? AND c.deleted_at IS NULL AND ${visibleSql(ctx)}`);
   return rows
     .filter((r) => {
       // Title and description only: resolution reasons ("No longer needed", "Duplicate") and notes
