@@ -1,6 +1,9 @@
 // Single sign-on (OIDC): signing in with Authentik, Authelia or another provider, linking your own
-// account to it (Account → Sign-in), and its settings (admins). Password login always stays, so a
-// broken provider can't lock anyone out. See docs/SSO.md.
+// account to it (Account → Sign-in), and its settings (admins). While it's on and complete, the
+// password form is hidden behind a link by default, and an admin can show it or turn password
+// sign-in off (services/oidc.ts passwordLoginMode). The owner can always sign in with a password
+// at /login?password, and APP_PASSWORD resets the owner's password, so a broken provider can't
+// lock everyone out. See docs/SSO.md.
 
 import { OidcSettingsBody, OidcTestBody, type OidcSettingsInfo, type OidcTestResult, type SsoErrorCode } from '@tt/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -178,7 +181,7 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
   });
 
   app.delete('/api/auth/oidc/link', async (req, reply) => {
-    unlinkIdentity(req.ctx, req.user!.id);
+    unlinkIdentity(req.ctx, req.user!.id, envSecret);
     return reply.status(204).send();
   });
 
