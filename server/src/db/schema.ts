@@ -347,9 +347,9 @@ CREATE INDEX ix_notifications_unread ON notifications (user_id) WHERE read_at IS
 CREATE UNIQUE INDEX ux_notifications_once ON notifications (user_id, activity_id, type) WHERE activity_id IS NOT NULL;
 `;
 
-// 1.6: request types say which labels every ticket of that type gets; submitters no longer pick
+// 1.5 (rc.4): request types say which labels every ticket of that type gets; submitters no longer pick
 // tags. The one "always add" label (type_label_id) carries over; the old pick lists
-// (tag_label_ids) are dropped, as decided for 1.6. Both v5 columns stay (a shipped column can't be
+// (tag_label_ids) are dropped, as decided for 1.5. Both v5 columns stay (a shipped column can't be
 // dropped) but are unused from here on: emptied now and never written again.
 const v10 = `
 CREATE TABLE request_type_labels (

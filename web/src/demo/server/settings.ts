@@ -173,7 +173,7 @@ export function createRequestType(ctx: Ctx, body: RequestTypeBody): RequestType 
 
 export function updateRequestType(ctx: Ctx, id: number, body: RequestTypeBody): RequestType {
   const row = typeRow(ctx, id);
-  // Left out (an app tab opened before 1.6): keep the saved labels.
+  // Left out (an app tab opened before 1.5.0-rc.4): keep the saved labels.
   const labelIds = body.labelIds ? checkLabels(ctx, body.labelIds) : row.labelIds;
   Object.assign(row, {
     name: body.name,

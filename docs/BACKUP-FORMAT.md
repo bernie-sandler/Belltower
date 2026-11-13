@@ -35,7 +35,7 @@ A JSON-only export restores fine too: the cards keep their attachment entries, a
 ```json
 {
   "format": "tower-tracker-backup",
-  "schemaVersion": 9,
+  "schemaVersion": 10,
   "appVersion": "1.5.0",
   "appTz": "America/Chicago",
   "exportedAt": "2026-10-28T05:18:00.239Z",
@@ -66,7 +66,7 @@ Rows are ordered by `id`, or by their key for tables without one.
 
 ## Tables
 
-Listed in the order restore loads them (parents first). Columns are those of the current schema (9); the full
+Listed in the order restore loads them (parents first). Columns are those of the current schema (10); the full
 definitions, with every constraint, are the migrations in
 [`server/src/db/schema.ts`](../server/src/db/schema.ts).
 
@@ -135,4 +135,4 @@ tokens and API token hashes, keep exports somewhere private.
 | 7 | 1.3 | `api_tokens.scope` (`full` or `read`; tokens from older backups come back as `full`) |
 | 8 | 1.4 | `checklist_items.state` (`open`, `done`, `failed` or `unverified`; checked items from older backups come back as `done`) |
 | 9 | 1.5 | `users` (people; exported without passwords), `card_watchers`, `cards.assignee_id`, `activity.user_id` and `token_id`, `activity_revisions.user_id`, `api_tokens.user_id`. Backups from older versions have no people: the server you restore into adds its own, and their API tokens go to its owner |
-| 10 | 1.6 | `request_type_labels` (the labels every ticket of a request type gets). From older backups, a type's "always add" label (`type_label_id`) moves here; the tags submitters could pick (`tag_label_ids`) are dropped |
+| 10 | 1.5 | `request_type_labels` (the labels every ticket of a request type gets; from 1.5.0-rc.4). From older backups, a type's "always add" label (`type_label_id`) moves here; the tags submitters could pick (`tag_label_ids`) are dropped |

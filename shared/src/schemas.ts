@@ -497,7 +497,7 @@ export const RequestTypeBody = z
     fields: z.array(RequestField).max(LIMITS.requestFields).default([]),
     /**
      * Labels every ticket of this type gets (submitters don't pick labels). Left out, a new type gets
-     * none and an update keeps the saved ones: an app tab opened before 1.6 doesn't send them.
+     * none and an update keeps the saved ones: an app tab opened before 1.5.0-rc.4 doesn't send them.
      */
     labelIds: z.array(id).max(50).optional(),
     enabled: z.boolean().default(true),

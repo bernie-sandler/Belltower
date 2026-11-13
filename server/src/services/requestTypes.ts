@@ -85,7 +85,7 @@ export function updateRequestType(ctx: Ctx, id: number, body: RequestTypeBody): 
       ctx.db,
       `UPDATE request_types SET name = ?, description = ?, title_pattern = ?, fields = ?, enabled = ?, updated_at = ? WHERE id = ?`,
     ).run(body.name, body.description, body.titlePattern, JSON.stringify(body.fields), body.enabled ? 1 : 0, nowIso(ctx), id);
-    // Left out (an app tab opened before 1.6): keep the saved labels.
+    // Left out (an app tab opened before 1.5.0-rc.4): keep the saved labels.
     if (body.labelIds) setLabels(ctx, id, body.labelIds);
     return getRequestType(ctx, id);
   });

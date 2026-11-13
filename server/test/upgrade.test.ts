@@ -148,7 +148,7 @@ function oldDatabase(v: number): DB {
   if (v >= 5) {
     run(`INSERT INTO settings (key, value) VALUES ('request_types_seeded', '1')`);
     if (v < 10) {
-      // Before 1.6: one "always add" label, plus labels submitters could pick as tags.
+      // Before 1.5.0-rc.4: one "always add" label, plus labels submitters could pick as tags.
       const video = run(`INSERT INTO labels (name, color, position, created_at) VALUES ('Video', '#579dff', 1, ?)`, at(1));
       run(
         `INSERT INTO request_types (name, title_pattern, fields, tag_label_ids, type_label_id, position, created_at, updated_at) VALUES ('Plex', 'Plex – {summary}', '[]', ?, ?, 0, ?, ?)`,
@@ -158,7 +158,7 @@ function oldDatabase(v: number): DB {
         at(1),
       );
     } else {
-      // 1.6: the labels every ticket of the type gets.
+      // From 1.5.0-rc.4: the labels every ticket of the type gets.
       const plex = run(
         `INSERT INTO request_types (name, title_pattern, fields, position, created_at, updated_at) VALUES ('Plex', 'Plex – {summary}', '[]', 0, ?, ?)`,
         at(1),
@@ -200,10 +200,10 @@ function oldDatabase(v: number): DB {
 }
 
 const count = (db: DB, table: string) => db.prepare(`SELECT count(*) FROM ${table}`).pluck().get() as number;
-/** Request types' labels by type name (1.6 on). */
+/** Request types' labels by type name (1.5.0-rc.4 on). */
 const typeLabels = (ctx: Ctx) => Object.fromEntries(listRequestTypes(ctx).map((t) => [t.name, t.labelIds]));
 const labelId = (db: DB, name: string) => db.prepare('SELECT id FROM labels WHERE name = ?').pluck().get(name) as number;
-/** Request types still using the pre-1.6 columns (emptied by schema 10, never written again). */
+/** Request types still using the pre-1.5.0-rc.4 columns (emptied by schema 10, never written again). */
 const oldTypeColumns = (db: DB) =>
   db.prepare(`SELECT count(*) FROM request_types WHERE type_label_id IS NOT NULL OR tag_label_ids <> '[]'`).pluck().get() as number;
 const COUNTED = ['columns', 'labels', 'cards', 'card_labels', 'card_links', 'checklists', 'checklist_items', 'attachments', 'activity', 'activity_revisions', 'recurring_templates', 'template_runs'];
@@ -322,7 +322,7 @@ describe('upgrading a database left by an older version', () => {
     expect(prepared.numbered).toBe(v >= 3 ? 0 : before.cards);
     for (const t of COUNTED) expect(count(db, t), t).toBe(before[t]);
     expect(count(db, 'request_types')).toBe(v >= 5 ? 1 : 3); // older installs get the default types
-    // 1.6: a request type keeps its one "always add" label; the tags submitters could pick are gone.
+    // 1.5.0-rc.4: a request type keeps its one "always add" label; the tags submitters could pick are gone.
     expect(typeLabels(ctx)).toEqual(v >= 5 ? { Plex: [labelId(db, 'Hardware')] } : { General: [], Plex: [], 'Game servers': [] });
     expect(oldTypeColumns(db)).toBe(0);
 
@@ -410,7 +410,7 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     out.tables.activity = (out.tables.activity ?? []).filter((row) => row.type !== 'assigned');
   }
   if (v < 10) {
-    // Before 1.6 a request type had one "always add" label (Plex: its only label) and tags
+    // Before 1.5.0-rc.4 a request type had one "always add" label (Plex: its only label) and tags
     // submitters could pick; a second type had only tags.
     const links = out.tables.request_type_labels ?? [];
     const types = out.tables.request_types ?? [];
@@ -444,7 +444,7 @@ describe('restoring a backup exported by an older version', () => {
     for (const tbl of COUNTED) expect(count(restored, tbl), tbl).toBe(count(db, tbl) - (tbl === 'activity' ? dropped : 0));
     // A backup from before 1.5 has no people (confirmRestore adds the live install's accounts).
     expect(count(restored, 'users')).toBe(v >= 9 ? 3 : 0);
-    // 1.6: the "always add" label carries over, the tags submitters could pick don't.
+    // 1.5.0-rc.4: the "always add" label carries over, the tags submitters could pick don't.
     if (v >= 5) expect(typeLabels({ db: restored, clock, tz: TZ })).toEqual({ Plex: [labelId(restored, 'Hardware')], 'Game servers': [] });
     expect(oldTypeColumns(restored)).toBe(0);
     // Before 1.4 the failed item was just not checked.

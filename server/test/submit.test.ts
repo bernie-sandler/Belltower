@@ -122,7 +122,7 @@ describe('request types', () => {
     expect(reorderRequestTypes(t.ctx, ids).map((x) => x.id)).toEqual(ids);
   });
 
-  it('keeps the saved labels when an update leaves them out (a tab opened before 1.6)', () => {
+  it('keeps the saved labels when an update leaves them out (a tab opened before 1.5.0-rc.4)', () => {
     const video = createLabel(t.ctx, 'Video', '#579dff');
     const created = createRequestType(t.ctx, RequestTypeBody.parse({ name: 'Network', labelIds: [video.id] }));
     // What 1.5's settings page sent: the old fields are dropped, labelIds is missing.
@@ -266,7 +266,7 @@ describe('submit page over HTTP', () => {
     const p = listRequestTypes(app.ctx).find((x) => x.name === 'Plex')!;
     updateRequestType(app.ctx, p.id, RequestTypeBody.parse({ ...p, labelIds: [video.id, audio.id] }));
 
-    // A page opened before 1.6 still sends picked tags: they're ignored.
+    // A page opened before 1.5.0-rc.4 still sends picked tags: they're ignored.
     const res = await app.app.inject({
       method: 'POST',
       url: `/api/public/submit/${key}`,

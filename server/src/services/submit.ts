@@ -174,7 +174,7 @@ export function submitTicket(
       title,
       description,
       columnId: columnExists ? settings.columnId! : getRoleColumn(ctx, 'triage').id,
-      // The type's labels. Submitters don't pick any (a page opened before 1.6 may still send
+      // The type's labels. Submitters don't pick any (a page opened before 1.5.0-rc.4 may still send
       // tagLabelIds; they're ignored).
       labelIds: type.labelIds,
     },

@@ -412,7 +412,7 @@ describe('request type labels', () => {
     // Duplicates collapse and the list comes back in label order; an unknown id is refused.
     const type = ok<RequestType>(call(store, 'POST', '/api/request-types', { name: 'Wi-Fi', labelIds: [docker, network, docker] }));
     expect(type.labelIds).toEqual([network, docker]);
-    // An update without labelIds (a tab opened before 1.6) keeps them.
+    // An update without labelIds (a tab opened before 1.5.0-rc.4) keeps them.
     expect(ok<RequestType>(call(store, 'PUT', `/api/request-types/${type.id}`, { name: 'Wi-Fi', typeLabelId: null })).labelIds).toEqual([network, docker]);
     expect(call(store, 'POST', '/api/request-types', { name: 'Bad', labelIds: [9999] })).toMatchObject({
       status: 400,

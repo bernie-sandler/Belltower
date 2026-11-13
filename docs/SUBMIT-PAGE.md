@@ -60,7 +60,7 @@ A type's **title pattern** builds the ticket title from the answers. `{summary}`
 `{question_key}` is any of the type's questions.
 
 A type's **labels** (Labels added to every ticket) go on every ticket filed with it, say Plex on every Plex request.
-Submitters don't pick labels and never see yours. (Before 1.6 a type had one "always add" label and could offer tags
+Submitters don't pick labels and never see yours. (Before 1.5.0-rc.4 a type had one "always add" label and could offer tags
 for submitters to pick; upgrading keeps the "always add" label and drops the tags.)
 
 ## Keeping it tidy
