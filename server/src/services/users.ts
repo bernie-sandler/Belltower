@@ -31,15 +31,15 @@ export function toUserRef(r: UserRow): UserRef {
   return { id: r.id, username: r.username, displayName: r.display_name, role: r.role, disabled: r.disabled_at !== null };
 }
 
-function toUserInfo(r: UserRow, showEmail: boolean, tags: Map<number, number[]>): UserInfo {
+function toUserInfo(r: UserRow, showPrivate: boolean, tags: Map<number, number[]>): UserInfo {
   return {
     ...toUserRef(r),
     isOwner: r.is_owner === 1,
-    email: showEmail ? r.email : null,
+    email: showPrivate ? r.email : null,
     hasPassword: r.password_hash !== null,
     createdAt: r.created_at,
     disabledAt: r.disabled_at,
-    tagScope: isTagScoped(r) ? (tags.get(r.id) ?? []) : null,
+    tagScope: showPrivate && isTagScoped(r) ? (tags.get(r.id) ?? []) : null,
   };
 }
 
@@ -102,7 +102,7 @@ function activeAdminCount(ctx: Ctx): number {
   return stmt(ctx.db, `SELECT count(*) FROM users WHERE role = 'admin' AND disabled_at IS NULL`).pluck().get() as number;
 }
 
-/** The directory: active people first, then by name. Email only for admins and for your own entry. */
+/** The directory: active people first, then by name. Email and tag restriction only for admins and for your own entry. */
 export function listUsers(ctx: Ctx): UserInfo[] {
   const admin = actorIsAdmin(ctx);
   const me = actorUserId(ctx);

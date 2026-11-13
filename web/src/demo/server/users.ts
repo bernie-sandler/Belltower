@@ -18,7 +18,7 @@ function toUserInfo(ctx: Ctx, r: UserRow, showEmail: boolean): UserInfo {
     hasPassword: r.hasPassword,
     createdAt: r.createdAt,
     disabledAt: r.disabledAt,
-    tagScope: tagScopeOf(ctx, r),
+    tagScope: showEmail ? tagScopeOf(ctx, r) : null,
   };
 }
 

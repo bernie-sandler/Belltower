@@ -159,4 +159,16 @@ describe('PeopleSection', () => {
     fireEvent.click(within(sam).getByLabelText(/^Admin:/));
     expect(within(sam).queryByLabelText('Restrict to tags')).toBeNull();
   });
+
+  it('warns when no tags are ticked, and ignores tag order when deciding what changed', async () => {
+    setup(OWNER, [OWNER, { ...SAM, tagScope: [12, 11] }]);
+    const sam = await openEditor('Sam Ortiz');
+    // Same tags in another order: nothing to save.
+    await within(sam).findByLabelText('Network');
+    expect((within(sam).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(sam).getByLabelText('Network'));
+    fireEvent.click(within(sam).getByLabelText('Plex'));
+    expect(within(sam).getByText('With no tags ticked they see nothing.')).toBeTruthy();
+    expect(within(sam).getByLabelText('Restrict to tags').getAttribute('aria-describedby')).toBeTruthy();
+  });
 });

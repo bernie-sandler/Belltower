@@ -2,7 +2,7 @@
 // profile are in me.ts.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { CreateUserBody, UpdateUserBody, UserInfo } from '@tt/shared';
+import type { CreateUserBody, UpdateUserBody, UpdateUserResponse, UserInfo } from '@tt/shared';
 import { ApiError, api } from './client';
 import { errorMessage } from './errors';
 import { qk } from './keys';
@@ -60,7 +60,7 @@ export function useCreateUser() {
 export function useUpdateUser() {
   const refresh = useRefreshPeople();
   return useMutation({
-    mutationFn: ({ id, ...patch }: UpdateUserBody & { id: number }) => api.patch<UserInfo>(`/api/users/${id}`, patch),
+    mutationFn: ({ id, ...patch }: UpdateUserBody & { id: number }) => api.patch<UpdateUserResponse>(`/api/users/${id}`, patch),
     meta: { errorToast: false },
     onSuccess: refresh,
     // A refusal may mean the list is out of date (someone else changed it, or a restore renumbered people).

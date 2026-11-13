@@ -5,7 +5,7 @@
 // themselves or resets their own password here (that's under Account), and the last active admin
 // stays one.
 
-import { CreateUserBody, PASSWORD_MIN_LENGTH, type MeResponse, type UserInfo, type UserRole } from '@tt/shared';
+import { CreateUserBody, PASSWORD_MIN_LENGTH, type MeResponse, type UpdateUserResponse, type UserInfo, type UserRole } from '@tt/shared';
 import { Dices, Eye, EyeOff, KeyRound, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 import { useBoard } from '../../api/board';
@@ -132,6 +132,12 @@ function RestrictionTag({ tagScope }: { tagScope: number[] }) {
   );
 }
 
+/** Two tag restrictions are the same whatever the order (null = not restricted). */
+function sameTags(a: number[] | null, b: number[] | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
+
 function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self: boolean; lastAdmin: boolean; onDone: () => void }) {
   const ids = useId();
   const update = useUpdateUser();
@@ -151,10 +157,10 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
   // Tag restriction: members only (admins and the owner always see every ticket).
   const canRestrict = role === 'member' && !user.isOwner;
   const tagScope = canRestrict && restrict ? tags : null;
-  const scopeChanged = canRestrict && JSON.stringify(tagScope) !== JSON.stringify(user.tagScope);
+  const scopeChanged = canRestrict && !sameTags(tagScope, user.tagScope);
   const dirty = displayName.trim() !== user.displayName || role !== user.role || scopeChanged;
 
-  function run(patch: { displayName?: string; role?: UserRole; disabled?: boolean; password?: string; tagScope?: number[] | null }, done: (u: UserInfo) => void) {
+  function run(patch: { displayName?: string; role?: UserRole; disabled?: boolean; password?: string; tagScope?: number[] | null }, done: (u: UpdateUserResponse) => void) {
     setError(null);
     update.mutate({ id: user.id, ...patch }, { onSuccess: done, onError: (err) => setError(peopleErrorMessage(err)) });
   }
@@ -168,8 +174,11 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
         ...(role !== user.role ? { role } : {}),
         ...(scopeChanged ? { tagScope } : {}),
       },
-      () => {
-        toast('Saved', { kind: 'success', durationMs: 2000 });
+      (u) => {
+        toast(
+          u.unassigned ? `Saved. ${u.unassigned} ticket${u.unassigned === 1 ? '' : 's'} they can no longer see ${u.unassigned === 1 ? 'was' : 'were'} unassigned.` : 'Saved',
+          { kind: 'success', durationMs: u.unassigned ? 5000 : 2000 },
+        );
         onDone();
       },
     );
@@ -204,12 +213,12 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
           <fieldset className="ticket-fieldset">
             <legend className="field-label">Tickets they see</legend>
             <label className="checkbox">
-              <input type="checkbox" checked={restrict} onChange={(e) => setRestrict(e.target.checked)} />
+              <input type="checkbox" checked={restrict} onChange={(e) => setRestrict(e.target.checked)} aria-describedby={`${ids}-scope-help`} />
               <span>Restrict to tags</span>
             </label>
             {restrict && (
               <>
-                <div className="label-picker" role="group" aria-label="Tags they see">
+                <div className="label-picker" role="group" aria-label="Tags they see" aria-describedby={`${ids}-scope-help`}>
                   {labels.map((l) => (
                     <label key={l.id} className="checkbox">
                       <input
@@ -221,10 +230,16 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
                     </label>
                   ))}
                 </div>
-                <span className="field-help">
+                <span id={`${ids}-scope-help`} className="field-help">
                   They see only tickets with at least one of these tags; tickets without tags are hidden from them. They
-                  can’t change tags or columns. If all of these tags are deleted, they see nothing.
+                  can’t change tags or columns. If all of these tags are deleted, they see nothing. Tickets they can no
+                  longer see are unassigned from them.
                 </span>
+                {tags.length === 0 && (
+                  <span className="field-help is-error" role="status">
+                    With no tags ticked they see nothing.
+                  </span>
+                )}
               </>
             )}
           </fieldset>
