@@ -67,10 +67,16 @@ describe('login page password sign-in modes', () => {
     expect(screen.queryByRole('button', { name: 'Sign in with a password' })).toBeNull();
   });
 
-  it('hidden: opens by itself after a single sign-on error or at /login?password', async () => {
+  it('hidden: opens by itself after a single sign-on error', async () => {
     setup({ label: 'Authentik' }, '/login?sso_error=idp', 'hidden');
     expect((await screen.findByRole('alert')).textContent).toMatch(/log in with your password/);
     expect(screen.getByLabelText('Password')).toBeTruthy();
+  });
+
+  it('hidden: an unknown sso_error code doesn’t open the form', async () => {
+    setup({ label: 'Authentik' }, '/login?sso_error=nonsense', 'hidden');
+    expect(await screen.findByRole('button', { name: 'Sign in with a password' })).toBeTruthy();
+    expect(screen.queryByLabelText('Password')).toBeNull();
   });
 
   it('hidden: /login?password opens the form', async () => {

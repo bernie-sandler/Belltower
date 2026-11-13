@@ -45,8 +45,8 @@ export function LoginPage() {
   const [askedForPassword] = useState(() => params.has('password'));
   const [opened, setOpened] = useState(false);
   const mode = status?.sso ? status.passwordLogin : 'shown';
-  // Hidden behind a link: it also opens by itself when the provider sent someone back with an error.
-  const showForm = mode === 'shown' || askedForPassword || (mode === 'hidden' && (opened || ssoError.code !== null));
+  // Hidden behind a link: it also opens by itself when the provider sent someone back with a known error.
+  const showForm = mode === 'shown' || askedForPassword || (mode === 'hidden' && (opened || ssoError.message !== null));
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();

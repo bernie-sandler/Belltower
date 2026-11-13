@@ -20,7 +20,14 @@ export function SignInSection({ me }: { me: MeResponse }) {
   const unlink = useUnlinkSso();
   const [params, setParams] = useSearchParams();
   const [justLinked] = useState(() => params.get('sso') === 'linked');
-  const [error, setError] = useState<string | null>(() => ssoErrorMessage(params.get('sso_error'), status?.passwordLogin));
+  // The code from the address, read once; its message follows the password sign-in mode as it loads.
+  const [returnedCode, setReturnedCode] = useState(() => params.get('sso_error'));
+  const [ownError, setOwnError] = useState<string | null>(null);
+  const error = ownError ?? ssoErrorMessage(returnedCode, status?.passwordLogin);
+  function setError(message: string | null) {
+    setReturnedCode(null);
+    setOwnError(message);
+  }
   // Read the result once, then clean the address so a reload doesn't repeat it.
   useEffect(() => {
     if (!params.has('sso') && !params.has('sso_error')) return;
