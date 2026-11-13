@@ -1027,6 +1027,24 @@ describe('password sign-in while single sign-on is on', () => {
     expect((await tryLogin(t, 'sam')).statusCode).toBe(204);
   });
 
+  it('an admin other than the owner can only turn it off once their own account is linked', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i);
+    const ada = await addPerson(t, admin, 'ada', 'admin');
+    const refused = await setMode(t, ada.cookie, i, { passwordLogin: 'off' });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toBe('would_lock_you_out');
+    expect((await status(t)).passwordLogin).toBe('hidden');
+    // Other changes still save.
+    expect((await setMode(t, ada.cookie, i, { passwordLogin: 'shown' })).statusCode).toBe(200);
+    await link(t, i, ada.cookie, { sub: 'ada-sub', id: { preferred_username: 'ada' } });
+    expect((await setMode(t, ada.cookie, i, { passwordLogin: 'off' })).statusCode).toBe(200);
+    // The owner needs no link.
+    expect((await setMode(t, admin, i, { passwordLogin: 'hidden' })).statusCode).toBe(200);
+    expect((await setMode(t, admin, i, { passwordLogin: 'off' })).statusCode).toBe(200);
+  });
+
   it('off refuses unlinking, which would lock a member out; the owner still can', async () => {
     const { t, admin } = await app();
     const i = await idp();

@@ -177,9 +177,10 @@ export function checkIssuer(issuer: string, allowHttp: boolean): URL {
  * Saves the settings. The issuer is normalized for its preset. Moving the issuer to another origin
  * forgets the saved secret unless a new one comes with it, so the secret can't be sent somewhere
  * else by changing only the address. Turning it on needs the issuer, client ID, a secret and the
- * app's address (the redirect URI is built from it).
+ * app's address (the redirect URI is built from it). Password sign-in can't be turned off by an admin
+ * who'd then have no way in: someone other than the owner without a linked identity.
  */
-export function updateOidcSettings(ctx: Ctx, body: OidcSettingsBody, envSecret: string | null): void {
+export function updateOidcSettings(ctx: Ctx, body: OidcSettingsBody, envSecret: string | null, byUserId?: number): void {
   const current = getOidcSettings(ctx);
   const issuer = normalizeIssuer(body.preset, body.issuer);
   if (issuer) checkIssuer(issuer, body.allowHttpIssuer);
@@ -203,6 +204,15 @@ export function updateOidcSettings(ctx: Ctx, body: OidcSettingsBody, envSecret: 
   }
   // No passwordLogin (an admin tab opened before an upgrade): the saved choice stays.
   const next: OidcSettings = { ...body, issuer, clientSecret, passwordLogin: body.passwordLogin ?? current.passwordLogin };
+  if (next.passwordLogin === 'off' && byUserId !== undefined) {
+    const me = getUser(ctx, byUserId);
+    if (me.is_owner !== 1 && me.oidc_subject === null) {
+      throw badRequest(
+        'would_lock_you_out',
+        'Link your own account to single sign-on (Account → Sign-in) before turning password sign-in off: without it you couldn’t sign in again.',
+      );
+    }
+  }
   setSetting(ctx.db, OIDC_SETTINGS_KEY, JSON.stringify(next));
 }
 

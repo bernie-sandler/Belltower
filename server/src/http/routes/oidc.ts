@@ -189,7 +189,7 @@ export function registerOidcRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/api/settings/oidc', ADMIN, async (req): Promise<OidcSettingsInfo> => oidcInfo(req.ctx, envSecret));
   app.put('/api/settings/oidc', ADMIN, async (req): Promise<OidcSettingsInfo> => {
-    updateOidcSettings(req.ctx, parse(OidcSettingsBody, req.body), envSecret);
+    updateOidcSettings(req.ctx, parse(OidcSettingsBody, req.body), envSecret, req.user!.id);
     runtime.clearCache();
     return oidcInfo(req.ctx, envSecret);
   });
