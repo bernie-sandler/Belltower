@@ -54,9 +54,20 @@ their behavior. Everything is JSON unless noted. Timestamps are UTC ISO strings;
 |---|---|---|---|
 | `GET /api/me` | — | `MeResponse` | You: `UserInfo` plus `passwordManagedByEnv` (true only for the owner while `APP_PASSWORD` is set). |
 | `PATCH /api/me` | `UpdateMeBody {displayName?, email?}` | `MeResponse` | Your profile. `email: null` removes it. |
-| `GET /api/users` | — | `UserInfo[]` | The directory, for pickers and names in history: `{id, username, displayName, role, disabled, isOwner, email, hasPassword, createdAt, disabledAt}`, active people first. `email` is null except for admins and your own entry. |
+| `GET /api/users` | — | `UserInfo[]` | The directory, for pickers and names in history: `{id, username, displayName, role, disabled, isOwner, email, hasPassword, createdAt, disabledAt, tagScope}`, active people first. `tagScope`: the label ids a tag-restricted member sees (`[]` = sees nothing), null when not restricted. `email` is null except for admins and your own entry. |
 | `POST /api/users` | `CreateUserBody {username, displayName, role?, email?, password}` | `201 UserInfo` | **Admin.** `role` is `admin` or `member` (default). `password` is a temporary one to hand over (12+ characters). `409 username_taken`. |
-| `PATCH /api/users/:id` | `UpdateUserBody {displayName?, email?, role?, disabled?, password?}` | `UserInfo` | **Admin.** `disabled: true` deactivates (signs them out everywhere, their API tokens stop working until re-enabled); people are never deleted. `password` resets someone else's and signs them out; your own needs your current one, so it's `409 use_account_password` here (use `POST /api/auth/password`). `409 owner_protected` (the owner stays an active admin, and only the owner changes the owner's password), `409 last_admin` (one active admin must remain), `409 cannot_disable_self`, `409 managed_by_env`, `409 user_changed` (the id means someone else by now, e.g. after a restore: reload). |
+| `PATCH /api/users/:id` | `UpdateUserBody {displayName?, email?, role?, disabled?, password?, tagScope?}` | `UserInfo` | **Admin.** `tagScope: number[]` restricts a member to tickets with at least one of these labels (untagged tickets are hidden; `[]` means nothing); `null` lifts it. Making someone an admin lifts it. `409 cannot_restrict_admin`, `400 invalid_label`. `disabled: true` deactivates (signs them out everywhere, their API tokens stop working until re-enabled); people are never deleted. `password` resets someone else's and signs them out; your own needs your current one, so it's `409 use_account_password` here (use `POST /api/auth/password`). `409 owner_protected` (the owner stays an active admin, and only the owner changes the owner's password), `409 last_admin` (one active admin must remain), `409 cannot_disable_self`, `409 managed_by_env`, `409 user_changed` (the id means someone else by now, e.g. after a restore: reload). |
+
+### Tag-restricted accounts
+
+A restricted member's requests (session or API token) only see tickets carrying one of their labels: lists, search,
+calendar, history and notifications leave the others out, and any route naming a hidden ticket (or its checklist,
+attachment, history entry or link) answers `404` as if it didn't exist. Other cards a visible ticket names in its
+history show as "Hidden ticket". Board-wide changes answer `403 restricted`: labels (create, rename, delete,
+reorder), columns (create, rename, delete, reorder, blocked column), `POST /api/cards/archive-done`, sort by priority
+and recurring templates (create, change, delete, run). A ticket they create gets their labels when it has none of
+them (`403 restricted` if none of their labels exist); creating labels by name (card import, `/api/v1` intake)
+answers `403 restricted`. Giving a ticket to someone who can't see it is `400 assignee_cant_see`.
 
 ## Single sign-on (1.5)
 
