@@ -147,9 +147,10 @@ function ColorRow({ role, value, changed, onChange }: { role: Role; value: strin
   const [invalid, setInvalid] = useState(false);
   const id = useId();
 
-  // Follow changes from elsewhere (a preset, reset, the picker, another tab).
+  // Follow changes from elsewhere (a preset, reset, the picker, another tab), but leave what the
+  // person typed alone when it already means this color.
   useEffect(() => {
-    setDraft(value);
+    setDraft((d) => (parseColor(d) === value ? d : value));
     setInvalid(false);
   }, [value]);
 
@@ -184,6 +185,9 @@ function ColorRow({ role, value, changed, onChange }: { role: Role; value: strin
         aria-describedby={`${id}-help`}
         onChange={(e) => {
           setDraft(e.target.value);
+          // Live only once the text can't grow into another color: "#1d2" is a valid short hex on
+          // the way to "#1d2125", so shorthand and bare "r g b" wait for Enter or leaving the field.
+          if (!COMPLETE.test(e.target.value.trim())) return;
           const c = parseColor(e.target.value);
           if (c && c !== value) onChange(c);
           if (c) setInvalid(false);
@@ -209,5 +213,7 @@ function ColorRow({ role, value, changed, onChange }: { role: Role; value: strin
     </div>
   );
 }
+
+const COMPLETE = /^(#?[0-9a-f]{6}|rgb\(.*\))$/i;
 
 const DEFAULTS_HINT = (role: RoleId) => `default (${DEFAULTS.dark[role]} dark, ${DEFAULTS.light[role]} light)`;

@@ -359,6 +359,13 @@ const KEY = 'tt:custom-theme';
 const listeners = new Set<() => void>();
 let sheet: CSSStyleSheet | null = null;
 
+/** Constructable stylesheets (Safari 16.4+, Chrome 73+, Firefox 101+). Without them there's no editor. */
+export const customThemeSupported =
+  typeof document !== 'undefined' &&
+  'adoptedStyleSheets' in Document.prototype &&
+  typeof CSSStyleSheet !== 'undefined' &&
+  'replaceSync' in CSSStyleSheet.prototype;
+
 function read(): CustomTheme {
   try {
     return parseStoredTheme(localStorage.getItem(KEY));
@@ -371,22 +378,20 @@ let current: CustomTheme = read();
 
 function apply(theme: CustomTheme): void {
   const css = themeCss(theme);
-  try {
+  if (customThemeSupported && (sheet || css)) {
     if (!sheet) {
-      if (!css) return;
       sheet = new CSSStyleSheet();
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     }
     sheet.replaceSync(css);
-  } catch {
-    /* an old browser without constructable stylesheets: the built-in colors stay */
   }
   refreshTheme();
 }
 
 /** Call once at startup, before the first render (after installTheme). */
 export function installCustomTheme(): void {
-  setHeaderColorSource((mode) => current[mode].colors.header ?? null);
+  // The browser chrome follows the custom top bar only where the page can show it too.
+  if (customThemeSupported) setHeaderColorSource((mode) => current[mode].colors.header ?? null);
   apply(current);
   window.addEventListener('storage', (e) => {
     if (e.key !== KEY) return;

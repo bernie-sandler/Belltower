@@ -15,7 +15,8 @@ test('a preset and a typed color restyle the app, stay after a reload, and reset
   expect(await cssVar(page, '--bg')).toBe('#0e0d0b');
 
   const accent = dialog.getByRole('textbox', { name: 'Accent', exact: true });
-  await accent.fill('rgb(200, 80, 160)');
+  await accent.fill('');
+  await accent.pressSequentially('rgb(200, 80, 160)');
   await accent.press('Enter');
   await expect(accent).toHaveValue('#c850a0');
   expect(await cssVar(page, '--accent')).toBe('#c850a0');
