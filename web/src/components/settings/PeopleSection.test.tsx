@@ -184,7 +184,7 @@ describe('PeopleSection', () => {
   });
 
   it('leaves deleted people out of the list', async () => {
-    const gone = person({ id: 5, username: 'deleted-5', displayName: 'Jo Former', role: 'member', disabled: true, deleted: true, hasPassword: false });
+    const gone = person({ id: 5, username: 'jo', displayName: 'Jo Former', role: 'member', disabled: true, deleted: true, hasPassword: false });
     setup(OWNER, [OWNER, SAM, gone]);
     await screen.findByText('Sam Ortiz');
     expect(screen.queryByText('Jo Former')).toBeNull();

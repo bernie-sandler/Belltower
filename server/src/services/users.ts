@@ -141,7 +141,11 @@ export function meResponse(ctx: Ctx, id: number, passwordSourceEnv: boolean): Me
 }
 
 function assertUsernameFree(ctx: Ctx, username: string): void {
-  if (findUserByUsername(ctx, username)) throw conflict('username_taken', `The username “${username}” is already taken`);
+  const holder = findUserByUsername(ctx, username);
+  if (holder?.deleted_at) {
+    throw conflict('username_taken', `The username “${username}” belonged to someone who was deleted; pick another`);
+  }
+  if (holder) throw conflict('username_taken', `The username “${username}” is already taken`);
 }
 
 /** Creates the owner on a fresh install (first-run setup, or APP_PASSWORD). Null if someone already exists. */
@@ -253,8 +257,10 @@ function getLiveUser(ctx: Ctx, id: number): UserRow {
 /**
  * Deletes a person for good. Their row stays, because history points at it (schema v9), but only the
  * display name is kept: email, password, single sign-on link, Discord and ntfy settings and tag
- * restriction are wiped, the username becomes `deleted-<id>` so it can be used again, and the row is
- * marked deactivated as well as deleted, so every "active people" check keeps them out. Their
+ * restriction are wiped, and the row is marked deactivated as well as deleted, so every "active
+ * people" check keeps them out. The username stays taken: restore matches people by username (so a
+ * restored backup from before the delete keeps them deleted, backup.ts carryOverAccess), and old
+ * @mentions of it must never point at someone new. Their
  * sessions, watches and notifications go; their API tokens are revoked but keep their owner (an
  * ownerless token would be handed to the owner). The same refusals as deactivating apply. Their
  * open cards are the caller's job (cards.ts unassignOpenCards, after this, in the same transaction).
@@ -270,11 +276,11 @@ export function deleteUser(ctx: Ctx, id: number): UserRow {
     const now = nowIso(ctx);
     stmt(
       ctx.db,
-      `UPDATE users SET username = ?, email = NULL, role = 'member', password_hash = NULL, oidc_issuer = NULL,
+      `UPDATE users SET email = NULL, role = 'member', password_hash = NULL, oidc_issuer = NULL,
          oidc_subject = NULL, discord_user_id = NULL, ntfy_topic = NULL, notify_prefs = '{}', tag_scoped = 0,
          disabled_at = coalesce(disabled_at, ?), deleted_at = ?
        WHERE id = ?`,
-    ).run(freeDeletedName(ctx, id), now, now, id);
+    ).run(now, now, id);
     stmt(ctx.db, 'DELETE FROM user_labels WHERE user_id = ?').run(id);
     stmt(ctx.db, 'DELETE FROM card_watchers WHERE user_id = ?').run(id);
     stmt(ctx.db, 'DELETE FROM notifications WHERE user_id = ?').run(id);
@@ -282,16 +288,6 @@ export function deleteUser(ctx: Ctx, id: number): UserRow {
     deleteUserSessions(ctx, id);
     return row;
   });
-}
-
-/** `deleted-<id>`, or with -2, -3… after it in the unlikely case someone already has that name. */
-function freeDeletedName(ctx: Ctx, id: number): string {
-  const base = `deleted-${id}`;
-  for (let n = 1; ; n++) {
-    const name = n === 1 ? base : `${base}-${n}`;
-    const holder = findUserByUsername(ctx, name);
-    if (!holder || holder.id === id) return name;
-  }
 }
 
 /** Your own profile. */

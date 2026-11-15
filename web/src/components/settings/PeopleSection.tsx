@@ -373,12 +373,15 @@ function DeletePersonDialog({ user, onCancel, onDeleted }: { user: UserInfo; onC
   return (
     <ConfirmDialog
       title={`Delete ${user.displayName}?`}
-      message="This can’t be undone. Their sign-in, email, single sign-on link, notification settings and API tokens are removed, and the username is freed. Their name stays on past activity and done cards; their open cards go back to unassigned."
+      message="This can’t be undone. Their sign-in, email, single sign-on link and notification settings are removed, and their API tokens are revoked. Their name stays on past activity and done cards, and their username stays reserved; their open cards go back to unassigned."
       danger
       confirmLabel="Delete for good"
       busy={del.isPending}
       confirmDisabled={typed !== user.username}
-      onCancel={onCancel}
+      // Stays open until the server answers, so the result (and its toast) isn't lost.
+      onCancel={() => {
+        if (!del.isPending) onCancel();
+      }}
       onConfirm={confirm}
     >
       <label className="field">

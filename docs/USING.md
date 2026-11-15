@@ -198,12 +198,13 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
 - **Edit** someone to change their display name or role, reset their password, or **Deactivate** them. Resetting a
   password or deactivating someone signs them out everywhere. A deactivated person can't sign in and their API tokens
   stop working, but they keep their name in the history. **Re-enable** brings them and their tokens back.
-- **Delete…** removes someone for good (type their username to confirm). Their sign-in, email, single sign-on link,
-  notification settings and API tokens are gone, they're signed out everywhere, and their username is free to use
-  again. Their name stays on what they did (history and done tickets say "Alice (deleted)"), and their open tickets go
-  back to unassigned, each logged in the ticket's history. This can't be undone, though restoring a backup taken
-  before the delete brings them back without a password. With [single sign-on](SSO.md) and **Create accounts** on, a
-  deleted person who signs in again gets a new, empty account; remove them in your identity provider to keep them out.
+- **Delete…** removes someone for good (type their username to confirm). Their sign-in, email, single sign-on link
+  and notification settings are gone, their API tokens are revoked, and they're signed out everywhere. Their name
+  stays on what they did (history and done tickets say "Alice (deleted)"), and their open tickets go back to
+  unassigned, each logged in the ticket's history. Their username stays reserved, so old @mentions never point at
+  someone new, and restoring an older backup doesn't bring them back. This can't be undone. With
+  [single sign-on](SSO.md) and **Create accounts** on, a deleted person who signs in again gets a new, empty account
+  (under another username); remove them in your identity provider to keep them out.
 - **Restrict to tags** (members only) limits someone to tickets that carry at least one of the tags you pick, say a
   family member who should only see Plex requests. With Teams on or off:
   - They see a ticket only if it has one of their tags. **Tickets without tags are hidden from them.** Everything else

@@ -411,6 +411,18 @@ function carryOverAccess(live: DB, next: DB): void {
           .prepare('UPDATE users SET password_hash = ?, role = ?, disabled_at = ?, oidc_issuer = ?, oidc_subject = ? WHERE id = ?')
           .run(u.password_hash, u.role, u.disabled_at, u.oidc_issuer, u.oidc_subject, match);
         restoredId.set(u.id, match);
+        if (u.deleted_at !== null) {
+          // Deleted here: a backup from before the delete doesn't bring them back. Their usernames
+          // stay taken for this (services/users.ts deleteUser), so the match is the same person.
+          next
+            .prepare(
+              `UPDATE users SET display_name = ?, email = NULL, discord_user_id = NULL, ntfy_topic = NULL, notify_prefs = '{}',
+                 deleted_at = ? WHERE id = ?`,
+            )
+            .run(u.display_name, u.deleted_at, match);
+          next.prepare('UPDATE api_tokens SET revoked_at = coalesce(revoked_at, ?) WHERE user_id = ?').run(u.deleted_at, match);
+          next.prepare('DELETE FROM card_watchers WHERE user_id = ?').run(match);
+        }
       } else {
         const { id: _id, is_owner: _owner, ...cols } = u;
         const keys = Object.keys(cols);

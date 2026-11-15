@@ -203,10 +203,10 @@ function oldDatabase(v: number): DB {
     db.prepare('UPDATE users SET tag_scoped = 1 WHERE id = ?').run(sam);
     run('INSERT INTO user_labels (user_id, label_id) SELECT ?, min(id) FROM labels', sam);
   }
-  // Deleted people: what's left of someone deleted is the display name, deactivated and marked deleted.
+  // Deleted people: what's left of someone deleted is their names, deactivated and marked deleted.
   if (v >= 12) {
     run(
-      `INSERT INTO users (username, display_name, role, created_at, disabled_at, deleted_at) VALUES ('deleted-99', 'Pat Jones', 'member', ?, ?, ?)`,
+      `INSERT INTO users (username, display_name, role, created_at, disabled_at, deleted_at) VALUES ('pat', 'Pat Jones', 'member', ?, ?, ?)`,
       at(2),
       at(4),
       at(4),

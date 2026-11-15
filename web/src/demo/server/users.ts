@@ -105,7 +105,11 @@ export function addUser(ctx: Ctx, input: Pick<UserRow, 'username' | 'displayName
 }
 
 export function createUser(ctx: Ctx, input: Omit<CreateUserBody, 'password'>): UserInfo {
-  if (findByUsername(ctx, input.username)) throw conflict('username_taken', `The username “${input.username}” is already taken`);
+  const holder = findByUsername(ctx, input.username);
+  if (holder?.deletedAt) {
+    throw conflict('username_taken', `The username “${input.username}” belonged to someone who was deleted; pick another`);
+  }
+  if (holder) throw conflict('username_taken', `The username “${input.username}” is already taken`);
   return userInfo(ctx, addUser(ctx, { username: input.username, displayName: input.displayName, role: input.role, email: input.email ?? null }).id);
 }
 
@@ -150,9 +154,8 @@ function getLiveUser(ctx: Ctx, id: number): UserRow {
 
 /**
  * Deletes a person for good, like the server: the row stays (history points at it) with only the
- * display name; email, password, Discord and ntfy settings and tag restriction are wiped, the
- * username becomes `deleted-<id>` so it can be used again, and the row is marked deactivated as well
- * as deleted. Their watches and notifications go (the demo has no sessions or tokens). Their open
+ * names; email, password, Discord and ntfy settings and tag restriction are wiped, the username
+ * stays taken, and the row is marked deactivated as well as deleted. Their watches and notifications go (the demo has no sessions or tokens). Their open
  * cards are the caller's job (cards.ts unassignOpenCards, after this).
  */
 export function deleteUser(ctx: Ctx, id: number): UserRow {
@@ -164,7 +167,6 @@ export function deleteUser(ctx: Ctx, id: number): UserRow {
   }
   const deleted = { ...row };
   const now = nowIso(ctx);
-  row.username = freeDeletedName(ctx, id);
   row.email = null;
   row.role = 'member';
   row.hasPassword = false;
@@ -177,16 +179,6 @@ export function deleteUser(ctx: Ctx, id: number): UserRow {
   ctx.s.watchers = ctx.s.watchers.filter((w) => w.userId !== id);
   ctx.s.notifications = ctx.s.notifications.filter((n) => n.userId !== id);
   return deleted;
-}
-
-/** `deleted-<id>`, or with -2, -3… after it in the unlikely case someone already has that name. */
-function freeDeletedName(ctx: Ctx, id: number): string {
-  const base = `deleted-${id}`;
-  for (let n = 1; ; n++) {
-    const name = n === 1 ? base : `${base}-${n}`;
-    const holder = findByUsername(ctx, name);
-    if (!holder || holder.id === id) return name;
-  }
 }
 
 export function updateMe(ctx: Ctx, id: number, patch: UpdateMeBody): void {

@@ -433,7 +433,7 @@ describe('deleting people', () => {
     ).toThrow(expect.objectContaining({ code: 'last_admin' }));
   });
 
-  it('wipes everything but the name, frees the username, unassigns open cards and names them in history', () => {
+  it('wipes everything but the name, keeps the username taken, unassigns open cards and names them in history', () => {
     const store = makeStore();
     const users = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
     const jordan = users.find((u) => u.username === 'jordan')!;
@@ -445,8 +445,6 @@ describe('deleting people', () => {
     ok(call(store, 'PATCH', `/api/activity/${note.id}`, { bodyMd: 'Jordan’s note, edited' }));
     ok(call(store, 'PUT', `/api/cards/${done.id}/watch`));
     asUser(store, 'admin');
-    // Someone already holds the name it would get: the next one is used.
-    ok(call(store, 'POST', '/api/users', { username: `deleted-${jordan.id}`, displayName: 'Squatter', password: 'long enough password' }));
     const before = store.snapshot();
     const openIds = before.cards
       .filter((c) => c.assigneeId === jordan.id && !c.completedAt && !c.archivedAt && !c.deletedAt)
@@ -458,7 +456,7 @@ describe('deleting people', () => {
 
     const s = store.snapshot();
     expect(s.users.find((u) => u.id === jordan.id)).toMatchObject({
-      username: `deleted-${jordan.id}-2`,
+      username: 'jordan',
       displayName: 'Jordan Lee',
       email: null,
       role: 'member',
@@ -472,10 +470,10 @@ describe('deleting people', () => {
     });
     expect(s.watchers.some((w) => w.userId === jordan.id)).toBe(false);
     expect(s.notifications.some((n) => n.userId === jordan.id)).toBe(false);
-    // The directory lists them last, marked; the username can be taken again.
+    // The directory lists them last, marked; the username stays taken.
     const after = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
     expect(after.at(-1)).toMatchObject({ id: jordan.id, deleted: true, disabled: true, email: null });
-    expect(call(store, 'POST', '/api/users', { username: 'jordan', displayName: 'New Jordan', password: 'long enough password' }).status).toBe(201);
+    expect(call(store, 'POST', '/api/users', { username: 'jordan', displayName: 'New Jordan', password: 'long enough password' }).status).toBe(409);
 
     // Open cards back to nobody, logged as an unassign; the done card keeps them.
     for (const cardId of openIds) {

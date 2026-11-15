@@ -13,8 +13,10 @@ Fixes go into the newest 1.x release.
 ## What the app does
 
 - **Accounts and passwords.**
-  - Each person has a username and a password, hashed with scrypt. Accounts are deactivated, never deleted.
-  - A wrong password, an unknown username and a deactivated account fail the same way and take the same time, so
+  - Each person has a username and a password, hashed with scrypt. Accounts can be deactivated, or deleted by an
+    admin. Deleting keeps only the name and username (for history; the username can't be reused), wipes the email,
+    password, single sign-on link and notification settings, ends their sessions and revokes their API tokens.
+  - A wrong password, an unknown username and a deactivated or deleted account fail the same way and take the same time, so
     login doesn't reveal which usernames exist.
   - 5 wrong attempts lock that address out for 15 minutes, and logins are also paced globally.
   - Behind a reverse proxy, the real client address is only used when `TRUST_PROXY` names that proxy.

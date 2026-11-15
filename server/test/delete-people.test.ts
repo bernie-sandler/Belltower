@@ -1,5 +1,5 @@
 // 1.5.0-rc.5: deleting people. History points at user rows, so a deleted person keeps their row
-// with only the display name: everything else is wiped, the username is freed, sessions go, tokens
+// with their name and username: everything else is wiped, the username stays taken, sessions go, tokens
 // are revoked for good, open cards go back to nobody and done cards keep the name.
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -50,7 +50,7 @@ describe('who can delete whom', () => {
 });
 
 describe('what deleting does', () => {
-  it('wipes everything but the display name, signs them out and frees the username', async () => {
+  it('wipes everything but the name, signs them out, and keeps the username taken', async () => {
     const { t, admin } = await app();
     const sam = await addPerson(t, admin, 'sam');
     await client(t.app, sam.cookie)('PATCH', '/api/me', { displayName: 'Sam Rivera', email: 'sam@example.com' });
@@ -64,7 +64,7 @@ describe('what deleting does', () => {
     expect((await client(t.app, admin)('DELETE', `/api/users/${sam.id}`)).statusCode).toBe(200);
 
     expect(userRow(t, sam.id)).toMatchObject({
-      username: `deleted-${sam.id}`,
+      username: 'sam',
       display_name: 'Sam Rivera',
       email: null,
       role: 'member',
@@ -86,20 +86,13 @@ describe('what deleting does', () => {
     const login = await client(t.app)('POST', '/api/auth/login', { username: 'sam', password: PASSWORD });
     expect(login.statusCode).toBe(401);
 
-    // Out of the directory's active people, last, marked deleted; the name can be used again.
+    // Out of the directory's active people, last, marked deleted. The username can't go to someone
+    // new (old @mentions and restores must keep meaning them).
     const people = (await client(t.app, admin)('GET', '/api/users')).json();
-    expect(people.at(-1)).toMatchObject({ id: sam.id, displayName: 'Sam Rivera', email: null, disabled: true, deleted: true, tagScope: null });
-    const again = await addPerson(t, admin, 'sam');
-    expect(again.id).not.toBe(sam.id);
-    expect((await client(t.app, again.cookie)('GET', '/api/me')).json()).toMatchObject({ username: 'sam', deleted: false });
-  });
-
-  it('picks another leftover name when someone already has deleted-<id>', async () => {
-    const { t, admin } = await app();
-    const sam = await addPerson(t, admin, 'sam');
-    await addPerson(t, admin, `deleted-${sam.id}`);
-    expect((await client(t.app, admin)('DELETE', `/api/users/${sam.id}`)).statusCode).toBe(200);
-    expect(userRow(t, sam.id).username).toBe(`deleted-${sam.id}-2`);
+    expect(people.at(-1)).toMatchObject({ id: sam.id, username: 'sam', displayName: 'Sam Rivera', email: null, disabled: true, deleted: true, tagScope: null });
+    const again = await client(t.app, admin)('POST', '/api/users', { username: 'SAM', displayName: 'New Sam', password: PASSWORD });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ error: 'username_taken', message: expect.stringContaining('deleted') });
   });
 
   it('revokes their API tokens for good: a restart doesn’t hand them to the owner', async () => {
