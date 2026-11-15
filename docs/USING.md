@@ -255,7 +255,9 @@ admins.
 - **Submit page**, **Automation** tokens (everyone's, with whose each is) and
   **[Notifications](NOTIFICATIONS.md)** (Discord, ntfy, Gotify, webhook).
 - **[Single sign-on](SSO.md):** signing in through Authentik, Authelia or another OIDC provider.
-- The app's version. Your password and your own tokens are under **Account**.
+- **About:** the app's version and **Show what's new after an update** (per device, on by default: the first time a
+  device opens Belltower after an upgrade it shows that release's notes once; a brand-new install shows nothing). Your
+  password and your own tokens are under **Account**.
 
 ## Keyboard shortcuts
 

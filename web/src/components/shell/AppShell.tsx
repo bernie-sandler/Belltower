@@ -15,6 +15,7 @@ import { ShellContext, type ShellActions } from './ShellContext';
 import type { NewTicketMode, NewTicketPreset } from '../tickets/NewTicketDialog';
 import { TopBar } from './TopBar';
 import { UpdateBanner } from './UpdateBanner';
+import { WhatsNew } from './WhatsNew';
 
 // Code-split: the board loads eagerly; everything opened on demand is its own chunk.
 const CardRoute = lazy(() => import('../card/CardRoute'));
@@ -78,6 +79,7 @@ export function AppShell() {
       <div className="app">
         <TopBar />
         <UpdateBanner />
+        <WhatsNew appVersion={config.data.appVersion} />
         <main className="app-main">
           <AppRoutes
             aiEnabled={aiEnabled}

@@ -18,6 +18,7 @@ import { useIsAdmin, useMe, useUsers } from '../../api/me';
 import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSaveTeams, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
 import { todayLocal } from '../../lib/time';
+import { setWhatsNewEnabled, useWhatsNewEnabled } from '../../lib/whatsNew';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
@@ -389,8 +390,13 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
 function AboutSection() {
   const { data: config } = useConfig();
   const uploadMb = config ? Math.round(config.maxUploadBytes / (1024 * 1024)) : null;
+  const whatsNew = useWhatsNewEnabled();
   return (
     <Section icon={<Info size={16} aria-hidden />} title="About">
+      <label className="checkbox">
+        <input type="checkbox" checked={whatsNew} onChange={(e) => setWhatsNewEnabled(e.target.checked)} />
+        <span>Show what’s new after an update (this device)</span>
+      </label>
       <p className="muted small">
         <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'} · uploads up to{' '}
         {uploadMb ?? '…'} MB
