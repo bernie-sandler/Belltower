@@ -1,5 +1,5 @@
 /* Design tokens, Trello-inspired. Every color in the app comes from here.
-   Dark by default; light follows the system unless Settings → Appearance picks one
+   Dark by default; light follows the system unless the Theme Customizer (main menu) picks one
    (<html data-theme="light|dark">, see lib/theme.ts). */
 :root {
   color-scheme: dark;

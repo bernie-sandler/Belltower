@@ -182,7 +182,7 @@ member); once saved, your choice stays.
 
 - **The bell** in the top bar shows how many you haven't read. Opening one opens its card and marks it read (so does
   opening the card any other way), and **Mark all read** clears the count. Screen readers announce what's new. It checks every 30 seconds, also in a background tab, and when you come back to
-  the tab. It can play a sound (chime, ping or off), chosen per device under **Settings → Appearance**; only one open
+  the tab. It can play a sound (chime, ping or off), chosen per device under **Account → Notification sound**; only one open
   tab plays it, and only for something new, not for what was there when the page loaded. Browsers allow sound only
   after you've clicked or typed on the page.
 - **Discord** posts in the install's Discord channel and mentions you there, and only you (a webhook can't send direct
@@ -223,7 +223,7 @@ about. One thing still reaches you: **a new ticket from the [submit page](SUBMIT
 
 - Every active admin gets it in the bell, whatever they chose under Account → Notifications (which is hidden while
   Teams is off). Members get nothing.
-- The bell, and its sound under Settings → Appearance, show only while the submit page is on, and only to admins. It
+- The bell, and its sound under Account → Notification sound, show only while the submit page is on, and only to admins. It
   lists only these; anything from before Teams was turned off waits, unread, for when it's back on.
 - Nothing personal goes to Discord or ntfy. The install's own channels above already announce new tickets from
   outside, exactly as they do with Teams on.

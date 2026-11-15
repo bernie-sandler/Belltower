@@ -1,7 +1,7 @@
 // Account → Notifications: what reaches you and where. The bell in the top bar always works;
 // Discord and ntfy ride on the channels an admin set up for the install (Settings → Notifications),
-// so each says when the install doesn't have one yet. The sound is per device, under Settings →
-// Appearance.
+// so each says when the install doesn't have one yet. The sound is per device, in its own section
+// below (NotificationSoundSection).
 
 import {
   DiscordUserId,
@@ -16,7 +16,6 @@ import {
 } from '@tt/shared';
 import { BellRing, Dices, Send } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
-import { Link } from 'react-router';
 import { errorMessage } from '../../api/errors';
 import { usePersonalNotify, useSavePersonalNotify, useSendPersonalTest } from '../../api/notifications';
 import { toast } from '../../lib/toast';
@@ -233,10 +232,6 @@ function PrefsForm({ settings }: { settings: PersonalNotifySettings }) {
           )}
         </span>
       </div>
-
-      <p className="field-help">
-        The sound for new notifications is set for each device under <Link to="/settings">Settings → Appearance</Link>.
-      </p>
 
       {error && (
         <p className="form-error" role="alert">

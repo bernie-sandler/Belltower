@@ -23,7 +23,7 @@ export function useTeams(): boolean {
 }
 
 /**
- * Whether there's a bell (and a sound for it under Settings → Appearance). With Teams on, always.
+ * Whether there's a bell (and a sound for it under Account → Notification sound). With Teams on, always.
  * With Teams off it only ever holds new submit-page tickets, which go to admins: so only for
  * admins, and only while the submit page is on.
  */

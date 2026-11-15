@@ -1,5 +1,5 @@
 // Custom colors on top of the design tokens (styles/tokens.css), per device (localStorage
-// `tt:custom-theme`), set in Settings → Appearance → Customize colors.
+// `tt:custom-theme`), set in the main menu's Theme Customizer.
 //
 // Each mode (dark, light) has its own colors and corner radius. Only the roles below are editable;
 // the tokens that hang off them (hover fills, accent colors used as text, input borders…) are

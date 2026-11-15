@@ -41,17 +41,24 @@ test('dragging into Done offers "Add resolution"', async ({ page, api }) => {
 test('the theme follows the system unless one is picked, per device', async ({ page, api }) => {
   void api; // signs in
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.goto('/settings');
+  await page.goto('/');
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(await bg()).toBe('rgb(247, 248, 249)');
 
-  const theme = page.getByRole('radiogroup', { name: 'Theme' });
-  await theme.getByRole('radio', { name: 'Dark' }).click();
+  // Menu → Theme Customizer → Use.
+  const pick = async (choice: string) => {
+    await page.getByRole('button', { name: 'Main menu' }).click();
+    await page.getByRole('menuitem', { name: 'Theme Customizer' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Theme Customizer' });
+    await dialog.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: choice }).click();
+    await dialog.getByRole('button', { name: 'Done' }).click();
+  };
+  await pick('Dark');
   expect(await bg()).toBe('rgb(29, 33, 37)');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
-  await page.getByRole('radiogroup', { name: 'Theme' }).getByRole('radio', { name: 'System' }).click();
+  await pick('System');
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
   expect(await bg()).toBe('rgb(247, 248, 249)');
 });

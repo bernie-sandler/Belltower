@@ -78,11 +78,15 @@ export function previewMode(mode: 'light' | 'dark' | null): void {
   apply(preview ?? current);
 }
 
-/** The mode on screen now: the choice, or what the system asks for. */
-export function shownMode(): 'light' | 'dark' {
-  if (preview) return preview;
-  if (current !== 'system') return current;
+/** The mode a choice means right now ("system" asks the device). */
+export function resolveMode(choice: ThemeChoice): 'light' | 'dark' {
+  if (choice !== 'system') return choice;
   return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+/** The mode on screen now: a preview, else the choice. */
+export function shownMode(): 'light' | 'dark' {
+  return preview ?? resolveMode(current);
 }
 
 export function useTheme(): ThemeChoice {

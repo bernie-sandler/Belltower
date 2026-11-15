@@ -1157,7 +1157,7 @@ a.topnav-item {
   overflow-wrap: anywhere;
 }
 
-/* ---------- Theme customizer (Settings → Appearance) ---------- */
+/* ---------- Theme Customizer (main menu) ---------- */
 
 .theme-mode-row {
   display: flex;
@@ -1321,12 +1321,4 @@ a.topnav-item {
   .theme-hex {
     width: 8.5em;
   }
-}
-
-.theme-open-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
 }

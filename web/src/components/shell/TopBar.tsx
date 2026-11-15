@@ -1,8 +1,8 @@
-import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, Inbox, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2, UserRound, UserRoundCheck } from 'lucide-react';
+import { Archive, CalendarDays, Columns3, DatabaseBackup, FilePlus2, FileUp, Inbox, KanbanSquare, ListPlus, LogOut, Menu as MenuIcon, Palette, Plus, Repeat, Search, Settings, Sparkles, Tag, Trash2, UserRound, UserRoundCheck } from 'lucide-react';
 import { cls } from '../../lib/cls';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { backgroundOf } from '../../lib/navigation';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useLogout } from '../../api/auth';
 import { useBellShown, useTeams } from '../../api/config';
 import { useIsAdmin, useIsRestricted } from '../../api/me';
@@ -12,6 +12,8 @@ import { BrandMark } from '../common/BrandMark';
 import { Menu, type MenuEntry } from '../common/Menu';
 import { NotificationBell } from './NotificationBell';
 import { useShell } from './ShellContext';
+
+const ThemeCustomizer = lazy(() => import('../settings/ThemeCustomizer').then((m) => ({ default: m.ThemeCustomizer })));
 
 const NAV = [
   { to: '/', label: 'Board', icon: KanbanSquare },
@@ -47,6 +49,7 @@ export function TopBar() {
   const logout = useLogout();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  const [themeOpen, setThemeOpen] = useState(false);
   const aiEnabled = useAiStatus().data?.enabled === true;
   const isAdmin = useIsAdmin();
   // Tags and columns are everyone's: tag-restricted people can't change them.
@@ -187,6 +190,7 @@ export function TopBar() {
             ...(isAdmin
               ? [{ key: 'backup', label: 'Backup & restore', icon: <DatabaseBackup size={16} />, onSelect: () => void navigate('/backup') }]
               : []),
+            { key: 'theme', label: 'Theme Customizer', icon: <Palette size={16} />, onSelect: () => setThemeOpen(true) },
             { key: 'settings', label: 'Settings', icon: <Settings size={16} />, onSelect: () => void navigate('/settings') },
             'separator',
             { key: 'account', label: 'Account', icon: <UserRound size={16} />, onSelect: () => void navigate('/account') },
@@ -199,6 +203,11 @@ export function TopBar() {
             },
           ]}
         />
+      )}
+      {themeOpen && (
+        <Suspense fallback={null}>
+          <ThemeCustomizer onClose={() => setThemeOpen(false)} />
+        </Suspense>
       )}
     </header>
   );
