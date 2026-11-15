@@ -42,7 +42,7 @@ export interface UserRow {
   disabledAt: string | null;
   /** Mirrors tag_scoped + user_labels: the tags a restricted member sees (null = every card). */
   tagScope: number[] | null;
-  /** Deleted (users.deleted_at): the row keeps only the display name, for history and done cards. */
+  /** Deleted (users.deleted_at): the row keeps only the display name and username, for history and done cards. */
   deletedAt: string | null;
 }
 

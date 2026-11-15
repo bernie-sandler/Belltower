@@ -115,8 +115,9 @@ links), `app_tz_at_seed`, `seeded` and `request_types_seeded`.
   people the backup doesn't have are added, and everyone stays signed in. People only in the backup come back without a
   password or single sign-on link until an admin gives them a new password. Someone deleted on the server you restore
   into stays deleted (a deleted person's username stays taken, so the backup's row is still them): their profile is
-  wiped again, their API tokens revoked and their watches dropped. If the backup doesn't have them at all, what's left
-  of them isn't added. A `password_hash`, `is_owner`,
+  wiped again, their API tokens revoked, their watches dropped and their open cards unassigned (logged as of the
+  delete). If the backup doesn't have them at all, what's left of them is added like any other live person, so their
+  username stays taken. A `password_hash`, `is_owner`,
   `oidc_issuer` or `oidc_subject` in a backup (say, a hand-edited one) is ignored on restore.
 - **Single sign-on settings** (`oidc_settings`, client secret included). They belong to the install: a restore keeps
   the live install's, and an `oidc_settings` row in a backup (say, a hand-edited one) is ignored.

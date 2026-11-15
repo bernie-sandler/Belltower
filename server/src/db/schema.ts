@@ -379,8 +379,9 @@ CREATE INDEX ix_user_labels_label ON user_labels (label_id);
 `;
 
 // 1.5 (rc.5): people can be deleted. History points at user rows (see v9), so deleting someone keeps
-// the row with only the display name: everything else is wiped, the username is freed and
-// disabled_at is set too, so every "active people" check keeps them out. deleted_at marks the row.
+// the row with only the display name and username: everything else is wiped, the username stays
+// taken, and disabled_at is set too, so every "active people" check keeps them out. deleted_at marks
+// the row.
 const v12 = `
 ALTER TABLE users ADD COLUMN ${tsNull('deleted_at')};
 `;

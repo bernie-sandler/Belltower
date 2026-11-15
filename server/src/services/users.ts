@@ -1,5 +1,5 @@
 // People: admins and members. Accounts can be deactivated (reversible) or deleted. History points at
-// user rows, so a deleted account keeps its row with only the display name (deleteUser).
+// user rows, so a deleted account keeps its row with only the display name and username (deleteUser).
 // The owner is the account the install was set up with (or the one 1.4's password became): its
 // password can come from APP_PASSWORD, and it can't be demoted or deactivated, so there is always
 // a way back in. Passwords are hashed by the caller (hashing is async; services are synchronous).

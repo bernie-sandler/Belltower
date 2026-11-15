@@ -1,5 +1,5 @@
 // Mirrors server/src/services/users.ts: people can be deactivated (reversible) or deleted, which
-// keeps their row with only the display name so history still names them; the owner stays an
+// keeps their row with only the display name and username so history still names them; the owner stays an
 // active admin; at least one active admin remains. The demo has no passwords: anyone signs in as
 // the owner, and a password given for someone new is checked by the schema and then forgotten.
 

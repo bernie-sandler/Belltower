@@ -98,8 +98,9 @@ export interface UserRef {
   /** Deactivated: can't sign in, their tokens stop working, and they're kept for history. */
   disabled: boolean;
   /**
-   * Deleted: the account is gone for good (always also `disabled`). Only the display name is kept, so
-   * history and done cards still say who; they're left out of People and every picker.
+   * Deleted: the account is gone for good (always also `disabled`). Only the display name and username
+   * are kept (the username stays taken), so history and done cards still say who; they're left out of
+   * People and every picker.
    */
   deleted: boolean;
 }

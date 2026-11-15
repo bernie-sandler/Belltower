@@ -377,6 +377,31 @@ type LiveUser = Omit<UserRow, 'is_owner'> & { is_owner: number };
  *    is kept, so a team restoring an old backup doesn't find Teams quietly off. Only if the live
  *    install has none either is it decided from who's active once the live people are in.
  */
+/**
+ * Deleted on the live install, and in the restored data from before that: the delete holds (a deleted
+ * person's username stays taken, services/users.ts deleteUser, so the match is the same person).
+ * Their profile is wiped again, their tokens revoked, their watches dropped, and their open cards go
+ * back to nobody, logged as of the delete.
+ */
+function redoDelete(next: DB, id: number, displayName: string, deletedAt: string): void {
+  next
+    .prepare(`UPDATE users SET display_name = ?, email = NULL, discord_user_id = NULL, ntfy_topic = NULL, notify_prefs = '{}' WHERE id = ?`)
+    .run(displayName, id);
+  next.prepare('UPDATE api_tokens SET revoked_at = coalesce(revoked_at, ?) WHERE user_id = ?').run(deletedAt, id);
+  next.prepare('DELETE FROM card_watchers WHERE user_id = ?').run(id);
+  const open = next
+    .prepare('SELECT id FROM cards WHERE assignee_id = ? AND completed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL ORDER BY id')
+    .pluck()
+    .all(id) as number[];
+  const data = JSON.stringify({ from: id, to: null, fromName: displayName, toName: null });
+  for (const cardId of open) {
+    next.prepare('UPDATE cards SET assignee_id = NULL, version = version + 1, updated_at = ? WHERE id = ?').run(deletedAt, cardId);
+    next
+      .prepare(`INSERT INTO activity (card_id, kind, type, data, occurred_at, created_at) VALUES (?, 'event', 'assigned', ?, ?, ?)`)
+      .run(cardId, data, deletedAt, deletedAt);
+  }
+}
+
 function carryOverAccess(live: DB, next: DB): void {
   const users = live.prepare('SELECT * FROM users ORDER BY id').all() as LiveUser[];
   const sessions = live.prepare('SELECT * FROM sessions').all() as Record<string, unknown>[];
@@ -396,9 +421,6 @@ function carryOverAccess(live: DB, next: DB): void {
     const restoredId = new Map<number, number>();
     for (const u of users) {
       const match = next.prepare('SELECT id FROM users WHERE username = ?').pluck().get(u.username) as number | undefined;
-      // A deleted person's leftover row only matters to the history that points at it; restored
-      // data without them has no use for it (they have no sessions or working tokens to carry).
-      if (u.deleted_at !== null && match === undefined) continue;
       if (u.oidc_subject !== null) {
         // Restored people come without links (buildRestoreDb drops them); clearing any holder anyway
         // keeps the unique index safe whatever the restored file contains.
@@ -407,22 +429,12 @@ function carryOverAccess(live: DB, next: DB): void {
           .run(u.oidc_issuer, u.oidc_subject, match ?? null);
       }
       if (match !== undefined) {
+        // Deleted or not comes from the live install too, like deactivation.
         next
-          .prepare('UPDATE users SET password_hash = ?, role = ?, disabled_at = ?, oidc_issuer = ?, oidc_subject = ? WHERE id = ?')
-          .run(u.password_hash, u.role, u.disabled_at, u.oidc_issuer, u.oidc_subject, match);
+          .prepare('UPDATE users SET password_hash = ?, role = ?, disabled_at = ?, deleted_at = ?, oidc_issuer = ?, oidc_subject = ? WHERE id = ?')
+          .run(u.password_hash, u.role, u.disabled_at, u.deleted_at, u.oidc_issuer, u.oidc_subject, match);
         restoredId.set(u.id, match);
-        if (u.deleted_at !== null) {
-          // Deleted here: a backup from before the delete doesn't bring them back. Their usernames
-          // stay taken for this (services/users.ts deleteUser), so the match is the same person.
-          next
-            .prepare(
-              `UPDATE users SET display_name = ?, email = NULL, discord_user_id = NULL, ntfy_topic = NULL, notify_prefs = '{}',
-                 deleted_at = ? WHERE id = ?`,
-            )
-            .run(u.display_name, u.deleted_at, match);
-          next.prepare('UPDATE api_tokens SET revoked_at = coalesce(revoked_at, ?) WHERE user_id = ?').run(u.deleted_at, match);
-          next.prepare('DELETE FROM card_watchers WHERE user_id = ?').run(match);
-        }
+        if (u.deleted_at !== null) redoDelete(next, match, u.display_name, u.deleted_at);
       } else {
         const { id: _id, is_owner: _owner, ...cols } = u;
         const keys = Object.keys(cols);

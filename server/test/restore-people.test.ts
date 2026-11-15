@@ -227,4 +227,50 @@ describe('restore with people', () => {
     const restoredHistory = (await client(t.app, admin)('GET', `/api/cards/${card.id}/activity`)).json();
     expect(restoredHistory.find((e: { type: string }) => e.type === 'created')).toMatchObject({ userName: 'sam', userDeleted: true });
   });
+
+  it('a deleted person’s username stays taken through a restore that doesn’t have them, and the delete still holds after', async () => {
+    const t = await app();
+    const admin = await setupAndLogin(t);
+    const empty = (await client(t.app, admin)('GET', '/api/backup/export.json')).json();
+    const sam = await addPerson(t, admin, 'sam');
+    const open = (await client(t.app, admin)('POST', '/api/cards', { title: 'Swap the UPS battery', assigneeId: sam.id })).json();
+    const { token } = (await client(t.app, sam.cookie)('POST', '/api/tokens', { name: 'Homepage', scope: 'read' })).json();
+    const summary = () => t.app.inject({ method: 'GET', url: '/api/v1/summary', headers: { authorization: `Bearer ${token}` } });
+    const withSam = (await client(t.app, admin)('GET', '/api/backup/export.json')).json();
+    expect((await client(t.app, admin)('DELETE', `/api/users/${sam.id}`)).statusCode).toBe(200);
+
+    // A backup from before sam existed: their leftover row comes along, so the name stays taken.
+    expect(await restore(t, admin, empty)).toBe(200);
+    const after = (await client(t.app, admin)('GET', '/api/users')).json() as { username: string; deleted: boolean }[];
+    expect(after.map((u) => [u.username, u.deleted])).toEqual([
+      ['admin', false],
+      ['sam', true],
+    ]);
+    expect((await client(t.app, admin)('POST', '/api/users', { username: 'sam', displayName: 'New Sam', password: PASSWORD })).statusCode).toBe(409);
+
+    // Then one with sam active and assigned: still deleted, token dead, their open card back to nobody (logged).
+    expect(await restore(t, admin, withSam)).toBe(200);
+    const people = (await client(t.app, admin)('GET', '/api/users')).json() as Record<string, unknown>[];
+    expect(people.find((u) => u.username === 'sam')).toMatchObject({ deleted: true, disabled: true });
+    expect((await summary()).statusCode).toBe(401);
+    const card = (await client(t.app, admin)('GET', `/api/cards/${open.id}`)).json();
+    expect(card.assigneeId).toBeNull();
+    const history = (await client(t.app, admin)('GET', `/api/cards/${open.id}/activity`)).json();
+    expect(history.find((e: { type: string }) => e.type === 'assigned')).toMatchObject({ data: { to: null, fromName: 'sam' } });
+  });
+
+  it('a live active person matched to a row the backup has as deleted is active after the restore', async () => {
+    const src = await app();
+    const srcAdmin = await setupAndLogin(src);
+    const gone = await addPerson(src, srcAdmin, 'casey');
+    await client(src.app, srcAdmin)('DELETE', `/api/users/${gone.id}`);
+    const data = (await client(src.app, srcAdmin)('GET', '/api/backup/export.json')).json();
+
+    const { dst, cookies } = await destination(); // has an active casey
+    expect(await restore(dst, cookies.admin, data)).toBe(200);
+    const casey = ((await client(dst.app, cookies.admin)('GET', '/api/users')).json() as Record<string, unknown>[]).find((u) => u.username === 'casey');
+    expect(casey).toMatchObject({ deleted: false, disabled: false });
+    expect((await client(dst.app, cookies.casey)('GET', '/api/me')).statusCode).toBe(200);
+    expect((await client(dst.app, cookies.admin)('PATCH', `/api/users/${casey!.id}`, { disabled: true })).statusCode).toBe(200);
+  });
 });
