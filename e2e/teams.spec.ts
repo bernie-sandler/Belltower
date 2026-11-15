@@ -91,13 +91,10 @@ test('with Teams off there are no team pages, assignee controls, Watch or names 
     await expect(page.getByRole('option')).toHaveCount(0);
     await composer.fill('');
 
-    // Account has no Notifications; Settings → Appearance has no sound for a bell that isn't there.
+    // Account has no Notifications and no sound for a bell that isn't there.
     await page.goto('/account');
     await expect(page.getByRole('heading', { name: 'Your tokens' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Notifications', exact: true })).toHaveCount(0);
-    await page.goto('/settings');
-    await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
-    await expect(page.getByRole('radiogroup', { name: 'Theme' })).toBeVisible();
     await expect(page.getByRole('radiogroup', { name: 'Sound for new notifications' })).toHaveCount(0);
   } finally {
     for (const id of made) await api.call('DELETE', `/api/cards/${id}`);

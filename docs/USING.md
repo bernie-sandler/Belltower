@@ -72,7 +72,7 @@ Belltower works for one person or for several. The features for working together
 - **assignees**: the Assignee field on cards, initials on tiles, the filter's Assignee group, and the **Mine** and
   **Unassigned** pages (see [Who has what](#who-has-what));
 - **watching**, **@mentions** and **the bell** (see [Watching, mentions and the bell](#watching-mentions-and-the-bell)),
-  with its sound under Settings → Appearance and **Account → Notifications**;
+  with its sound under **Account → Notification sound** and **Account → Notifications**;
 - **people's names in the history** and on work-log notes.
 
 With Teams off all of that is hidden, and nothing is deleted: assignments, watches and notifications are kept (the API
@@ -134,8 +134,8 @@ nobody. `@` in code or an email address isn't a mention.
 cards you watch, and (for admins, by default) new tickets from the submit page. Open the list and pick one to go to its
 card, or **Mark all read**. Opening a card, from the bell or anywhere else, marks its notifications read. You're never
 told about your own changes. The bell checks for news every 30 seconds, also while the tab is in the background, and can
-play a sound when something new comes in: **Off**, **Chime** or **Ping**, chosen per device under **Settings →
-Appearance**, with a **Test** button. With several tabs open, only one plays it. Browsers only allow sound once you've
+play a sound when something new comes in: **Off**, **Chime** or **Ping**, chosen per device under **Account →
+Notification sound**, with a **Test** button. With several tabs open, only one plays it. Browsers only allow sound once you've
 clicked or typed on the page.
 
 Under **Account → Notifications** you choose what reaches you and where: in the app, as a Discord mention, or on
@@ -228,13 +228,26 @@ reaches you, and where; see [Watching, mentions and the bell](#watching-mentions
 API tokens that act as you. What a token does shows in the history as "via API token" with your name, and it stops
 working while your account is deactivated.
 
+## Theme Customizer
+
+**Menu → Theme Customizer** sets how Belltower looks on this device:
+
+- **Use:** System, Light or Dark. System follows your phone or computer's setting, so the phone can follow the system
+  while the desktop stays dark.
+- **Colors:** pick a preset (Belltower, Slate, Ember, Forest, Orchid, Glacier, Parchment, High contrast), or set any
+  of 14 colors (background, top bar, columns, cards, menus, borders, three text colors and five accents) by picker,
+  `#hex` or `rgb(r, g, b)`, plus the corner style. Dark and Light each have their own colors; while the customizer is
+  open the page shows the mode you're editing. Hover and text shades of the accents are worked out for you and kept
+  readable, and it warns when text drops below a 4.5:1 contrast. Each color has its own reset, and **Reset Dark/Light
+  colors** undoes a whole mode.
+
+Everything here is saved on that device only. The bell's sound is under **Account → Notification sound**.
+
 ## Settings
 
-**Menu → Settings** holds everything that isn't about one card. Members only see Appearance and the version;
-the rest is for admins.
+**Menu → Settings** holds everything that isn't about one card. Members only see the version; the rest is for
+admins.
 
-- **Appearance:** Light, Dark or System, and the bell's sound (off, chime or ping) wherever there's a bell. These are
-  saved per device, so the phone can follow the system while the desktop stays dark, and the work laptop can stay quiet.
 - **General:** [Teams](#teams), the ticket number format, the app's address (for links in notifications), the Claude
   model, and where blocked cards go.
 - **Resolution reasons:** the list offered on Mark done. The first one is the default.

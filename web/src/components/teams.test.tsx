@@ -16,7 +16,8 @@ import { TileView } from './board/Tile';
 import { ActivityList } from './card/ActivityList';
 import { CardFields } from './card/CardFields';
 import { PeopleSection } from './settings/PeopleSection';
-import { AppearanceSection, TeamsSwitch } from './settings/SettingsPage';
+import { TeamsSwitch } from './settings/SettingsPage';
+import { NotificationSoundSection } from './account/NotificationSoundSection';
 import { ShellContext, type ShellActions } from './shell/ShellContext';
 import { TopBar } from './shell/TopBar';
 
@@ -138,12 +139,11 @@ describe('Teams switched somewhere else', () => {
   });
 });
 
-describe('Settings → Appearance', () => {
+describe('Account → Notification sound', () => {
   it('offers the bell’s sound only where there’s a bell', () => {
     const hasSound = (teams: boolean, submitPageEnabled: boolean, me = JORDAN) => {
-      const r = show({ teams, submitPageEnabled, me }, <AppearanceSection />);
+      const r = show({ teams, submitPageEnabled, me }, <NotificationSoundSection />);
       const has = screen.queryByRole('radiogroup', { name: 'Sound for new notifications' }) !== null;
-      expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeTruthy();
       r.unmount();
       return has;
     };
