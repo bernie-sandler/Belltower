@@ -19,6 +19,10 @@ the container log on start, and in every backup export.
   - **Members** do all the board work, and manage their own profile, password and API tokens.
   - **Settings → People** adds someone with a temporary password, changes roles and display names, and deactivates or
     re-enables people. The owner is always an admin.
+  - **Delete…** removes someone for good, after you type their username. Their sign-in, email, single sign-on link
+    and notification settings are wiped, their API tokens are revoked, and their open tickets go back to unassigned.
+    Their name stays on what they did ("Alice (deleted)"), and their username stays reserved, so restoring an older
+    backup doesn't bring them back. The owner, yourself and the last admin can't be deleted.
   - **Account**, in the ☰ menu, holds your profile, password, API tokens, single sign-on and notification choices.
 - **Who did what.** Every history entry and work-log note shows who made it, including "via API token" and the submit
   page.
@@ -61,8 +65,8 @@ the container log on start, and in every backup export.
   - With a required group set, Belltower also asks for the `groups` scope when the provider offers one (VoidAuth and
     Pocket ID send groups only then), and the log says why someone failed the group check.
 - **API tokens belong to a person.** Members see their own under **Account**, and admins see everyone's under
-  **Settings → Automation**. A token stops working while its owner is deactivated. The automation API itself hasn't
-  changed.
+  **Settings → Automation**. A token stops working while its owner is deactivated, and is revoked for good when they're
+  deleted. The automation API itself hasn't changed.
 - **Upgrading.** There's nothing to do, and nobody is signed out.
   - Teams starts off, so the board looks as it did in 1.4 until an admin turns it on (installs that already have
     several people keep it on).
@@ -77,9 +81,10 @@ the container log on start, and in every backup export.
   - Nobody is restricted to tags until an admin sets it.
   - If you already use single sign-on, the password form moves behind a link on the login page. Nothing else
     changes until an admin turns password sign-in off.
-  - The database moves to layout 11. Going back to 1.4 means putting back the copy saved before the upgrade, and any
+  - The database moves to layout 12. Going back to 1.4 means putting back the copy saved before the upgrade, and any
     accounts created since are lost (see [docs/UPGRADING.md](docs/UPGRADING.md#upgrading-to-15-people)).
-  - **From a 1.5.0 release candidate (rc.1 to rc.3):** the same notes apply; the database moves from layout 9 to 11.
+  - **From a 1.5.0 release candidate:** the same notes apply. The database moves from layout 9 to 12 (rc.1 to rc.3)
+    or from 11 to 12 (rc.4).
 
 ## 1.4.0: Not every check passes
 
