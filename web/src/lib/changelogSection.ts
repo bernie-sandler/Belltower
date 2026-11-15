@@ -27,6 +27,9 @@ export function latestChangelogSection(markdown: string): ChangelogSection | nul
     .slice(start + 1, end)
     .join('\n')
     .trim()
+    // The changelog is hard-wrapped, and the app's Markdown turns every newline into a line break:
+    // join each wrapped line onto the one before (not list items, blank lines or headings).
+    .replace(/(?<=\S[ \t]*)\n(?!\s*(?:[-*+] |\d+\. |#|\n))[ \t]*/g, ' ')
     // Relative links only work on GitHub: point them there.
     .replace(/\]\((?![a-z][a-z0-9+.-]*:|#|\/)([^)\s]+)\)/gi, (_m, path: string) => `](${REPO_BLOB}${path})`);
   return { version: heading[1]!, title: (heading[2] ?? '').trim(), body };
