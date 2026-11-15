@@ -274,8 +274,8 @@ const SQL_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 //    column, so it's stable). Roles are checked in code, not here, so a role can be added later
 //    without rebuilding the table.
 //  - who did it: activity.user_id / token_id and activity_revisions.user_id. Nullable, and no
-//    ON DELETE action: a cascade would UPDATE the activity log, which the guards refuse. Users are
-//    deactivated, never deleted.
+//    ON DELETE action: a cascade would UPDATE the activity log, which the guards refuse. So a user
+//    row is never removed (deleting someone, from v12, wipes the row instead).
 //  - existing sessions and API tokens belong to the owner, so nobody is signed out and automations
 //    keep working. The password_hash setting goes (the pre-migration copy keeps it); password_source
 //    stays and now means "the owner's password comes from APP_PASSWORD".
@@ -378,6 +378,14 @@ CREATE TABLE user_labels (
 CREATE INDEX ix_user_labels_label ON user_labels (label_id);
 `;
 
+// 1.5 (rc.5): people can be deleted. History points at user rows (see v9), so deleting someone keeps
+// the row with only the display name and username: everything else is wiped, the username stays
+// taken, and disabled_at is set too, so every "active people" check keeps them out. deleted_at marks
+// the row.
+const v12 = `
+ALTER TABLE users ADD COLUMN ${tsNull('deleted_at')};
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -390,6 +398,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 9, name: 'people', sql: v9 },
   { version: 10, name: 'request type labels', sql: v10 },
   { version: 11, name: 'tag-restricted accounts', sql: v11 },
+  { version: 12, name: 'deleted people', sql: v12 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

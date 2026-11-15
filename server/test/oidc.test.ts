@@ -680,6 +680,24 @@ describe('signing in with single sign-on', () => {
     expect(await ssoLogin(t, i, alice)).toEqual({ location: '/login?sso_error=disabled', session: null });
   });
 
+  it('forgets a deleted person: unknown without auto-create, a fresh empty account (another username) with it', async () => {
+    const { t, admin } = await app();
+    const i = await idp();
+    await enableSso(t, admin, i, { autoCreate: true });
+    const first = await ssoLogin(t, i, alice);
+    const id = (await client(t.app, first.session!)('GET', '/api/me')).json().id;
+    expect((await client(t.app, admin)('DELETE', `/api/users/${id}`)).statusCode).toBe(200);
+
+    await client(t.app, admin)('PUT', '/api/settings/oidc', settingsBody(i, { autoCreate: false, clientSecret: null }));
+    expect(await ssoLogin(t, i, alice)).toEqual({ location: '/login?sso_error=no_account', session: null });
+
+    await client(t.app, admin)('PUT', '/api/settings/oidc', settingsBody(i, { autoCreate: true, clientSecret: null }));
+    const again = await ssoLogin(t, i, alice);
+    const me = (await client(t.app, again.session!)('GET', '/api/me')).json();
+    expect(me).toMatchObject({ username: 'alice-2', ssoLinked: true, deleted: false });
+    expect(me.id).not.toBe(id);
+  });
+
   it('reports the provider’s Deny', async () => {
     const { t, admin } = await app();
     const i = await idp();

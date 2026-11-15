@@ -1,8 +1,8 @@
-// Managing people (admins): POST /api/users and PATCH /api/users/:id. The directory and your own
-// profile are in me.ts.
+// Managing people (admins): POST /api/users, PATCH /api/users/:id and DELETE /api/users/:id. The
+// directory and your own profile are in me.ts.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { CreateUserBody, UpdateUserBody, UpdateUserResponse, UserInfo } from '@tt/shared';
+import type { CreateUserBody, DeleteUserResponse, UpdateUserBody, UpdateUserResponse, UserInfo } from '@tt/shared';
 import { ApiError, api } from './client';
 import { errorMessage } from './errors';
 import { qk } from './keys';
@@ -12,11 +12,13 @@ export function peopleErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
       case 'owner_protected':
-        return 'The owner always stays an active admin, and only the owner changes their password (under Account).';
+        return 'The owner always stays an active admin and can’t be deleted, and only the owner changes their password (under Account).';
       case 'last_admin':
         return 'At least one active admin has to remain. Make someone else an admin first.';
       case 'cannot_disable_self':
         return 'You can’t deactivate your own account. Another admin can.';
+      case 'cannot_delete_self':
+        return 'You can’t delete your own account. Another admin can.';
       case 'use_account_password':
         return 'Change your own password under Account → Password; it asks for your current one.';
       case 'managed_by_env':
@@ -65,5 +67,21 @@ export function useUpdateUser() {
     onSuccess: refresh,
     // A refusal may mean the list is out of date (someone else changed it, or a restore renumbered people).
     onError: refresh,
+  });
+}
+
+/** Deletes someone for good (their name stays on history); the reply says how many open cards were unassigned. */
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  const refresh = useRefreshPeople();
+  return useMutation({
+    mutationFn: (id: number) => api.del<DeleteUserResponse>(`/api/users/${id}`),
+    meta: { errorToast: false },
+    onSettled: () => {
+      refresh();
+      // Their open cards went back to unassigned.
+      void qc.invalidateQueries({ queryKey: qk.board });
+      void qc.invalidateQueries({ queryKey: qk.cards });
+    },
   });
 }

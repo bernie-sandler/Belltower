@@ -1,4 +1,5 @@
-// People: admins and members. Accounts are deactivated, never deleted, so history keeps its names.
+// People: admins and members. Accounts can be deactivated (reversible) or deleted. History points at
+// user rows, so a deleted account keeps its row with only the display name and username (deleteUser).
 // The owner is the account the install was set up with (or the one 1.4's password became): its
 // password can come from APP_PASSWORD, and it can't be demoted or deactivated, so there is always
 // a way back in. Passwords are hashed by the caller (hashing is async; services are synchronous).
@@ -25,10 +26,18 @@ export interface UserRow {
   created_at: string;
   disabled_at: string | null;
   tag_scoped: 0 | 1;
+  deleted_at: string | null;
 }
 
 export function toUserRef(r: UserRow): UserRef {
-  return { id: r.id, username: r.username, displayName: r.display_name, role: r.role, disabled: r.disabled_at !== null };
+  return {
+    id: r.id,
+    username: r.username,
+    displayName: r.display_name,
+    role: r.role,
+    disabled: r.disabled_at !== null,
+    deleted: r.deleted_at !== null,
+  };
 }
 
 function toUserInfo(r: UserRow, showPrivate: boolean, tags: Map<number, number[]>): UserInfo {
@@ -102,11 +111,17 @@ function activeAdminCount(ctx: Ctx): number {
   return stmt(ctx.db, `SELECT count(*) FROM users WHERE role = 'admin' AND disabled_at IS NULL`).pluck().get() as number;
 }
 
-/** The directory: active people first, then by name. Email and tag restriction only for admins and for your own entry. */
+/**
+ * The directory: active people first, then deactivated, then deleted (kept so done cards and history
+ * can still name them), each by name. Email and tag restriction only for admins and for your own entry.
+ */
 export function listUsers(ctx: Ctx): UserInfo[] {
   const admin = actorIsAdmin(ctx);
   const me = actorUserId(ctx);
-  const rows = stmt(ctx.db, 'SELECT * FROM users ORDER BY disabled_at IS NOT NULL, display_name COLLATE NOCASE, id').all() as UserRow[];
+  const rows = stmt(
+    ctx.db,
+    'SELECT * FROM users ORDER BY deleted_at IS NOT NULL, disabled_at IS NOT NULL, display_name COLLATE NOCASE, id',
+  ).all() as UserRow[];
   const tags = tagScopes(ctx);
   return rows.map((r) => toUserInfo(r, admin || r.id === me, tags));
 }
@@ -126,7 +141,11 @@ export function meResponse(ctx: Ctx, id: number, passwordSourceEnv: boolean): Me
 }
 
 function assertUsernameFree(ctx: Ctx, username: string): void {
-  if (findUserByUsername(ctx, username)) throw conflict('username_taken', `The username “${username}” is already taken`);
+  const holder = findUserByUsername(ctx, username);
+  if (holder?.deleted_at) {
+    throw conflict('username_taken', `The username “${username}” belonged to someone who was deleted; pick another`);
+  }
+  if (holder) throw conflict('username_taken', `The username “${username}” is already taken`);
 }
 
 /** Creates the owner on a fresh install (first-run setup, or APP_PASSWORD). Null if someone already exists. */
@@ -170,7 +189,7 @@ export function updateUser(
   opts: { passwordHash?: string; ownerPasswordFromEnv: boolean; expectedUsername?: string },
 ): UserInfo {
   return tx(ctx, () => {
-    const row = getUser(ctx, id);
+    const row = getLiveUser(ctx, id);
     if (opts.expectedUsername !== undefined && row.username !== opts.expectedUsername) {
       throw conflict('user_changed', 'This person changed meanwhile (was a backup restored?); reload and try again');
     }
@@ -225,6 +244,49 @@ export function updateUser(
     }
     if ((disabled && row.disabled_at === null) || opts.passwordHash !== undefined) deleteUserSessions(ctx, id);
     return userInfo(ctx, id);
+  });
+}
+
+/** A person who hasn't been deleted (404 otherwise: there's nothing left to change). */
+function getLiveUser(ctx: Ctx, id: number): UserRow {
+  const row = getUser(ctx, id);
+  if (row.deleted_at !== null) throw notFound('Person not found');
+  return row;
+}
+
+/**
+ * Deletes a person for good. Their row stays, because history points at it (schema v9), but only the
+ * display name is kept: email, password, single sign-on link, Discord and ntfy settings and tag
+ * restriction are wiped, and the row is marked deactivated as well as deleted, so every "active
+ * people" check keeps them out. The username stays taken: restore matches people by username (so a
+ * restored backup from before the delete keeps them deleted, backup.ts carryOverAccess), and old
+ * @mentions of it must never point at someone new. Their
+ * sessions, watches and notifications go; their API tokens are revoked but keep their owner (an
+ * ownerless token would be handed to the owner). The same refusals as deactivating apply. Their
+ * open cards are the caller's job (cards.ts unassignOpenCards, after this, in the same transaction).
+ */
+export function deleteUser(ctx: Ctx, id: number): UserRow {
+  return tx(ctx, () => {
+    const row = getLiveUser(ctx, id);
+    if (row.is_owner === 1) throw conflict('owner_protected', 'The owner can’t be deleted');
+    if (actorUserId(ctx) === id) throw conflict('cannot_delete_self', 'You can’t delete your own account');
+    if (row.role === 'admin' && row.disabled_at === null && activeAdminCount(ctx) <= 1) {
+      throw conflict('last_admin', 'At least one active admin has to remain');
+    }
+    const now = nowIso(ctx);
+    stmt(
+      ctx.db,
+      `UPDATE users SET email = NULL, role = 'member', password_hash = NULL, oidc_issuer = NULL,
+         oidc_subject = NULL, discord_user_id = NULL, ntfy_topic = NULL, notify_prefs = '{}', tag_scoped = 0,
+         disabled_at = coalesce(disabled_at, ?), deleted_at = ?
+       WHERE id = ?`,
+    ).run(now, now, id);
+    stmt(ctx.db, 'DELETE FROM user_labels WHERE user_id = ?').run(id);
+    stmt(ctx.db, 'DELETE FROM card_watchers WHERE user_id = ?').run(id);
+    stmt(ctx.db, 'DELETE FROM notifications WHERE user_id = ?').run(id);
+    stmt(ctx.db, 'UPDATE api_tokens SET revoked_at = coalesce(revoked_at, ?) WHERE user_id = ?').run(now, id);
+    deleteUserSessions(ctx, id);
+    return row;
   });
 }
 

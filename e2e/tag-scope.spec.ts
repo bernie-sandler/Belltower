@@ -38,7 +38,7 @@ test('a member restricted to a tag sees only tickets with it', async ({ page, ap
   } finally {
     await other.close();
     await api.call('DELETE', `/api/labels/${tag.id}`);
-    // People are never deleted; don't leave an active member behind in the shared database.
-    await api.call('PATCH', `/api/users/${member.id}`, { disabled: true });
+    // Don't leave a member behind in the shared database.
+    await api.call('DELETE', `/api/users/${member.id}`);
   }
 });

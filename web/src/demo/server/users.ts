@@ -1,4 +1,5 @@
-// Mirrors server/src/services/users.ts: people are deactivated, never deleted; the owner stays an
+// Mirrors server/src/services/users.ts: people can be deactivated (reversible) or deleted, which
+// keeps their row with only the display name and username so history still names them; the owner stays an
 // active admin; at least one active admin remains. The demo has no passwords: anyone signs in as
 // the owner, and a password given for someone new is checked by the schema and then forgotten.
 
@@ -7,7 +8,14 @@ import { actorId, nextId, nowIso, type Ctx, type UserRow } from './db';
 import { badRequest, conflict, notFound } from './errors';
 
 export function toUserRef(r: UserRow): UserRef {
-  return { id: r.id, username: r.username, displayName: r.displayName, role: r.role, disabled: r.disabledAt !== null };
+  return {
+    id: r.id,
+    username: r.username,
+    displayName: r.displayName,
+    role: r.role,
+    disabled: r.disabledAt !== null,
+    deleted: r.deletedAt !== null,
+  };
 }
 
 function toUserInfo(ctx: Ctx, r: UserRow, showEmail: boolean): UserInfo {
@@ -50,13 +58,17 @@ export function actorIsAdmin(ctx: Ctx): boolean {
 
 const activeAdmins = (ctx: Ctx) => ctx.s.users.filter((u) => u.role === 'admin' && u.disabledAt === null).length;
 
-/** The directory: active people first, then by name. Email only for admins and for your own entry. */
+/**
+ * The directory: active people first, then deactivated, then deleted (kept so done cards and history
+ * can still name them), each by name. Email only for admins and for your own entry.
+ */
 export function listUsers(ctx: Ctx): UserInfo[] {
   const admin = actorIsAdmin(ctx);
   const me = actorId(ctx);
   return [...ctx.s.users]
     .sort(
       (a, b) =>
+        Number(a.deletedAt !== null) - Number(b.deletedAt !== null) ||
         Number(a.disabledAt !== null) - Number(b.disabledAt !== null) ||
         a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }) ||
         a.id - b.id,
@@ -86,18 +98,23 @@ export function addUser(ctx: Ctx, input: Pick<UserRow, 'username' | 'displayName
     createdAt: nowIso(ctx),
     disabledAt: null,
     tagScope: null,
+    deletedAt: null,
   };
   ctx.s.users.push(row);
   return row;
 }
 
 export function createUser(ctx: Ctx, input: Omit<CreateUserBody, 'password'>): UserInfo {
-  if (findByUsername(ctx, input.username)) throw conflict('username_taken', `The username “${input.username}” is already taken`);
+  const holder = findByUsername(ctx, input.username);
+  if (holder?.deletedAt) {
+    throw conflict('username_taken', `The username “${input.username}” belonged to someone who was deleted; pick another`);
+  }
+  if (holder) throw conflict('username_taken', `The username “${input.username}” is already taken`);
   return userInfo(ctx, addUser(ctx, { username: input.username, displayName: input.displayName, role: input.role, email: input.email ?? null }).id);
 }
 
 export function updateUser(ctx: Ctx, id: number, patch: Omit<UpdateUserBody, 'password'>, resetPassword: boolean): UserInfo {
-  const row = getUser(ctx, id);
+  const row = getLiveUser(ctx, id);
   const self = actorId(ctx) === id;
   const role = patch.role ?? row.role;
   const disabled = patch.disabled ?? row.disabledAt !== null;
@@ -126,6 +143,42 @@ export function updateUser(ctx: Ctx, id: number, patch: Omit<UpdateUserBody, 'pa
   row.disabledAt = disabled ? (row.disabledAt ?? nowIso(ctx)) : null;
   if (patch.tagScope !== undefined || role === 'admin') row.tagScope = restrictTo ? [...new Set(restrictTo)] : null;
   return userInfo(ctx, id);
+}
+
+/** A person who hasn't been deleted (404 otherwise: there's nothing left to change). */
+function getLiveUser(ctx: Ctx, id: number): UserRow {
+  const row = getUser(ctx, id);
+  if (row.deletedAt !== null) throw notFound('Person not found');
+  return row;
+}
+
+/**
+ * Deletes a person for good, like the server: the row stays (history points at it) with only the
+ * names; email, password, Discord and ntfy settings and tag restriction are wiped, the username
+ * stays taken, and the row is marked deactivated as well as deleted. Their watches and notifications go (the demo has no sessions or tokens). Their open
+ * cards are the caller's job (cards.ts unassignOpenCards, after this).
+ */
+export function deleteUser(ctx: Ctx, id: number): UserRow {
+  const row = getLiveUser(ctx, id);
+  if (row.isOwner) throw conflict('owner_protected', 'The owner can’t be deleted');
+  if (actorId(ctx) === id) throw conflict('cannot_delete_self', 'You can’t delete your own account');
+  if (row.role === 'admin' && row.disabledAt === null && activeAdmins(ctx) <= 1) {
+    throw conflict('last_admin', 'At least one active admin has to remain');
+  }
+  const deleted = { ...row };
+  const now = nowIso(ctx);
+  row.email = null;
+  row.role = 'member';
+  row.hasPassword = false;
+  row.discordUserId = null;
+  row.ntfyTopic = null;
+  row.notifyPrefs = {};
+  row.tagScope = null;
+  row.disabledAt = row.disabledAt ?? now;
+  row.deletedAt = now;
+  ctx.s.watchers = ctx.s.watchers.filter((w) => w.userId !== id);
+  ctx.s.notifications = ctx.s.notifications.filter((n) => n.userId !== id);
+  return deleted;
 }
 
 export function updateMe(ctx: Ctx, id: number, patch: UpdateMeBody): void {

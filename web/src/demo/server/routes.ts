@@ -72,6 +72,7 @@ import {
   type CardDetail,
   type CardSummary,
   type Column,
+  type DeleteUserResponse,
   type ImportPreview,
   type Label,
   type MeResponse,
@@ -109,6 +110,7 @@ import {
   moveCards,
   restoreCard,
   sortColumnByPriority,
+  unassignOpenCards,
   undeleteCard,
   updateCard,
 } from './cards';
@@ -158,7 +160,7 @@ import {
   updateTeamsSettings,
 } from './settings';
 import { checkSubmitKey, MAX_UPLOAD_BYTES, publicSubmitConfig, submitTicket } from './submit';
-import { actorIsAdmin, createUser, getOwner, listUsers, meResponse, updateMe, updateUser } from './users';
+import { actorIsAdmin, createUser, deleteUser, getOwner, listUsers, meResponse, updateMe, updateUser } from './users';
 import { addWorklog, listRevisions, updateWorklog } from './worklog';
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -295,6 +297,7 @@ export interface DemoApi {
   'GET /api/users': UserInfo[];
   'POST /api/users': UserInfo;
   'PATCH /api/users/:id': UpdateUserResponse;
+  'DELETE /api/users/:id': DeleteUserResponse;
   // ---- personal notifications (routes/notifications.ts) ----
   'GET /api/notifications': NotificationsResponse;
   'POST /api/notifications/read': { unread: number };
@@ -636,6 +639,13 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
       const { password, ...patch } = parse(UpdateUserBody, req.body);
       // The demo doesn't filter by tags (it always signs in as the owner), so nobody is unassigned.
       return { ...updateUser(ctx, id(req), patch, password !== undefined), unassigned: 0 };
+    }),
+  ),
+  // For good: wiped down to the display name, and their open cards go back to nobody, in one change.
+  'DELETE /api/users/:id': admin(
+    ok((ctx, req) => {
+      deleteUser(ctx, id(req));
+      return { unassigned: unassignOpenCards(ctx, id(req)) };
     }),
   ),
 

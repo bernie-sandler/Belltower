@@ -2,7 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { MeResponse, UserInfo } from '@tt/shared';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { toast } from '../../lib/toast';
 import { PeopleSection } from './PeopleSection';
+
+vi.mock('../../lib/toast', () => ({ toast: vi.fn() }));
 
 const person = (over: Partial<UserInfo>): UserInfo => ({
   id: 1,
@@ -10,6 +13,7 @@ const person = (over: Partial<UserInfo>): UserInfo => ({
   displayName: 'Admin',
   role: 'admin',
   disabled: false,
+  deleted: false,
   isOwner: false,
   email: null,
   hasPassword: true,
@@ -29,12 +33,15 @@ const LABELS = [
   { id: 12, name: 'Network', color: '#445566', position: 1 },
 ];
 
-function setup(me: UserInfo, people: UserInfo[], patchReply?: { status: number; body: unknown }) {
+type Reply = { status: number; body: unknown };
+
+function setup(me: UserInfo, people: UserInfo[], patchReply?: Reply, deleteReply: Reply = { status: 200, body: { unassigned: 0 } }) {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/me') return json({ ...me, passwordManagedByEnv: false, ssoLinked: false } satisfies MeResponse);
     if (url === '/api/users' && init?.method === 'POST') return json({ ...SAM, id: 9, ...JSON.parse(String(init.body)) }, 201);
     if (url.startsWith('/api/users/') && init?.method === 'PATCH') return patchReply ? json(patchReply.body, patchReply.status) : json(SAM);
+    if (url.startsWith('/api/users/') && init?.method === 'DELETE') return json(deleteReply.body, deleteReply.status);
     if (url === '/api/users') return json(people);
     if (url === '/api/board') return json({ columns: [], labels: LABELS, cards: [], blockedColumnId: null, resolutionReasons: [] });
     return json({});
@@ -49,7 +56,8 @@ function setup(me: UserInfo, people: UserInfo[], patchReply?: { status: number; 
     const call = fetchMock.mock.calls.find(([url, init]) => url.startsWith(prefix) && init?.method === method);
     return call ? JSON.parse(String(call[1]!.body)) : undefined;
   };
-  return { sent };
+  const called = (method: string, url: string) => fetchMock.mock.calls.some(([u, init]) => u === url && init?.method === method);
+  return { sent, called };
 }
 
 async function openEditor(name: string) {
@@ -57,7 +65,10 @@ async function openEditor(name: string) {
   return screen.getByText(name, { selector: '.person-name' }).closest('li') as HTMLElement;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(toast).mockClear();
+});
 
 describe('PeopleSection', () => {
   it('lists people with their role, the owner, deactivated accounts and password state', async () => {
@@ -170,5 +181,62 @@ describe('PeopleSection', () => {
     fireEvent.click(within(sam).getByLabelText('Plex'));
     expect(within(sam).getByText('With no tags ticked they see nothing.')).toBeTruthy();
     expect(within(sam).getByLabelText('Restrict to tags').getAttribute('aria-describedby')).toBeTruthy();
+  });
+
+  it('leaves deleted people out of the list', async () => {
+    const gone = person({ id: 5, username: 'jo', displayName: 'Jo Former', role: 'member', disabled: true, deleted: true, hasPassword: false });
+    setup(OWNER, [OWNER, SAM, gone]);
+    await screen.findByText('Sam Ortiz');
+    expect(screen.queryByText('Jo Former')).toBeNull();
+  });
+
+  it('offers no delete for the owner, yourself or the last active admin', async () => {
+    setup(ALEX, [OWNER, ALEX, SAM]);
+    const owner = await openEditor('Admin');
+    expect(within(owner).queryByRole('button', { name: /Delete/ })).toBeNull();
+    fireEvent.click(within(owner).getByRole('button', { name: 'Close' }));
+    const self = await openEditor('Alex Chen');
+    expect(within(self).queryByRole('button', { name: /Delete/ })).toBeNull();
+    fireEvent.click(within(self).getByRole('button', { name: 'Close' }));
+    // Others can go, active or deactivated.
+    const sam = await openEditor('Sam Ortiz');
+    expect(within(sam).getByRole('button', { name: /Delete/ })).toBeTruthy();
+  });
+
+  it('keeps the last active admin', async () => {
+    // Alex is the only active admin (the owner is a member in this fixture only to set that up).
+    setup(OWNER, [{ ...OWNER, role: 'member' }, ALEX, SAM]);
+    const alex = await openEditor('Alex Chen');
+    expect(within(alex).queryByRole('button', { name: /Delete/ })).toBeNull();
+  });
+
+  it('deletes someone once their username is typed, and says how many cards were unassigned', async () => {
+    const { called } = setup(OWNER, [OWNER, SAM, KIM], undefined, { status: 200, body: { unassigned: 2 } });
+    const kim = await openEditor('Kim Park');
+    fireEvent.click(within(kim).getByRole('button', { name: /Delete/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Kim Park?' });
+    expect(within(dialog).getByText(/can’t be undone/)).toBeTruthy();
+    const confirm = within(dialog).getByRole('button', { name: 'Delete for good' }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    const input = within(dialog).getByLabelText(/Type kim to confirm/);
+    fireEvent.change(input, { target: { value: 'Kim' } });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: 'kim' } });
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(called('DELETE', '/api/users/4')).toBe(true));
+    await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith('Deleted Kim Park. 2 open cards are unassigned now.', expect.anything()));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+  });
+
+  it('shows a refused delete in the dialog', async () => {
+    setup(OWNER, [OWNER, SAM], undefined, { status: 409, body: { error: 'cannot_delete_self', message: 'You can’t delete your own account' } });
+    const sam = await openEditor('Sam Ortiz');
+    fireEvent.click(within(sam).getByRole('button', { name: /Delete/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Type sam to confirm/), { target: { value: 'sam' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete for good' }));
+    expect(await within(dialog).findByText(/Another admin can/)).toBeTruthy();
   });
 });

@@ -191,7 +191,7 @@ function TokenOwner({ owner }: { owner: ApiTokenInfo['owner'] }) {
   return (
     <span className="small token-owner" title={`@${owner.username}`}>
       {owner.displayName}
-      {owner.disabled && <span className="muted"> (deactivated: stopped)</span>}
+      {owner.deleted ? <span className="muted"> (deleted)</span> : owner.disabled && <span className="muted"> (deactivated: stopped)</span>}
     </span>
   );
 }

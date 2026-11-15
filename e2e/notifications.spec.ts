@@ -50,8 +50,8 @@ test('mentioning a member in a note rings their bell; they open it from the bell
     await expect(m.getByRole('button', { name: 'Unwatch' })).toBeVisible();
   } finally {
     await other.close();
-    // People are never deleted; don't leave an active member behind in the shared database.
-    await api.call('PATCH', `/api/users/${member.id}`, { disabled: true });
+    // Don't leave a member behind in the shared database.
+    await api.call('DELETE', `/api/users/${member.id}`);
   }
 });
 

@@ -197,8 +197,14 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
   a temporary password to hand over. **Generate** makes one up. They can change it under Account.
 - **Edit** someone to change their display name or role, reset their password, or **Deactivate** them. Resetting a
   password or deactivating someone signs them out everywhere. A deactivated person can't sign in and their API tokens
-  stop working, but they keep their name in the history. **Re-enable** brings them and their tokens back. Nobody is
-  ever deleted.
+  stop working, but they keep their name in the history. **Re-enable** brings them and their tokens back.
+- **Delete…** removes someone for good (type their username to confirm). Their sign-in, email, single sign-on link
+  and notification settings are gone, their API tokens are revoked, and they're signed out everywhere. Their name
+  stays on what they did (history and done tickets say "Alice (deleted)"), and their open tickets go back to
+  unassigned, each logged in the ticket's history. Their username stays reserved, so old @mentions never point at
+  someone new, and restoring an older backup doesn't bring them back. This can't be undone. With
+  [single sign-on](SSO.md) and **Create accounts** on, a deleted person who signs in again gets a new, empty account
+  (under another username); remove them in your identity provider to keep them out.
 - **Restrict to tags** (members only) limits someone to tickets that carry at least one of the tags you pick, say a
   family member who should only see Plex requests. With Teams on or off:
   - They see a ticket only if it has one of their tags. **Tickets without tags are hidden from them.** Everything else
@@ -212,8 +218,8 @@ admin, and `APP_PASSWORD` can set its password, so there's always a way back in 
   - They're only told about tickets they can see, and a ticket can only be given to them if it carries one of their
     tags (an admin's assignee list leaves them out otherwise; for anyone else the app explains the refusal). Narrowing their tags, or taking their tag off a ticket they\n    have, unassigns them from tickets they can no longer see; each shows in the ticket's history.
   - Admins and the owner always see every ticket; making someone an admin lifts their restriction.
-- What can't work isn't offered: the owner can't be demoted or deactivated, you can't deactivate yourself or reset
-  your own password there (that's under Account), and the last active admin stays an admin.
+- What can't work isn't offered: the owner can't be demoted, deactivated or deleted, you can't deactivate or delete
+  yourself or reset your own password there (that's under Account), and the last active admin stays an admin.
 
 **Menu → Account** (everyone): your display name and email, **Sign-in** (linking your account to
 [single sign-on](SSO.md), when an admin has set it up), your password (changing it signs you out on your other

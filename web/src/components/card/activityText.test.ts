@@ -92,6 +92,13 @@ describe('activityActor', () => {
     expect(by({ userId: 2, userName: 'Alice' }, 'assigned', { from: null, to: 2, toName: 'Alice' })).toBe('Alice');
   });
 
+  it('marks people whose account was deleted', () => {
+    expect(by({ userId: 2, userName: 'Alice', userDeleted: true })).toBe('Alice (deleted)');
+    expect(by({ userId: 2, userName: 'Alice', userDeleted: true, tokenId: 5, tokenName: 'Kuma' })).toBe('via API token “Kuma” (Alice (deleted))');
+    expect(by({ userId: 2, userName: 'Alice', userDeleted: true }, 'created', { via: 'card import' })).toBe('Alice (deleted) via card import');
+    expect(activityActor({ ...entry('moved', {}), userId: 2, userName: 'Alice', userDeleted: true }, { names: false })).toBeNull();
+  });
+
   it('names the token and the person it acts for', () => {
     expect(by({ userId: 2, userName: 'Alice', tokenId: 5, tokenName: 'Kuma' })).toBe('via API token “Kuma” (Alice)');
     expect(by({ userId: null, tokenId: 5, tokenName: 'Kuma' })).toBe('via API token “Kuma”');

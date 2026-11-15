@@ -52,6 +52,8 @@ form is back for everyone.
   Belltower too.
 - **Deactivated** people are refused, as with passwords. That includes coming back with a new provider account whose
   verified email is the deactivated person's: they get "deactivated", not a fresh account.
+- **Deleted** people are forgotten: deleting someone removes their single sign-on link and email. Signing in again
+  gets them "no account", or a new, empty member account while **Create accounts on first sign-in** is on.
 - Signing in with single sign-on remembers the device, like "Remember this device" on the password form.
 
 **With "Create accounts on first sign-in" on, the provider decides who gets in.** Deactivating someone in Belltower

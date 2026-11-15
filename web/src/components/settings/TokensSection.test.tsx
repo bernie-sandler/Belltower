@@ -77,7 +77,7 @@ describe('TokensSection', () => {
   });
 
   it('shows whose each token is, and when a deactivated owner has stopped it', async () => {
-    const alice = { id: 2, username: 'alice', displayName: 'Alice', role: 'member' as const, disabled: false };
+    const alice = { id: 2, username: 'alice', displayName: 'Alice', role: 'member' as const, disabled: false, deleted: false };
     setup([token({ id: 2, name: 'Homepage', owner: alice }), token({ id: 1, owner: { ...alice, id: 3, displayName: 'Sam', disabled: true } })], {
       me: { id: 1, role: 'admin' },
     });
@@ -87,7 +87,7 @@ describe('TokensSection', () => {
   });
 
   it('Your tokens lists only your own, without an owner column', async () => {
-    const me = { id: 2, username: 'alice', displayName: 'Alice', role: 'admin' as const, disabled: false };
+    const me = { id: 2, username: 'alice', displayName: 'Alice', role: 'admin' as const, disabled: false, deleted: false };
     setup([token({ id: 2, name: 'Mine', owner: me }), token({ id: 1, name: 'Someone else’s', owner: { ...me, id: 3, displayName: 'Sam' } })], {
       mine: true,
       me,

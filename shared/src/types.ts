@@ -97,6 +97,12 @@ export interface UserRef {
   role: UserRole;
   /** Deactivated: can't sign in, their tokens stop working, and they're kept for history. */
   disabled: boolean;
+  /**
+   * Deleted: the account is gone for good (always also `disabled`). Only the display name and username
+   * are kept (the username stays taken), so history and done cards still say who; they're left out of
+   * People and every picker.
+   */
+  deleted: boolean;
 }
 
 /** GET /api/users: the directory. `email` is only filled in for admins and for your own entry. */
@@ -118,6 +124,11 @@ export interface UserInfo extends UserRef {
 
 /** PATCH /api/users/:id: the person, and how many cards they were taken off (narrowed tags hide them). */
 export interface UpdateUserResponse extends UserInfo {
+  unassigned: number;
+}
+
+/** DELETE /api/users/:id: how many open cards were taken off the deleted person. */
+export interface DeleteUserResponse {
   unassigned: number;
 }
 
@@ -302,6 +313,8 @@ export interface ActivityRevision {
   /** That person's display name and username, for showing who made the edit. */
   userName?: string | null;
   userUsername?: string | null;
+  /** That person's account was deleted (the name is all that's left of it). */
+  userDeleted?: boolean;
 }
 
 export interface BoardResponse {
@@ -388,6 +401,8 @@ export interface ActivityEntry {
    */
   userName?: string | null;
   userUsername?: string | null;
+  /** The person's account was deleted (the name is all that's left of it). */
+  userDeleted?: boolean;
   tokenName?: string | null;
 }
 

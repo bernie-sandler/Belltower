@@ -3,7 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { PRIORITY_CODES, PRIORITY_LABELS, SEVERITY_CODES, SEVERITY_LABELS, type CardTile, type Label } from '@tt/shared';
 import { Ban, Clock, Ellipsis, FolderOpen, Link2, Paperclip, SquareCheckBig } from 'lucide-react';
 import { memo, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
-import { usePerson } from '../../api/assignees';
+import { goneSuffix, usePerson } from '../../api/assignees';
 import { useDefaultResolution } from '../../api/board';
 import { useTeams } from '../../api/config';
 import { initials } from '../../lib/assignees';
@@ -170,10 +170,10 @@ function ChecklistBadge({ tile }: { tile: CardTile }) {
   );
 }
 
-/** The assignee's initials, with their full name for screen readers and on hover (dimmed once deactivated). */
+/** The assignee's initials, with their full name for screen readers and on hover (dimmed once deactivated or deleted). */
 function AssigneeBadge({ userId }: { userId: number }) {
   const person = usePerson(userId);
-  const text = `Assigned to ${person?.displayName ?? 'someone'}${person?.disabled ? ' (deactivated)' : ''}`;
+  const text = `Assigned to ${person?.displayName ?? 'someone'}${goneSuffix(person)}`;
   return (
     <span className={cls('assignee-badge', person?.disabled && 'is-disabled')} title={text}>
       <span className="visually-hidden">{text}</span>
