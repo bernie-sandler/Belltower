@@ -190,4 +190,31 @@ describe('restore with people', () => {
     const board = (await client(dst.app, cookies.casey)('GET', '/api/board')).json();
     expect(board.cards).toEqual([]);
   });
+
+  it('a deleted person: a backup from before brings them back without a password; their leftover row isn’t added', async () => {
+    const t = await app();
+    const admin = await setupAndLogin(t);
+    const sam = await addPerson(t, admin, 'sam');
+    const card = (await client(t.app, sam.cookie)('POST', '/api/cards', { title: 'Garage door sensor' })).json();
+    const before = (await client(t.app, admin)('GET', '/api/backup/export.json')).json();
+    expect((await client(t.app, admin)('DELETE', `/api/users/${sam.id}`)).statusCode).toBe(200);
+    const after = (await client(t.app, admin)('GET', '/api/backup/export.json')).json();
+
+    // From after it: still deleted, and history still names them.
+    expect(await restore(t, admin, after)).toBe(200);
+    const kept = (await client(t.app, admin)('GET', '/api/users')).json() as { username: string; deleted: boolean }[];
+    expect(kept.map((u) => [u.username, u.deleted])).toEqual([
+      ['admin', false],
+      [`deleted-${sam.id}`, true],
+    ]);
+    const history = (await client(t.app, admin)('GET', `/api/cards/${card.id}/activity`)).json();
+    expect(history.find((e: { type: string }) => e.type === 'created')).toMatchObject({ userName: 'sam', userDeleted: true });
+
+    // From before the delete: the backup's sam, with nothing to sign in with, and no leftover row.
+    expect(await restore(t, admin, before)).toBe(200);
+    const people = (await client(t.app, admin)('GET', '/api/users')).json() as { username: string; deleted: boolean; hasPassword: boolean }[];
+    expect(people.map((u) => u.username)).toEqual(['admin', 'sam']);
+    expect(people.find((u) => u.username === 'sam')).toMatchObject({ deleted: false, hasPassword: false });
+    expect((await client(t.app)('POST', '/api/auth/login', { username: 'sam', password: PASSWORD })).statusCode).toBe(401);
+  });
 });

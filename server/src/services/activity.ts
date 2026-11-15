@@ -20,6 +20,8 @@ export interface ActivityRow {
   /** From ACTIVITY_SELECT's joins: who did it, by name. */
   user_name?: string | null;
   user_username?: string | null;
+  /** 1 when that person's account was deleted. */
+  user_deleted?: number | null;
   token_name?: string | null;
 }
 
@@ -28,7 +30,7 @@ export interface ActivityRow {
  * the token's name). Resolved here, so members can read who did what without listing tokens.
  */
 export const ACTIVITY_SELECT = `SELECT a.*, (SELECT count(*) FROM activity_revisions r WHERE r.activity_id = a.id) AS revision_count,
-         u.display_name AS user_name, u.username AS user_username, t.name AS token_name
+         u.display_name AS user_name, u.username AS user_username, u.deleted_at IS NOT NULL AS user_deleted, t.name AS token_name
     FROM activity a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN api_tokens t ON t.id = a.token_id`;
 
 /**
@@ -62,6 +64,7 @@ export function toActivityEntry(row: ActivityRow): ActivityEntry {
     tokenId: row.token_id ?? null,
     userName: row.user_name ?? null,
     userUsername: row.user_username ?? null,
+    ...(row.user_deleted ? { userDeleted: true } : {}),
     tokenName: row.token_name ?? null,
   };
 }

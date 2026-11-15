@@ -216,6 +216,25 @@ export function unassignHiddenCards(ctx: Ctx, userId: number): number {
   return ids.length;
 }
 
+/**
+ * A deleted person's open cards (not done, archived or in the Trash) go back to nobody, logged like
+ * any unassign. Done cards keep them as the record of who did the work. Returns how many changed.
+ */
+export function unassignOpenCards(ctx: Ctx, userId: number): number {
+  const ids = stmt(
+    ctx.db,
+    `SELECT id FROM cards WHERE assignee_id = ? AND completed_at IS NULL AND archived_at IS NULL AND deleted_at IS NULL ORDER BY id`,
+  )
+    .pluck()
+    .all(userId) as number[];
+  const now = nowIso(ctx);
+  for (const id of ids) {
+    stmt(ctx.db, 'UPDATE cards SET assignee_id = NULL, version = version + 1, updated_at = ? WHERE id = ?').run(now, id);
+    recordAssigned(ctx, id, userId, null);
+  }
+  return ids.length;
+}
+
 /** Logs and announces an assignee change, and tells the people concerned (inside the change's transaction). */
 function recordAssigned(ctx: Ctx, cardId: number, from: number | null, to: UserRow | null): void {
   const fromName = from !== null ? (findUser(ctx, from)?.display_name ?? null) : null;

@@ -264,6 +264,7 @@ describe('roles', () => {
   const ADMIN_ROUTES = [
     'DELETE /api/backup/restore/:token',
     'DELETE /api/request-types/:id',
+    'DELETE /api/users/:id',
     'GET /api/backup/export.json',
     'GET /api/backup/export.zip',
     'GET /api/backup/snapshots',
@@ -483,7 +484,7 @@ describe('API tokens belong to someone', () => {
     const sam = await addPerson(t, admin, 'sam');
     const adminTok = (await client(t.app, admin)('POST', '/api/tokens', { name: 'Kuma' })).json();
     const samTok = (await client(t.app, sam.cookie)('POST', '/api/tokens', { name: 'Sam script', scope: 'read' })).json();
-    expect(samTok.info.owner).toEqual({ id: sam.id, username: 'sam', displayName: 'sam', role: 'member', disabled: false });
+    expect(samTok.info.owner).toEqual({ id: sam.id, username: 'sam', displayName: 'sam', role: 'member', disabled: false, deleted: false });
 
     const names = async (cookie: string) => (await client(t!.app, cookie)('GET', '/api/tokens')).json().map((x: { name: string }) => x.name);
     expect(await names(sam.cookie)).toEqual(['Sam script']);

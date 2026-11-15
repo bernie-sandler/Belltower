@@ -27,12 +27,13 @@ interface ListRow extends Row {
   u_display_name: string | null;
   u_role: UserRole | null;
   u_disabled_at: string | null;
+  u_deleted_at: string | null;
 }
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 
 const SELECT_WITH_OWNER = `SELECT t.*, u.username AS u_username, u.display_name AS u_display_name, u.role AS u_role,
-         u.disabled_at AS u_disabled_at
+         u.disabled_at AS u_disabled_at, u.deleted_at AS u_deleted_at
     FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id`;
 
 const toInfo = (r: ListRow): ApiTokenInfo => ({
@@ -46,7 +47,14 @@ const toInfo = (r: ListRow): ApiTokenInfo => ({
   revokedAt: r.revoked_at,
   owner:
     r.user_id !== null && r.u_username !== null
-      ? { id: r.user_id, username: r.u_username, displayName: r.u_display_name!, role: r.u_role!, disabled: r.u_disabled_at !== null }
+      ? {
+          id: r.user_id,
+          username: r.u_username,
+          displayName: r.u_display_name!,
+          role: r.u_role!,
+          disabled: r.u_disabled_at !== null,
+          deleted: r.u_deleted_at !== null,
+        }
       : null,
 });
 

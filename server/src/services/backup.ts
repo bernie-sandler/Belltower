@@ -396,6 +396,9 @@ function carryOverAccess(live: DB, next: DB): void {
     const restoredId = new Map<number, number>();
     for (const u of users) {
       const match = next.prepare('SELECT id FROM users WHERE username = ?').pluck().get(u.username) as number | undefined;
+      // A deleted person's leftover row only matters to the history that points at it; restored
+      // data without them has no use for it (they have no sessions or working tokens to carry).
+      if (u.deleted_at !== null && match === undefined) continue;
       if (u.oidc_subject !== null) {
         // Restored people come without links (buildRestoreDb drops them); clearing any holder anyway
         // keeps the unique index safe whatever the restored file contains.

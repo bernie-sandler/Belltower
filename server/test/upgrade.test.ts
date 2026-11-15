@@ -24,6 +24,7 @@ import { createLink } from '../src/services/links';
 import { searchCards } from '../src/services/search';
 import { listRequestTypes } from '../src/services/requestTypes';
 import { createToken } from '../src/services/tokens';
+import { listUsers } from '../src/services/users';
 import { addWorklog } from '../src/services/worklog';
 
 const OLD_VERSIONS = Array.from({ length: LATEST_SCHEMA_VERSION - 1 }, (_, i) => i + 1);
@@ -202,6 +203,15 @@ function oldDatabase(v: number): DB {
     db.prepare('UPDATE users SET tag_scoped = 1 WHERE id = ?').run(sam);
     run('INSERT INTO user_labels (user_id, label_id) SELECT ?, min(id) FROM labels', sam);
   }
+  // Deleted people: what's left of someone deleted is the display name, deactivated and marked deleted.
+  if (v >= 12) {
+    run(
+      `INSERT INTO users (username, display_name, role, created_at, disabled_at, deleted_at) VALUES ('deleted-99', 'Pat Jones', 'member', ?, ?, ?)`,
+      at(2),
+      at(4),
+      at(4),
+    );
+  }
   return db;
 }
 
@@ -355,9 +365,11 @@ describe('upgrading a database left by an older version', () => {
       expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(3);
       expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(1);
       expect(prepared.teams).toBe(true);
-      // Nobody is restricted to tags until an admin says so.
-      expect(db.prepare('SELECT count(*) FROM users WHERE tag_scoped <> 0').pluck().get()).toBe(0);
-      expect(count(db, 'user_labels')).toBe(0);
+      // Nobody is restricted to tags until an admin says so (from schema 11 the member was).
+      expect(db.prepare('SELECT count(*) FROM users WHERE tag_scoped <> 0').pluck().get()).toBe(v >= 11 ? 1 : 0);
+      expect(count(db, 'user_labels')).toBe(v >= 11 ? 1 : 0);
+      // Nobody was deleted before schema 12.
+      expect(db.prepare('SELECT count(*) FROM users WHERE deleted_at IS NOT NULL').pluck().get()).toBe(0);
     }
     checkWorks(ctx, marksAt(v));
   });
@@ -371,7 +383,9 @@ describe('a database at the current schema', () => {
     // A 1.5.0-rc install with two active people keeps its team features: Teams starts on, once.
     expect(prepareData(ctx).teams).toBe(true);
     expect(prepareData(ctx).teams).toBeNull();
-    expect(count(db, 'users')).toBe(3);
+    expect(count(db, 'users')).toBe(4);
+    // A deleted person stays deleted (and last in the directory, for history's sake).
+    expect(listUsers(ctx).at(-1)).toMatchObject({ displayName: 'Pat Jones', disabled: true, deleted: true });
     const sam = db.prepare(`SELECT id FROM users WHERE username = 'sam'`).pluck().get();
     const disk = db.prepare(`SELECT id, assignee_id FROM cards WHERE title = 'Drive 3 CRC errors'`).get() as { id: number; assignee_id: number };
     expect(disk.assignee_id).toBe(sam);
@@ -401,7 +415,11 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     // (10 added a table, request_type_labels: below.)
     // Tag-restricted accounts (see oldDatabase)
     [11, 'users', ['tag_scoped']],
+    // Deleted people (see oldDatabase; below)
+    [12, 'users', ['deleted_at']],
   ];
+  // Nobody could be deleted before schema 12.
+  if (v < 12) out.tables.users = (out.tables.users ?? []).filter((row) => row.deleted_at == null);
   for (const [added, table, columns] of dropColumns) {
     if (v >= added) continue;
     for (const row of out.tables[table] ?? []) for (const c of columns) delete row[c];

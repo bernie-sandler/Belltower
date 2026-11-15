@@ -1,13 +1,21 @@
 // People: your own account (/api/me), the directory everyone can read (for pickers and mentions),
-// and adding or changing people (admins). Your own password stays at POST /api/auth/password.
+// and adding, changing or deleting people (admins). Your own password stays at POST /api/auth/password.
 
-import { CreateUserBody, UpdateMeBody, UpdateUserBody, type MeResponse, type UpdateUserResponse, type UserInfo } from '@tt/shared';
+import {
+  CreateUserBody,
+  UpdateMeBody,
+  UpdateUserBody,
+  type DeleteUserResponse,
+  type MeResponse,
+  type UpdateUserResponse,
+  type UserInfo,
+} from '@tt/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppDeps } from '../../app';
 import { hashPassword } from '../../auth/password';
-import { unassignHiddenCards } from '../../services/cards';
+import { unassignHiddenCards, unassignOpenCards } from '../../services/cards';
 import { tx } from '../../services/context';
-import { createUser, getUser, listUsers, meResponse, updateMe, updateUser } from '../../services/users';
+import { createUser, deleteUser, getUser, listUsers, meResponse, updateMe, updateUser } from '../../services/users';
 import { ADMIN } from '../guard';
 import { idParam, parse } from '../util';
 
@@ -40,5 +48,16 @@ export function registerUserRoutes(app: FastifyInstance, deps: AppDeps): void {
       const unassigned = patch.tagScope !== undefined && patch.tagScope !== null ? unassignHiddenCards(req.ctx, id) : 0;
       return { ...info, unassigned };
     });
+  });
+  // For good: the account is wiped down to its display name (services/users.ts deleteUser) and their
+  // open cards go back to nobody, in one change.
+  app.delete('/api/users/:id', ADMIN, async (req): Promise<DeleteUserResponse> => {
+    const id = idParam(req);
+    const { deleted, unassigned } = tx(req.ctx, () => {
+      const deleted = deleteUser(req.ctx, id);
+      return { deleted, unassigned: unassignOpenCards(req.ctx, id) };
+    });
+    req.log.info(`Deleted "${deleted.username}"${unassigned ? ` and unassigned ${unassigned} open card(s)` : ''}`);
+    return { unassigned };
   });
 }
