@@ -114,7 +114,7 @@ describe('what deleting does', () => {
     const listed = (await client(t.app, admin)('GET', '/api/tokens')).json().find((x: { id: number }) => x.id === info.id);
     expect(listed).toMatchObject({ revokedAt: expect.any(String), owner: { id: sam.id, disabled: true, deleted: true } });
 
-    await bootstrapAuth(t.ctx, undefined, createLogger({ level: 'silent' }));
+    await bootstrapAuth(t.ctx, null, createLogger({ level: 'silent' }));
     expect(t.ctx.db.prepare('SELECT user_id FROM api_tokens WHERE id = ?').pluck().get(info.id)).toBe(sam.id);
     expect((await summary()).statusCode).toBe(401);
   });

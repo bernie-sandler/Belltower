@@ -105,3 +105,39 @@ async function worklogAuthors(page: Page, api: Api) {
   await expect(mine.locator('.activity-by')).toHaveText('Sam Ortiz');
   await expect(mine.getByRole('button', { name: /Retract/ })).toBeVisible();
 }
+
+test('an admin deletes a member: gone from People, can’t sign in, and history says (deleted)', async ({ page, api }) => {
+  const teamsBefore = await api.setTeams(true); // names in the history are a team feature
+  const username = newUsername();
+  const displayName = unique('Riley');
+  try {
+    const card = await api.createCard({ title: unique('Router reboot') });
+    await api.call('POST', '/api/users', { username, displayName, role: 'member', password: MEMBER_PASSWORD });
+    // The member logs a note, then the page goes back to the admin.
+    await page.request.post('/api/auth/logout', { headers: HEADERS });
+    expect((await page.request.post('/api/auth/login', { headers: HEADERS, data: { username, password: MEMBER_PASSWORD } })).status()).toBe(204);
+    expect((await page.request.post(`/api/cards/${card.id}/worklog`, { headers: HEADERS, data: { bodyMd: 'Rebooted the router' } })).status()).toBe(201);
+    await login(page);
+
+    await page.goto('/settings');
+    const people = page.locator('section.settings-block', { has: page.getByRole('heading', { name: 'People' }) });
+    await people.getByRole('button', { name: `Edit ${displayName}` }).click();
+    await people.getByRole('button', { name: 'Delete…' }).click();
+    const confirm = page.getByRole('button', { name: 'Delete for good' });
+    await expect(confirm).toBeDisabled();
+    await page.getByLabel(`Type ${username} to confirm`).fill(username);
+    await confirm.click();
+    await expect(people.locator('.person-row', { hasText: displayName })).toHaveCount(0);
+
+    const again = await page.request.post('/api/auth/login', { headers: HEADERS, data: { username, password: MEMBER_PASSWORD } });
+    expect(again.status()).toBe(401);
+    await login(page); // a failed login leaves the session alone, but be sure
+
+    await page.goto(`/cards/${card.id}`);
+    const note = page.locator('.activity-item.is-worklog', { hasText: 'Rebooted the router' });
+    await expect(note.locator('.activity-by')).toHaveText(`${displayName} (deleted)`);
+  } finally {
+    await login(page);
+    await api.setTeams(teamsBefore);
+  }
+});
