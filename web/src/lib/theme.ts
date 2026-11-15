@@ -19,6 +19,12 @@ function read(): ThemeChoice {
 }
 
 let current: ThemeChoice = read();
+/** A mode shown for now regardless of the choice (the theme editor previews the mode it edits). */
+let preview: 'light' | 'dark' | null = null;
+/** A custom top-bar color per mode (lib/customTheme.ts), for the browser chrome. */
+let headerSource: (mode: 'light' | 'dark') => string | null = () => null;
+
+const header = (mode: 'light' | 'dark') => headerSource(mode) ?? HEADER[mode];
 
 function apply(choice: ThemeChoice): void {
   const root = document.documentElement;
@@ -26,8 +32,8 @@ function apply(choice: ThemeChoice): void {
   else root.dataset.theme = choice;
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
     const media = meta.getAttribute('media') ?? '';
-    const own = media.includes('light') ? HEADER.light : HEADER.dark;
-    meta.content = choice === 'system' ? own : HEADER[choice];
+    const own = media.includes('light') ? header('light') : header('dark');
+    meta.content = choice === 'system' ? own : header(choice);
   }
   const scheme = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
   if (scheme) scheme.content = choice === 'system' ? 'dark light' : choice;
@@ -40,7 +46,7 @@ export function installTheme(): void {
   window.addEventListener('storage', (e) => {
     if (e.key !== KEY) return;
     current = read();
-    apply(current);
+    apply(preview ?? current);
     for (const l of listeners) l();
   });
 }
@@ -53,8 +59,30 @@ export function setTheme(choice: ThemeChoice): void {
   } catch {
     /* private mode: still applies for this visit */
   }
-  apply(choice);
+  apply(preview ?? choice);
   for (const l of listeners) l();
+}
+
+export function setHeaderColorSource(source: (mode: 'light' | 'dark') => string | null): void {
+  headerSource = source;
+}
+
+/** Re-applies the current choice (after the custom colors change). */
+export function refreshTheme(): void {
+  apply(preview ?? current);
+}
+
+/** Shows `mode` until called again with null, without changing the saved choice. */
+export function previewMode(mode: 'light' | 'dark' | null): void {
+  preview = mode;
+  apply(preview ?? current);
+}
+
+/** The mode on screen now: the choice, or what the system asks for. */
+export function shownMode(): 'light' | 'dark' {
+  if (preview) return preview;
+  if (current !== 'system') return current;
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
 export function useTheme(): ThemeChoice {

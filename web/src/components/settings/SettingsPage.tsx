@@ -17,12 +17,14 @@ import { useIsAdmin, useMe, useUsers } from '../../api/me';
 import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSaveTeams, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
 import { playSound, setSound, useSound, type SoundChoice } from '../../lib/sound';
+import { useCustomTheme } from '../../lib/customTheme';
 import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
 import { todayLocal } from '../../lib/time';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { RequestTypesEditor } from './RequestTypesEditor';
+import { ThemeCustomizer } from './ThemeCustomizer';
 import { NotificationsSection } from './NotificationsSection';
 import { PeopleSection } from './PeopleSection';
 import { ResolutionReasonsSection } from './ResolutionReasonsSection';
@@ -72,6 +74,9 @@ export function AppearanceSection() {
   const theme = useTheme();
   const sound = useSound();
   const bell = useBellShown();
+  const custom = useCustomTheme();
+  const [customizing, setCustomizing] = useState(false);
+  const customized = (['dark', 'light'] as const).filter((m) => Object.keys(custom[m].colors).length > 0 || custom[m].radius !== 'default');
   const sounds: [SoundChoice, string][] = [
     ['off', 'Off'],
     ['chime', 'Chime'],
@@ -92,6 +97,17 @@ export function AppearanceSection() {
         ))}
       </div>
       <p className="field-help">Saved on this device only. System follows your phone or computer’s light/dark setting.</p>
+      <div className="theme-open-row">
+        <button type="button" className="btn" onClick={() => setCustomizing(true)}>
+          <Palette size={14} aria-hidden /> Customize colors…
+        </button>
+        <span className="field-help">
+          {customized.length === 0
+            ? 'Presets or your own colors for dark and light.'
+            : `Custom colors in ${customized.map((m) => (m === 'dark' ? 'Dark' : 'Light')).join(' and ')}.`}
+        </span>
+      </div>
+      {customizing && <ThemeCustomizer onClose={() => setCustomizing(false)} />}
       {bell && (
         <>
           <span className="field-label sound-label">Sound for new notifications</span>

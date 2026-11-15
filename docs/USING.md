@@ -235,6 +235,12 @@ the rest is for admins.
 
 - **Appearance:** Light, Dark or System, and the bell's sound (off, chime or ping) wherever there's a bell. These are
   saved per device, so the phone can follow the system while the desktop stays dark, and the work laptop can stay quiet.
+  **Customize colors…** opens the theme editor: pick a preset (Belltower, Slate, Ember, Forest, Orchid, Glacier,
+  Parchment, High contrast), or set any of 14 colors (background, top bar, columns, cards, menus, borders, three text
+  colors and five accents) by picker, `#hex` or `rgb(r, g, b)`, plus the corner style. Dark and Light each have their
+  own colors; while the editor is open the page shows the mode you're editing. Hover and text shades of the accents
+  are worked out for you and kept readable, and the editor warns when text drops below a 4.5:1 contrast. Each color
+  has its own reset, and **Reset Dark/Light** undoes a whole mode. Custom colors are saved on that device only.
 - **General:** [Teams](#teams), the ticket number format, the app's address (for links in notifications), the Claude
   model, and where blocked cards go.
 - **Resolution reasons:** the list offered on Mark done. The first one is the default.

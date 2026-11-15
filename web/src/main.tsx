@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { installGlobalKeyboard } from './lib/keyboard';
+import { installCustomTheme } from './lib/customTheme';
 import { installSound } from './lib/sound';
 import { installStaleBundleReload } from './lib/staleBundle';
 import { installTheme } from './lib/theme';
@@ -19,6 +20,7 @@ import './styles/intake.css';
 import './styles/notifications.css';
 
 installTheme();
+installCustomTheme();
 installStaleBundleReload();
 installGlobalKeyboard();
 installSound();
