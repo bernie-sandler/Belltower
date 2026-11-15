@@ -20,7 +20,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { useCallback, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { completionBlocked, sortedColumns, useBoard } from '../../api/board';
 import { useArchiveCard } from '../../api/cardParts';
 import { useCard, useDeleteCard, useMoveCard, useRestoreCard } from '../../api/cards';
@@ -155,6 +155,24 @@ export function CardDetailModal({ cardId, onClose }: Props) {
 }
 
 /** Watch / Unwatch: new notes, moves and assignee changes on a watched card notify you. */
+/**
+ * Publishes the pinned header's height as `--card-header-h` on the card, so the sidebar can stick
+ * just below it while the card scrolls (the header grows when a long title wraps).
+ */
+function useStickyHeaderHeight(container: RefObject<HTMLElement | null>, header: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const box = container.current;
+    const head = header.current;
+    if (!box || !head) return;
+    const update = () => box.style.setProperty('--card-header-h', `${head.offsetHeight}px`);
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(update);
+    ro.observe(head);
+    return () => ro.disconnect();
+  }, [container, header]);
+}
+
 function WatchButton({ card }: { card: CardDetailType }) {
   const watch = useWatchCard(card.id);
   const watching = watch.isPending && watch.variables !== undefined ? watch.variables : card.watching;
@@ -224,6 +242,9 @@ function CardDetailBody({
   const uploader = useAttachmentUploader(card.id, !deleted);
   usePasteToAttach(uploader.upload, !deleted);
   const drop = useFileDrop(uploader.upload, !deleted);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  useStickyHeaderHeight(detailRef, headerRef);
 
   function doDelete() {
     deleteCard.mutate(card.id, {
@@ -239,14 +260,14 @@ function CardDetailBody({
   }
 
   return (
-    <div className={cls('card-detail', drop.over && 'is-drop-target')} {...drop.props}>
+    <div ref={detailRef} className={cls('card-detail', drop.over && 'is-drop-target')} {...drop.props}>
       {drop.over && (
         <div className="drop-overlay" aria-hidden>
           <Upload size={28} /> Drop files to attach
         </div>
       )}
       {uploader.input}
-      <header className="card-header">
+      <header ref={headerRef} className="card-header">
         <div className="card-header-main">
           <TitleEditor card={card} titleId={titleId} readOnly={deleted} onDirtyChange={onTitleDirty} />
           <p className="card-location">

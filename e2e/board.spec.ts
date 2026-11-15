@@ -120,3 +120,19 @@ test('a checklist item cycles ✓ ✗ ~ and only the mark it stops on is recorde
   await expect(badge).toHaveClass(/\bis-unverified\b/);
   await expect(badge).toHaveAttribute('title', 'Checklist: 0/1, 1 unverified');
 });
+
+test('the card sidebar stays in view while a long card scrolls', async ({ page, api }) => {
+  const description = Array.from({ length: 80 }, (_, i) => `Line ${i + 1} of a long description.`).join('\n\n');
+  const card = await api.createCard({ title: unique('Long card'), description });
+  await page.goto(`/cards/${card.id}`);
+  const panel = page.locator('.modal-card .modal-panel');
+  const logWork = page.getByRole('complementary', { name: 'Card actions' }).getByRole('button', { name: 'Log work' });
+  await expect(logWork).toBeInViewport();
+
+  await panel.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  await expect(page.locator('.card-footnote')).toBeInViewport();
+  await expect(logWork).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'Delete' })).toBeInViewport();
+  await logWork.click();
+  await expect(page.getByPlaceholder(/Log work/)).toBeFocused();
+});
