@@ -19,6 +19,7 @@ import { copyText } from '../../lib/clipboard';
 import { playSound, setSound, useSound, type SoundChoice } from '../../lib/sound';
 import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
 import { todayLocal } from '../../lib/time';
+import { setWhatsNewEnabled, useWhatsNewEnabled } from '../../lib/whatsNew';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
@@ -72,6 +73,7 @@ export function AppearanceSection() {
   const theme = useTheme();
   const sound = useSound();
   const bell = useBellShown();
+  const whatsNew = useWhatsNewEnabled();
   const sounds: [SoundChoice, string][] = [
     ['off', 'Off'],
     ['chime', 'Chime'],
@@ -92,6 +94,10 @@ export function AppearanceSection() {
         ))}
       </div>
       <p className="field-help">Saved on this device only. System follows your phone or computer’s light/dark setting.</p>
+      <label className="checkbox">
+        <input type="checkbox" checked={whatsNew} onChange={(e) => setWhatsNewEnabled(e.target.checked)} />
+        <span>Show what’s new after an update</span>
+      </label>
       {bell && (
         <>
           <span className="field-label sound-label">Sound for new notifications</span>

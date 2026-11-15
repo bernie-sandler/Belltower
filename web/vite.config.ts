@@ -1,13 +1,31 @@
 /// <reference types="vitest/config" />
 import { defineConfig, loadEnv, type Plugin, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { latestChangelogSection } from './src/lib/changelogSection';
 
 // In dev, the Fastify server runs on :8080 and Vite proxies API calls to it.
 const backend = process.env.TT_BACKEND ?? 'http://127.0.0.1:8080';
 
+/** `virtual:latest-changelog`: the newest CHANGELOG.md section, for the "What's new" dialog. */
+function latestChangelogPlugin(): Plugin {
+  const id = 'virtual:latest-changelog';
+  const resolved = `\0${id}`;
+  const file = fileURLToPath(new URL('../CHANGELOG.md', import.meta.url));
+  return {
+    name: 'belltower-latest-changelog',
+    resolveId: (source) => (source === id ? resolved : null),
+    load(loadId) {
+      if (loadId !== resolved) return null;
+      this.addWatchFile(file);
+      return `export default ${JSON.stringify(latestChangelogSection(readFileSync(file, 'utf8')))};`;
+    },
+  };
+}
+
 const config: UserConfig = {
-  plugins: [react()],
+  plugins: [react(), latestChangelogPlugin()],
   server: {
     port: 5173,
     proxy: {
