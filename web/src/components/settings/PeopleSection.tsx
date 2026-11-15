@@ -1,18 +1,18 @@
 // Settings → People (admins): everyone who can sign in. Add someone with a temporary password,
 // change their display name or role, restrict a member to some tags, deactivate or re-enable them,
-// and reset their password.
-// Controls that could only fail are hidden: the owner stays an active admin, nobody deactivates
-// themselves or resets their own password here (that's under Account), and the last active admin
-// stays one.
+// reset their password, and delete them for good (only their name stays, for history).
+// Controls that could only fail are hidden: the owner stays an active admin, nobody deactivates or
+// deletes themselves or resets their own password here (that's under Account), and the last active
+// admin stays one.
 
 import { CreateUserBody, PASSWORD_MIN_LENGTH, type MeResponse, type UpdateUserResponse, type UserInfo, type UserRole } from '@tt/shared';
-import { Dices, Eye, EyeOff, KeyRound, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
+import { Dices, Eye, EyeOff, KeyRound, Trash2, UserCheck, UserPlus, Users, UserX } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 import { useBoard } from '../../api/board';
 import { useTeams } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { useMe, useUsers } from '../../api/me';
-import { peopleErrorMessage, useCreateUser, useUpdateUser } from '../../api/people';
+import { peopleErrorMessage, useCreateUser, useDeleteUser, useUpdateUser } from '../../api/people';
 import { cls } from '../../lib/cls';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -22,7 +22,9 @@ import { Section } from './SettingsPage';
 const ROLE_LABEL: Record<UserRole, string> = { admin: 'Admin', member: 'Member' };
 
 export function PeopleSection() {
-  const { data: users, error, isPending, refetch } = useUsers();
+  const { data: everyone, error, isPending, refetch } = useUsers();
+  // Deleted people stay in the directory only so history can name them.
+  const users = everyone?.filter((u) => !u.deleted);
   const { data: me } = useMe();
   const [editing, setEditing] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -34,7 +36,8 @@ export function PeopleSection() {
     <Section icon={<Users size={16} aria-hidden />} title="People">
       <p className="muted">
         Admins run this install: people, settings and backups. Members do the board work and manage their own account and
-        tokens. People are deactivated rather than deleted, so the history keeps their names.
+        tokens. Deactivate someone to lock them out for now; delete them to remove their account for good. Either way the
+        history keeps their name.
       </p>
       {!teams && active > 1 && (
         <p className="notice people-teams-hint" role="note">
@@ -42,7 +45,7 @@ export function PeopleSection() {
         </p>
       )}
       {isPending && <Spinner label="Loading people…" />}
-      {!isPending && !users && (
+      {!isPending && !everyone && (
         <p className="muted">
           {errorMessage(error)}{' '}
           <button type="button" className="link-btn" onClick={() => void refetch()}>
@@ -149,10 +152,12 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // What can't succeed isn't offered (the server refuses it anyway).
   const roleLocked = user.isOwner || lastAdmin;
   const canDeactivate = !user.disabled && !user.isOwner && !self && !lastAdmin;
+  const canDelete = !user.isOwner && !self && !lastAdmin;
   const canReset = !user.isOwner && !self;
   // Tag restriction: members only (admins and the owner always see every ticket).
   const canRestrict = role === 'member' && !user.isOwner;
@@ -283,7 +288,7 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
       {user.isOwner && !self && <p className="muted small">Only the owner changes the owner’s password, under Account.</p>}
       {self && <p className="muted small">Your own password and tokens are under Account.</p>}
 
-      {(canDeactivate || user.disabled) && (
+      {(canDeactivate || user.disabled || canDelete) && (
         <div className="editor-actions">
           {user.disabled ? (
             <button
@@ -297,6 +302,11 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
           ) : (
             <button type="button" className="btn btn-sm btn-subtle" onClick={() => setConfirmDeactivate(true)}>
               <UserX size={14} aria-hidden /> Deactivate
+            </button>
+          )}
+          {canDelete && (
+            <button type="button" className="btn btn-sm btn-subtle" onClick={() => setConfirmDelete(true)}>
+              <Trash2 size={14} aria-hidden /> Delete…
             </button>
           )}
         </div>
@@ -324,7 +334,72 @@ function PersonEditor({ user, self, lastAdmin, onDone }: { user: UserInfo; self:
           }
         />
       )}
+
+      {confirmDelete && (
+        <DeletePersonDialog
+          user={user}
+          onCancel={() => setConfirmDelete(false)}
+          onDeleted={() => {
+            setConfirmDelete(false);
+            onDone();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Deleting for good: the admin types the username to confirm, since there's no undo. */
+function DeletePersonDialog({ user, onCancel, onDeleted }: { user: UserInfo; onCancel: () => void; onDeleted: () => void }) {
+  const del = useDeleteUser();
+  const [typed, setTyped] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  function confirm() {
+    if (typed !== user.username) return;
+    setError(null);
+    del.mutate(user.id, {
+      onSuccess: ({ unassigned }) => {
+        toast(
+          `Deleted ${user.displayName}.${unassigned ? ` ${unassigned} open card${unassigned === 1 ? ' is' : 's are'} unassigned now.` : ''}`,
+          { kind: 'success', durationMs: unassigned ? 5000 : 2500 },
+        );
+        onDeleted();
+      },
+      onError: (err) => setError(peopleErrorMessage(err)),
+    });
+  }
+
+  return (
+    <ConfirmDialog
+      title={`Delete ${user.displayName}?`}
+      message="This can’t be undone. Their sign-in, email, single sign-on link, notification settings and API tokens are removed, and the username is freed. Their name stays on past activity and done cards; their open cards go back to unassigned."
+      danger
+      confirmLabel="Delete for good"
+      busy={del.isPending}
+      confirmDisabled={typed !== user.username}
+      onCancel={onCancel}
+      onConfirm={confirm}
+    >
+      <label className="field">
+        <span className="field-label">
+          Type <code>{user.username}</code> to confirm
+        </span>
+        <input
+          className="input input-mono"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+        />
+      </label>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </ConfirmDialog>
   );
 }
 

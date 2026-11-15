@@ -8,11 +8,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { matchPeople, mentionQueryAt, MentionTextarea } from './MentionTextarea';
 
 const PEOPLE: UserRef[] = [
-  { id: 1, username: 'admin', displayName: 'Admin', role: 'admin', disabled: false },
-  { id: 2, username: 'jordan', displayName: 'Jordan Lee', role: 'member', disabled: false },
-  { id: 3, username: 'alex', displayName: 'Alex Chen', role: 'admin', disabled: false },
-  { id: 4, username: 'jo.old', displayName: 'Jo Former', role: 'member', disabled: true },
-  { id: 5, username: 'lee', displayName: 'Sam Lee', role: 'member', disabled: false },
+  { id: 1, username: 'admin', displayName: 'Admin', role: 'admin', disabled: false, deleted: false },
+  { id: 2, username: 'jordan', displayName: 'Jordan Lee', role: 'member', disabled: false, deleted: false },
+  { id: 3, username: 'alex', displayName: 'Alex Chen', role: 'admin', disabled: false, deleted: false },
+  { id: 4, username: 'jo.old', displayName: 'Jo Former', role: 'member', disabled: true, deleted: false },
+  { id: 5, username: 'lee', displayName: 'Sam Lee', role: 'member', disabled: false, deleted: false },
 ];
 
 describe('mentionQueryAt', () => {

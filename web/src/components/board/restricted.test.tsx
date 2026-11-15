@@ -12,6 +12,7 @@ const ME: MeResponse = {
   displayName: 'Sam',
   role: 'member',
   disabled: false,
+  deleted: false,
   isOwner: false,
   email: null,
   hasPassword: true,

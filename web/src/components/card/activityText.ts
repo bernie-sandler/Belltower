@@ -52,6 +52,11 @@ function humanize(type: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** A person's name in history, marked once their account was deleted (the name is all that's left). */
+export function historyName(name: string, deleted: boolean | undefined): string {
+  return deleted ? `${name} (deleted)` : name;
+}
+
 /**
  * Who did it, shown beside the entry: "Alice", "via API token “Kuma” (Alice)", and for a new card
  * how it came in: "submit page (Sam)", "card import", "recurring", "Alice via Add ticket". Null
@@ -60,7 +65,8 @@ function humanize(type: string): string {
  * before 1.5; tokens, the submit page, card import and recurring stay: "via API token “Kuma”".
  */
 export function activityActor(entry: ActivityEntry, { names = true }: { names?: boolean } = {}): string | null {
-  const person = names && entry.userId !== null ? str(entry.userName) : null;
+  const name = names && entry.userId !== null ? str(entry.userName) : null;
+  const person = name && historyName(name, entry.userDeleted);
   const token = entry.tokenId !== null ? `API token “${str(entry.tokenName) ?? '…'}”${person ? ` (${person})` : ''}` : null;
   // How a card arrived. A token's own name is already in `token`; a recurring run says so only
   // when no person started it ("Create now" is a person's).

@@ -26,6 +26,7 @@ const person = (id: number, username: string, displayName: string, role: 'admin'
   displayName,
   role,
   disabled: false,
+  deleted: false,
   isOwner: id === 1,
   email: null,
   hasPassword: true,

@@ -1,7 +1,7 @@
 // Assignees: who a card's assignee is (from the people directory), and "Take it".
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { BoardResponse, CardDetail, CardTile, UpdateCardBody, UserInfo } from '@tt/shared';
+import type { BoardResponse, CardDetail, CardTile, UpdateCardBody, UserInfo, UserRef } from '@tt/shared';
 import { useEffect } from 'react';
 import { toast } from '../lib/toast';
 import { applyCardDetail } from './cards';
@@ -23,7 +23,16 @@ export function reloadPeopleFor(qc: QueryClient, id: number): void {
   void qc.invalidateQueries({ queryKey: qk.users });
 }
 
-/** One person from the directory, or undefined while loading or unknown (then the directory reloads once). */
+/** " (deleted)" or " (deactivated)" after the name of someone who can't sign in any more, else "". */
+export function goneSuffix(person: Pick<UserRef, 'disabled' | 'deleted'> | undefined): string {
+  if (person?.deleted) return ' (deleted)';
+  return person?.disabled ? ' (deactivated)' : '';
+}
+
+/**
+ * One person from the directory, or undefined while loading or unknown (then the directory reloads
+ * once). Deleted people are still listed, so cards and history can name them.
+ */
 export function usePerson(id: number | null): UserInfo | undefined {
   const qc = useQueryClient();
   const q = useQuery({ ...usersQuery, select: (users) => (id === null ? undefined : users.find((u) => u.id === id)) });

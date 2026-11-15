@@ -17,6 +17,7 @@ import {
 import { Filter, Search, X } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
+import { goneSuffix } from '../../api/assignees';
 import { useTeams } from '../../api/config';
 import { useMe, useUsers } from '../../api/me';
 import { cls } from '../../lib/cls';
@@ -123,7 +124,7 @@ export function matchesFilter(tile: CardTile, f: BoardFilter, labelsById: Map<nu
 
 /**
  * The people offered in the Assignee group, besides "Me" and "Unassigned": everyone active, plus
- * deactivated people who still have cards on the board (so their cards can be found and handed on)
+ * deactivated or deleted people who still have cards on the board (so their cards can be found and handed on)
  * and anyone already in the filter (so a stale ?assignee=<id> can be switched off). Directory order.
  */
 export function assigneeChoices(
@@ -135,7 +136,7 @@ export function assigneeChoices(
   const inFilter = new Set(filter.assignees.filter((a) => /^\d+$/.test(a)).map(Number));
   const listed = (users ?? [])
     .filter((u) => (u.id !== meId || inFilter.has(u.id)) && (!u.disabled || assignedIds.has(u.id) || inFilter.has(u.id)))
-    .map((u) => ({ id: u.id, label: u.disabled ? `${u.displayName} (deactivated)` : u.displayName }));
+    .map((u) => ({ id: u.id, label: `${u.displayName}${goneSuffix(u)}` }));
   // Ids nobody in the directory has (a restore, or a hand-edited link), once it has loaded.
   const unknown = users ? [...inFilter].filter((id) => !users.some((u) => u.id === id)).map((id) => ({ id, label: `Unknown person (#${id})` })) : [];
   return [...listed, ...unknown];

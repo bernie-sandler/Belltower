@@ -16,7 +16,7 @@ import {
 } from '@tt/shared';
 import { CircleCheck, Clock, Flag, Grid3x3, OctagonAlert, UserRound, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { usePerson } from '../../api/assignees';
+import { goneSuffix, usePerson } from '../../api/assignees';
 import { useTeams } from '../../api/config';
 import { useUpdateCard, type CardPatch } from '../../api/cards';
 import { canSeeTags, useMe, useUsers } from '../../api/me';
@@ -98,7 +98,7 @@ export function CardFields({ card, readOnly }: { card: CardDetail; readOnly: boo
 
 /**
  * Who has the card: active people, "Unassigned", and an "Assign to me" shortcut. Someone who was
- * deactivated while assigned still shows (they can be replaced or removed, not picked again).
+ * deactivated (or deleted) while assigned still shows (they can be replaced or removed, not picked again).
  */
 function AssigneeField({ card, readOnly, onSave }: { card: CardDetail; readOnly: boolean; onSave: (p: CardPatch) => void }) {
   const me = useMe().data;
@@ -127,7 +127,7 @@ function AssigneeField({ card, readOnly, onSave }: { card: CardDetail; readOnly:
         ))}
         {current?.disabled && (
           <option value={current.id} disabled>
-            {current.displayName} (deactivated)
+            {`${current.displayName}${goneSuffix(current)}`}
           </option>
         )}
         {card.assigneeId !== null && !current && (

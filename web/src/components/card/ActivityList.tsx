@@ -21,7 +21,7 @@ import { formatDateTime, fromLocalInput, todayLocal, toLocalInput, useNow } from
 import { toast } from '../../lib/toast';
 import { Markdown } from '../common/Markdown';
 import { Spinner } from '../common/Status';
-import { activityActor, activityText } from './activityText';
+import { activityActor, activityText, historyName } from './activityText';
 import { MentionTextarea } from './MentionTextarea';
 
 type Filter = 'all' | 'worklog';
@@ -127,9 +127,9 @@ function mayChangeWorklog(entry: ActivityEntry, me: { id: number; role: string }
 /** Who did it, beside the time ("Alice", "via API token “Kuma” (Alice)", "submit page (Sam)"). `names`: people's (Teams on). */
 function ActivityBy({ entry, names }: { entry: ActivityEntry; names: boolean }) {
   const by = activityActor(entry, { names });
-  // Display names aren't unique; the username tells two Alexes apart.
+  // Display names aren't unique; the username tells two Alexes apart (a deleted person's is only a placeholder).
   return by ? (
-    <span className="activity-by" title={names && entry.userUsername ? `@${entry.userUsername}` : undefined}>
+    <span className="activity-by" title={names && entry.userUsername && !entry.userDeleted ? `@${entry.userUsername}` : undefined}>
       {by}
     </span>
   ) : null;
@@ -428,7 +428,7 @@ function RevisionList({ activityId, now, people, names }: { activityId: number; 
             {names && r.userName && (
               <>
                 {' by '}
-                <span title={r.userUsername ? `@${r.userUsername}` : undefined}>{r.userName}</span>
+                <span title={r.userUsername && !r.userDeleted ? `@${r.userUsername}` : undefined}>{historyName(r.userName, r.userDeleted)}</span>
               </>
             )}
           </p>
