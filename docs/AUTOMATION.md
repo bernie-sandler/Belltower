@@ -15,7 +15,7 @@ The exact rules are in [API-V1.md](API-V1.md); this page is the friendly version
 
 Go to **Account → Your tokens** (admins can also use **Settings → Automation**), give the token a name (say
 "Uptime Kuma"), and create it. The token acts as you: what it does shows in a card's history as "via API token"
-with your name, and it stops working while your account is deactivated.
+with your name, and it stops working while your account is deactivated (deleting your account revokes it).
 
 - **Copy it straight away.** It's shown once; the app only keeps a hash. It starts with `tt_`.
 - **Tick "Recoveries may mark the ticket done"** if this tool should close its own tickets when things recover.

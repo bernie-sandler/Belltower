@@ -101,8 +101,8 @@ test('Take it loses a race: someone else took it first', async ({ page, api }) =
     const after = await api.call<{ assigneeId: number | null }>('GET', `/api/cards/${card.id}`);
     expect(after.assigneeId).toBe(rival.id);
   } finally {
-    // People are never deleted; don't leave an active member behind in the shared database.
-    await api.call('PATCH', `/api/users/${rival.id}`, { disabled: true });
+    // Don't leave a member behind in the shared database.
+    await api.call('DELETE', `/api/users/${rival.id}`);
   }
 });
 

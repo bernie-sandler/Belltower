@@ -173,7 +173,7 @@ nothing personal is ever sent to the webhook, Gotify or the install's own ntfy t
   every channel either one is ticked for (a Discord ping for "New tickets nobody has" still comes).
 
 You're never told about what you did yourself, but something an API token of yours did does reach you. Deactivated
-people get nothing.
+and deleted people get nothing.
 
 **Where it goes.** Each event has three boxes: **In the app** (the bell), **Discord** and **ntfy**. The bell is on by
 default for the first three events, and for submit-page tickets if you're an admin; everything else is opt-in. Until you

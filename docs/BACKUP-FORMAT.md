@@ -73,7 +73,7 @@ definitions, with every constraint, are the migrations in
 | Table | What it holds | Notable columns |
 |---|---|---|
 | `settings` | App settings, one JSON or text value per key | `key`, `value` |
-| `users` | People: admins and members (deactivated, never deleted). **No passwords** | `username`, `display_name`, `email`, `role` (`admin`, `member`), `is_owner`, `oidc_issuer`, `oidc_subject` (a single sign-on link; exported, but restore takes links from the server you restore into), `discord_user_id`, `ntfy_topic`, `notify_prefs` (JSON), `disabled_at`, `tag_scoped` (1 = restricted to the tags in `user_labels`; restore takes it from the server you restore into) |
+| `users` | People: admins and members. **No passwords**. A deleted person's row stays (history points at it) with only the display name, `username` `deleted-<id>` and `deleted_at` set | `username`, `display_name`, `email`, `role` (`admin`, `member`), `is_owner`, `oidc_issuer`, `oidc_subject` (a single sign-on link; exported, but restore takes links from the server you restore into), `discord_user_id`, `ntfy_topic`, `notify_prefs` (JSON), `disabled_at`, `tag_scoped` (1 = restricted to the tags in `user_labels`; restore takes it from the server you restore into), `deleted_at` (when they were deleted) |
 | `columns` | Board columns | `name`, `position`, `role` (`triage`, `done` or null) |
 | `labels` | Labels | `name`, `color` (`#rrggbb`), `position` |
 | `recurring_templates` | Recurring maintenance | `title`, `interval_unit`, `interval_count`, `next_run_date`, `checklist_template` (JSON), `enabled` |
@@ -113,7 +113,9 @@ links), `app_tz_at_seed`, `seeded` and `request_types_seeded`.
   matched to the backup's by username and keeps their own password, role, deactivation, single sign-on link and tag restriction (its tags are matched to the
   backup's by name; a tag the backup doesn't have is dropped, and a restricted person left with none sees nothing), its
   people the backup doesn't have are added, and everyone stays signed in. People only in the backup come back without a
-  password or single sign-on link until an admin gives them a new password. A `password_hash`, `is_owner`,
+  password or single sign-on link until an admin gives them a new password; that includes someone deleted since the
+  backup was taken. What's left of people deleted on the server you restore into isn't added unless the backup has it
+  too. A `password_hash`, `is_owner`,
   `oidc_issuer` or `oidc_subject` in a backup (say, a hand-edited one) is ignored on restore.
 - **Single sign-on settings** (`oidc_settings`, client secret included). They belong to the install: a restore keeps
   the live install's, and an `oidc_settings` row in a backup (say, a hand-edited one) is ignored.
@@ -139,3 +141,4 @@ tokens and API token hashes, keep exports somewhere private.
 | 9 | 1.5 | `users` (people; exported without passwords), `card_watchers`, `cards.assignee_id`, `activity.user_id` and `token_id`, `activity_revisions.user_id`, `api_tokens.user_id`. Backups from older versions have no people: the server you restore into adds its own, and their API tokens go to its owner |
 | 10 | 1.5 | `request_type_labels` (the labels every ticket of a request type gets; from 1.5.0-rc.4). From older backups, a type's "always add" label (`type_label_id`) moves here; the tags submitters could pick (`tag_label_ids`) are dropped |
 | 11 | 1.5 | `users.tag_scoped`, `user_labels` (members restricted to some tags; from 1.5.0-rc.4) |
+| 12 | 1.5 | `users.deleted_at` (deleted people; from 1.5.0-rc.5) |

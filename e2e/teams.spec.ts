@@ -188,8 +188,8 @@ test('the Teams switch brings the team features back, and asks before hiding the
     await expect(page.getByRole('link', { name: 'Mine' })).toHaveCount(0);
     expect((await api.call<{ teams: boolean }>('GET', '/api/config')).teams).toBe(false);
   } finally {
-    // People are never deleted; don't leave an active member behind in the shared database.
-    await api.call('PATCH', `/api/users/${other.id}`, { disabled: true });
+    // Don't leave a member behind in the shared database.
+    await api.call('DELETE', `/api/users/${other.id}`);
     await api.setTeams(teamsBefore);
   }
 });
