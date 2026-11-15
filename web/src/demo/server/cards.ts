@@ -236,6 +236,24 @@ function checkAssignee(ctx: Ctx, userId: number): UserRow {
   return user;
 }
 
+/**
+ * A deleted person's open cards (not done, archived or in the Trash) go back to nobody, logged like
+ * any unassign. Done cards keep them as the record of who did the work. Returns how many changed.
+ */
+export function unassignOpenCards(ctx: Ctx, userId: number): number {
+  const cards = ctx.s.cards
+    .filter((c) => c.assigneeId === userId && !c.completedAt && !c.archivedAt && !c.deletedAt)
+    .sort((a, b) => a.id - b.id);
+  const now = nowIso(ctx);
+  for (const c of cards) {
+    c.assigneeId = null;
+    c.version++;
+    c.updatedAt = now;
+    recordAssigned(ctx, c.id, userId, null);
+  }
+  return cards.length;
+}
+
 function recordAssigned(ctx: Ctx, cardId: number, from: number | null, to: UserRow | null): void {
   const fromName = from !== null ? (ctx.s.users.find((u) => u.id === from)?.displayName ?? null) : null;
   const activityId = recordEvent(ctx, cardId, 'assigned', { from, to: to?.id ?? null, fromName, toName: to?.displayName ?? null });

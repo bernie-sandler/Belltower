@@ -22,6 +22,7 @@ import { seedDemo } from './seed';
 import { DEMO_SCHEMA_VERSION } from './server/db';
 import { DEMO_UNAVAILABLE_CODE } from './server/errors';
 import { dispatch, type DemoResponse, type Method } from './server/routes';
+import { deleteUser } from './server/users';
 import { DemoStore, memoryStorage, STORAGE_KEY, STORAGE_PREFIX } from './store';
 
 const NOW = new Date('2026-11-07T18:00:00.000Z');
@@ -397,6 +398,101 @@ describe('assignees', () => {
     expect([refused.status, (refused.body as { error: string }).error]).toEqual([400, 'assignee_disabled']);
     expect((call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: 999, expectedVersion: taken.version }).body as { error: string }).error).toBe('invalid_assignee');
     expect(ok<CardDetail>(call(store, 'PATCH', `/api/cards/${card.id}`, { assigneeId: null, expectedVersion: taken.version })).assigneeId).toBeNull();
+  });
+});
+
+describe('deleting people', () => {
+  const asUser = (store: DemoStore, username: string) =>
+    store.transaction((ctx) => {
+      ctx.s.session.userId = ctx.s.users.find((u) => u.username === username)!.id;
+    }, true);
+  const errorOf = (res: DemoResponse) => [res.status, (res.body as { error: string }).error];
+
+  it('refuses like the server: missing or already deleted, the owner, yourself, the last admin, members', () => {
+    const store = makeStore();
+    const s = store.snapshot();
+    const owner = s.users.find((u) => u.isOwner)!;
+    const alex = s.users.find((u) => u.username === 'alex')!;
+    const jordan = s.users.find((u) => u.username === 'jordan')!;
+    expect(errorOf(call(store, 'DELETE', '/api/users/999'))).toEqual([404, 'not_found']);
+    expect(errorOf(call(store, 'DELETE', `/api/users/${owner.id}`))).toEqual([409, 'owner_protected']);
+    asUser(store, 'alex');
+    expect(errorOf(call(store, 'DELETE', `/api/users/${alex.id}`))).toEqual([409, 'cannot_delete_self']);
+    asUser(store, 'jordan');
+    expect(call(store, 'DELETE', `/api/users/${alex.id}`).status).toBe(403);
+    asUser(store, 'admin');
+    ok(call(store, 'DELETE', `/api/users/${jordan.id}`));
+    expect(errorOf(call(store, 'DELETE', `/api/users/${jordan.id}`))).toEqual([404, 'not_found']);
+    expect(errorOf(call(store, 'PATCH', `/api/users/${jordan.id}`, { displayName: 'Back again' }))).toEqual([404, 'not_found']);
+    // The owner is always an active admin, so this only shows with the owner out of the picture.
+    expect(() =>
+      store.transaction((ctx) => {
+        ctx.s.users.find((u) => u.isOwner)!.disabledAt = NOW.toISOString();
+        deleteUser({ ...ctx, userId: null }, alex.id);
+      }, false),
+    ).toThrow(expect.objectContaining({ code: 'last_admin' }));
+  });
+
+  it('wipes everything but the name, frees the username, unassigns open cards and names them in history', () => {
+    const store = makeStore();
+    const users = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
+    const jordan = users.find((u) => u.username === 'jordan')!;
+    const open = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Printer jammed', assigneeId: jordan.id }));
+    const done = ok<CardDetail>(call(store, 'POST', '/api/cards', { title: 'Printer fixed', assigneeId: jordan.id }));
+    ok(call(store, 'POST', `/api/cards/${done.id}/complete`, {}));
+    asUser(store, 'jordan');
+    const note = ok<ActivityEntry>(call(store, 'POST', `/api/cards/${open.id}/worklog`, { bodyMd: 'Jordan’s note' }));
+    ok(call(store, 'PATCH', `/api/activity/${note.id}`, { bodyMd: 'Jordan’s note, edited' }));
+    ok(call(store, 'PUT', `/api/cards/${done.id}/watch`));
+    asUser(store, 'admin');
+    // Someone already holds the name it would get: the next one is used.
+    ok(call(store, 'POST', '/api/users', { username: `deleted-${jordan.id}`, displayName: 'Squatter', password: 'long enough password' }));
+    const before = store.snapshot();
+    const openIds = before.cards
+      .filter((c) => c.assigneeId === jordan.id && !c.completedAt && !c.archivedAt && !c.deletedAt)
+      .map((c) => c.id);
+    expect(openIds).toContain(open.id);
+    expect(before.notifications.some((n) => n.userId === jordan.id)).toBe(true);
+
+    expect(ok<{ unassigned: number }>(call(store, 'DELETE', `/api/users/${jordan.id}`))).toEqual({ unassigned: openIds.length });
+
+    const s = store.snapshot();
+    expect(s.users.find((u) => u.id === jordan.id)).toMatchObject({
+      username: `deleted-${jordan.id}-2`,
+      displayName: 'Jordan Lee',
+      email: null,
+      role: 'member',
+      hasPassword: false,
+      discordUserId: null,
+      ntfyTopic: null,
+      notifyPrefs: {},
+      tagScope: null,
+      disabledAt: NOW.toISOString(),
+      deletedAt: NOW.toISOString(),
+    });
+    expect(s.watchers.some((w) => w.userId === jordan.id)).toBe(false);
+    expect(s.notifications.some((n) => n.userId === jordan.id)).toBe(false);
+    // The directory lists them last, marked; the username can be taken again.
+    const after = ok<UserInfo[]>(call(store, 'GET', '/api/users'));
+    expect(after.at(-1)).toMatchObject({ id: jordan.id, deleted: true, disabled: true, email: null });
+    expect(call(store, 'POST', '/api/users', { username: 'jordan', displayName: 'New Jordan', password: 'long enough password' }).status).toBe(201);
+
+    // Open cards back to nobody, logged as an unassign; the done card keeps them.
+    for (const cardId of openIds) {
+      const card = s.cards.find((c) => c.id === cardId)!;
+      expect(card.assigneeId).toBeNull();
+      expect(card.version).toBe(before.cards.find((c) => c.id === cardId)!.version + 1);
+    }
+    expect(s.cards.find((c) => c.id === done.id)!.assigneeId).toBe(jordan.id);
+    const history = ok<ActivityEntry[]>(call(store, 'GET', `/api/cards/${open.id}/activity`));
+    expect(history.find((e) => e.type === 'assigned')).toMatchObject({
+      data: { from: jordan.id, to: null, fromName: 'Jordan Lee', toName: null },
+      userName: 'Admin',
+    });
+    expect(history.find((e) => e.type === 'assigned')).not.toHaveProperty('userDeleted');
+    expect(history.find((e) => e.id === note.id)).toMatchObject({ userName: 'Jordan Lee', userDeleted: true });
+    const revisions = ok<{ userName: string | null; userDeleted?: boolean }[]>(call(store, 'GET', `/api/activity/${note.id}/revisions`));
+    expect(revisions).toEqual([expect.objectContaining({ userName: 'Jordan Lee', userDeleted: true })]);
   });
 });
 
