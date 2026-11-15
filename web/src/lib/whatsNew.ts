@@ -1,7 +1,8 @@
 // "What's new" after an update, per device (localStorage):
 //  - `tt:whats-new` = 'off' turns the dialog off (Settings → Appearance); on by default.
-//  - `tt:last-seen-version` is the Belltower version this device last opened. The first visit
-//    only records it: a fresh install has nothing "new" to show.
+//  - `tt:last-seen-version` is the Belltower version this device last opened. A device without one
+//    has never opened a version with this dialog: it shows the notes only if the install was
+//    upgraded (the server's `upgradedFrom`), so a fresh install has nothing "new" to show.
 
 import { useSyncExternalStore } from 'react';
 
@@ -56,17 +57,28 @@ export function markVersionSeen(version: string): void {
   }
 }
 
+/** "1.6.0-rc.2" and "1.6.0 (demo)" → "1.6.0": the version whose CHANGELOG section applies. */
+export function releaseOf(appVersion: string): string {
+  return appVersion.replace(/ \(demo\)$/, '').replace(/-rc\.\d+$/, '');
+}
+
 /**
- * Whether to show the dialog for `appVersion` (the running server's). Never for a dev build, on
- * the first visit, for a version already seen, when turned off, or with no notes to show.
+ * Whether to show the dialog for `appVersion` (the running server's). Never for a dev build, for a
+ * version already seen, when turned off, or when the bundled notes are for another version (a
+ * release whose CHANGELOG section isn't written yet). On a device with no version of its own, only
+ * when the install was upgraded: a fresh install has nothing new to tell.
  */
 export function shouldShowWhatsNew(opts: {
   appVersion: string;
   lastSeen: string | null;
+  upgradedFrom: string | null;
   enabled: boolean;
-  hasNotes: boolean;
+  /** The version of the bundled CHANGELOG section, or null with none. */
+  notesVersion: string | null;
 }): boolean {
-  const { appVersion, lastSeen, enabled: on, hasNotes } = opts;
-  if (appVersion === 'dev' || lastSeen === null || lastSeen === appVersion) return false;
-  return on && hasNotes;
+  const { appVersion, lastSeen, upgradedFrom, enabled: on, notesVersion } = opts;
+  if (appVersion === 'dev' || lastSeen === appVersion) return false;
+  if (lastSeen === null && upgradedFrom === null) return false;
+  if (notesVersion === null || (notesVersion !== appVersion && notesVersion !== releaseOf(appVersion))) return false;
+  return on;
 }

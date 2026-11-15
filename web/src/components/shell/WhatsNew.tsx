@@ -9,10 +9,16 @@ import { markVersionSeen, readLastSeenVersion, setWhatsNewEnabled, shouldShowWha
  * once per device per version. Decided once per page load, so a server update while the page is
  * open waits for the reload that UpdateBanner offers.
  */
-export function WhatsNew({ appVersion }: { appVersion: string }) {
+export function WhatsNew({ appVersion, upgradedFrom }: { appVersion: string; upgradedFrom: string | null }) {
   const enabled = useWhatsNewEnabled();
   const [open, setOpen] = useState(() => {
-    const show = shouldShowWhatsNew({ appVersion, lastSeen: readLastSeenVersion(), enabled, hasNotes: Boolean(latest?.body) });
+    const show = shouldShowWhatsNew({
+      appVersion,
+      lastSeen: readLastSeenVersion(),
+      upgradedFrom,
+      enabled,
+      notesVersion: latest?.body ? latest.version : null,
+    });
     if (!show && appVersion !== 'dev') markVersionSeen(appVersion);
     return show;
   });

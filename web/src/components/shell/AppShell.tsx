@@ -79,7 +79,7 @@ export function AppShell() {
       <div className="app">
         <TopBar />
         <UpdateBanner />
-        <WhatsNew appVersion={config.data.appVersion} />
+        <WhatsNew appVersion={config.data.appVersion} upgradedFrom={config.data.upgradedFrom ?? null} />
         <main className="app-main">
           <AppRoutes
             aiEnabled={aiEnabled}

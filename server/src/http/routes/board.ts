@@ -34,6 +34,7 @@ import {
 import { createColumn, deleteColumn, renameColumn, reorderColumns, setBlockedColumn } from '../../services/columns';
 import { createLabel, deleteLabel, reorderLabels, updateLabel } from '../../services/labels';
 import { getSubmitSettings, teamsEnabled } from '../../services/settings';
+import { upgradedFrom } from '../../services/appVersion';
 import { statusLink } from '../../services/status';
 import { idParam, parse } from '../util';
 
@@ -53,6 +54,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   app.get('/api/config', async (req): Promise<AppConfig> => ({
     appVersion: config.appVersion,
+    upgradedFrom: upgradedFrom(req.ctx),
     timeZone: config.timeZone,
     maxUploadBytes: config.maxUploadBytes,
     // APP_PASSWORD only manages the owner's password.

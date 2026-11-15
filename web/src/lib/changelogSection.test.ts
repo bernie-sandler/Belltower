@@ -36,6 +36,16 @@ describe('latestChangelogSection', () => {
     expect(s).toEqual({ version: '2.0.0-rc.1', title: '', body: '- One' });
   });
 
+  it('joins hard-wrapped lines but keeps list items and paragraphs apart', () => {
+    const s = latestChangelogSection('## 1.0.0: T\n\n- **One.** Starts here\n  and wraps.\n- Two\n\nAfter the list,\nwrapped too.\n')!;
+    expect(s.body).toBe('- **One.** Starts here and wraps.\n- Two\n\nAfter the list, wrapped too.');
+  });
+
+  it('leaves quotes, tables and code fences on their own lines', () => {
+    const body = 'Intro:\n> quoted\n| a | b |\n| - | - |\n```\ncode\n```';
+    expect(latestChangelogSection(`## 1.0.0: T\n\n${body}\n`)!.body).toBe(body);
+  });
+
   it('returns null without a release section', () => {
     expect(latestChangelogSection('# Changelog\n\nNothing yet.')).toBeNull();
   });

@@ -69,7 +69,9 @@ export const BACKUP_TABLES = [
  * carried over from the live install on restore. (password_hash is 1.4's password, gone since schema 9.)
  * oidc_settings is single sign-on, client secret included.
  */
-const PRIVATE_SETTINGS = new Set(['password_hash', 'password_source', 'oidc_settings']);
+// The install's own facts, not its data: how the owner signs in, and which version it runs
+// (services/appVersion.ts). Never exported; a restore keeps the live install's.
+const PRIVATE_SETTINGS = new Set(['password_hash', 'password_source', 'oidc_settings', 'app_version', 'upgraded_from']);
 
 /** Sort order per table for a stable export. */
 const EXPORT_ORDER: Partial<Record<(typeof BACKUP_TABLES)[number], string>> = {

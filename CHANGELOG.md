@@ -4,6 +4,22 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.6.0: Theme editor
+
+- **Theme Customizer.** A new **Theme Customizer** in the main menu sets how Belltower looks on each device. Pick
+  System, Light or Dark, start from a preset (Belltower, Slate, Ember, Forest, Orchid, Glacier, Parchment or High
+  contrast), then fine-tune any of 14 colors (background, top bar, columns, cards, menus, borders, three text colors
+  and five accents) with a color picker, a hex code or `rgb()` values, plus sharp, default or round corners. Dark and
+  Light each keep their own colors, and the page shows the mode you're editing while the customizer is open. Hover
+  and text shades follow your accents and stay readable, the customizer warns when text gets hard to read, and every
+  color has its own reset.
+- **What's new after an update.** The first time a device opens Belltower after an upgrade, it shows that release's
+  notes, like these, once. Turn it off under **Settings → About**. A fresh install doesn't show it.
+- **Moved.** Settings → Appearance is gone: light and dark are in the Theme Customizer, and the notification sound is
+  under **Account → Notification sound**.
+- **Upgrading.** Nothing to do: no database, backup or automation API changes. Custom colors are saved per device in
+  the browser, not in backups.
+
 ## 1.5.1: Buttons that stay put
 
 - **Card buttons stay in view.** On a computer, a card's **Add to card** and **Actions** buttons now stay pinned just
