@@ -53,6 +53,7 @@ Applied database migration(s): 6
 | `1` or `1.2` | The newest release within 1.x or 1.2.x. |
 | `1.2.3` | Exactly that version, until you change it. |
 | `rc` | The newest release candidate. It only moves when there's a new one, so it can fall behind `latest`. |
+| `dev` | The next version while it's being built, updated with every change. Less tested than `rc`: try it on a copy of your data. |
 
 Images are at `ghcr.io/bernie-sandler/belltower` and go back to 1.2.1. The image is public, so pulling it doesn't need
 a `docker login`.

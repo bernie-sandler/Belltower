@@ -135,6 +135,10 @@ then updating `docker-compose.yml`, the docs and `unraid/belltower.xml`.
 | `v1.3.0` | `:1.3.0`, `:1.3`, `:1`, `:latest` | release |
 | `v1.3.0-rc.1` | `:1.3.0-rc.1`, `:rc` | pre-release |
 
+Every push to the `dev` branch also publishes `:dev` (`.github/workflows/dev-image.yml`, after the full CI), with no
+GitHub Release. It reports the version in `package.json`, so set the next version on `dev` when work on it starts. A
+database that ran a `:dev` image keeps that build's migrations, so a migration counts as shipped once it reaches `dev`.
+
 Before tagging:
 1. Set the version (without any `-rc.N` suffix) in all four `package.json` files (root, `shared`, `server`, `web`)
    and run `npm install --package-lock-only`. The workflow refuses a tag that doesn't match.
