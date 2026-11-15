@@ -73,7 +73,6 @@ export function AppearanceSection() {
   const theme = useTheme();
   const sound = useSound();
   const bell = useBellShown();
-  const whatsNew = useWhatsNewEnabled();
   const sounds: [SoundChoice, string][] = [
     ['off', 'Off'],
     ['chime', 'Chime'],
@@ -94,10 +93,6 @@ export function AppearanceSection() {
         ))}
       </div>
       <p className="field-help">Saved on this device only. System follows your phone or computer’s light/dark setting.</p>
-      <label className="checkbox">
-        <input type="checkbox" checked={whatsNew} onChange={(e) => setWhatsNewEnabled(e.target.checked)} />
-        <span>Show what’s new after an update</span>
-      </label>
       {bell && (
         <>
           <span className="field-label sound-label">Sound for new notifications</span>
@@ -460,8 +455,13 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
 function AboutSection() {
   const { data: config } = useConfig();
   const uploadMb = config ? Math.round(config.maxUploadBytes / (1024 * 1024)) : null;
+  const whatsNew = useWhatsNewEnabled();
   return (
     <Section icon={<Info size={16} aria-hidden />} title="About">
+      <label className="checkbox">
+        <input type="checkbox" checked={whatsNew} onChange={(e) => setWhatsNewEnabled(e.target.checked)} />
+        <span>Show what’s new after an update (this device)</span>
+      </label>
       <p className="muted small">
         <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'} · uploads up to{' '}
         {uploadMb ?? '…'} MB

@@ -233,10 +233,8 @@ working while your account is deactivated.
 **Menu → Settings** holds everything that isn't about one card. Members only see Appearance and the version;
 the rest is for admins.
 
-- **Appearance:** Light, Dark or System, the bell's sound (off, chime or ping) wherever there's a bell, and **Show
-  what's new after an update**. These are saved per device, so the phone can follow the system while the desktop stays
-  dark, and the work laptop can stay quiet. With "what's new" on (the default), the first time a device opens
-  Belltower after an upgrade it shows that release's notes once; a brand-new install shows nothing.
+- **Appearance:** Light, Dark or System, and the bell's sound (off, chime or ping) wherever there's a bell. These are
+  saved per device, so the phone can follow the system while the desktop stays dark, and the work laptop can stay quiet.
 - **General:** [Teams](#teams), the ticket number format, the app's address (for links in notifications), the Claude
   model, and where blocked cards go.
 - **Resolution reasons:** the list offered on Mark done. The first one is the default.
@@ -244,7 +242,9 @@ the rest is for admins.
 - **Submit page**, **Automation** tokens (everyone's, with whose each is) and
   **[Notifications](NOTIFICATIONS.md)** (Discord, ntfy, Gotify, webhook).
 - **[Single sign-on](SSO.md):** signing in through Authentik, Authelia or another OIDC provider.
-- The app's version. Your password and your own tokens are under **Account**.
+- **About:** the app's version and **Show what's new after an update** (per device, on by default: the first time a
+  device opens Belltower after an upgrade it shows that release's notes once; a brand-new install shows nothing). Your
+  password and your own tokens are under **Account**.
 
 ## Keyboard shortcuts
 
