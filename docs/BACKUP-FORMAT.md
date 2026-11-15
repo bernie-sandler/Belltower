@@ -121,6 +121,8 @@ links), `app_tz_at_seed`, `seeded` and `request_types_seeded`.
   `oidc_issuer` or `oidc_subject` in a backup (say, a hand-edited one) is ignored on restore.
 - **Single sign-on settings** (`oidc_settings`, client secret included). They belong to the install: a restore keeps
   the live install's, and an `oidc_settings` row in a backup (say, a hand-edited one) is ignored.
+- **The install's version record** (`app_version`, `upgraded_from`, from 1.6.0). It's about the install, not its
+  data: a restore keeps the live install's, and rows in a backup are ignored.
 - **Personal notifications** (`notifications`). They're each person's inbox, pruned as they age, not data worth
   restoring.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.

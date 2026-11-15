@@ -152,6 +152,11 @@ export type Actor =
 
 export interface AppConfig {
   appVersion: string;
+  /**
+   * The version this install was last upgraded from ("before 1.6.0" for an older one), or null when
+   * it has never been upgraded. The "What's new" dialog uses it on a device with no version of its own.
+   */
+  upgradedFrom?: string | null;
   /** IANA zone all dates/times are displayed and entered in, e.g. 'America/Chicago'. */
   timeZone: string;
   maxUploadBytes: number;

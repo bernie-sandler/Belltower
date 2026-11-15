@@ -422,6 +422,8 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
 
   'GET /api/config': ok((ctx) => ({
     appVersion: `${APP_VERSION} (demo)`,
+    // Each visitor's demo starts fresh in their browser: never an upgrade.
+    upgradedFrom: null,
     timeZone: ctx.tz,
     maxUploadBytes: MAX_UPLOAD_BYTES,
     passwordManagedByEnv: false,

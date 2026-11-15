@@ -12,6 +12,7 @@ import { prepareData } from './db/prepare';
 import { createLogger } from './logger';
 import type { Ctx } from './services/context';
 import { createClaudeDrafter } from './services/aiDraft';
+import { recordAppVersion } from './services/appVersion';
 import { backupBeforeMigrate, dailySnapshot } from './services/backup';
 import { pruneNotifications } from './services/notifications';
 import { Notifier } from './services/notify';
@@ -74,6 +75,7 @@ async function main(): Promise<void> {
   if (prepared.numbered) log.info(`Gave ticket numbers to ${prepared.numbered} existing card(s)`);
   if (prepared.reindexed !== null) log.info(`Rebuilt search index (${prepared.reindexed} cards)`);
   if (prepared.teams) log.info('Teams is on: this install already has several people (Settings → General → Teams)');
+  recordAppVersion(ctx, config.appVersion, prepared.seeded);
 
   const auth: AuthState = await bootstrapAuth(ctx, config.appPassword, log);
   const limiter = new LoginRateLimiter(systemClock);
