@@ -104,6 +104,22 @@
   gap: 8px;
 }
 
+/* Desktop: the buttons stay in view just under the pinned header while a long card scrolls. If
+   the window is too short for all of them, the sidebar scrolls on its own. */
+@media (min-width: 768px) {
+  .card-sidebar {
+    position: sticky;
+    top: calc(var(--card-header-h, 80px) + 8px);
+    align-self: start;
+    max-height: calc(100dvh - 96px - var(--card-header-h, 80px) - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Room for the 4px focus ring, which overflow would otherwise clip. */
+    margin: -4px;
+    padding: 4px;
+  }
+}
+
 .card-action {
   justify-content: flex-start;
 }
