@@ -4,6 +4,14 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.5.1: Buttons that stay put
+
+- **Card buttons stay in view.** On a computer, a card's **Add to card** and **Actions** buttons now stay pinned just
+  below its title while you scroll a long ticket, so logging work, moving, marking done or deleting never means
+  scrolling back to the top. If the window is too short for all of them, the buttons scroll on their own. Phones are
+  unchanged.
+- **Upgrading.** Nothing to do: no database, backup or automation API changes.
+
 ## 1.5.0: Teams foundation
 
 - **Teams, off by default.** The team features below (assignees, Mine and Unassigned, watching, @mentions, the bell,

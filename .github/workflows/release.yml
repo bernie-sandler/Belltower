@@ -1,6 +1,6 @@
 # Publishes the Docker image to GHCR and a GitHub Release when a version tag is pushed:
 #   v1.3.0-rc.1   → :1.3.0-rc.1, :rc                      (pre-release; older rc Release pages are deleted)
-#   v1.3.0        → :1.3.0, :1.3, :1, :latest             (release)
+#   v1.3.0        → :1.3.0, :1.3, :1, :latest             (release; every other Release page is deleted)
 # The tag must match the version in package.json.
 name: Release
 
@@ -88,19 +88,21 @@ jobs:
           body_path: release-notes.md
           prerelease: ${{ steps.v.outputs.channel != 'stable' }}
 
-      # Keep only the newest rc on the Releases page. Only the Release pages go: rc git tags and images stay until
-      # the final ships, and a failure here doesn't fail the release.
-      - name: Delete older rc Release pages
-        if: steps.v.outputs.channel == 'rc'
+      # The Releases page shows only the newest release: a final deletes every other Release page (older finals and
+      # all rcs), an rc deletes older rc pages and leaves the current final. Only the pages go: git tags and images
+      # stay (people pin image versions). A failure here doesn't fail the release.
+      - name: Delete older Release pages
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ steps.v.outputs.channel }}
         run: |
           gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isPrerelease \
-            --jq '.[] | select(.isPrerelease) | .tagName' |
-          while read -r old; do
-            case "$old" in
-              "$GITHUB_REF_NAME") ;;
-              v*-rc.*) echo "Deleting Release $old"; gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes ;;
-            esac
+            --jq '.[] | "\(.tagName) \(.isPrerelease)"' |
+          while read -r old pre; do
+            [ "$old" = "$GITHUB_REF_NAME" ] && continue
+            if [ "$CHANNEL" = stable ] || [ "$pre" = true ]; then
+              echo "Deleting Release $old"
+              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes
+            fi
           done
