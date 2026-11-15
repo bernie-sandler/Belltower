@@ -23,14 +23,32 @@ export function latestChangelogSection(markdown: string): ChangelogSection | nul
   if (!heading) return null;
   let end = lines.findIndex((l, i) => i > start && /^## \S/.test(l));
   if (end < 0) end = lines.length;
-  const body = lines
-    .slice(start + 1, end)
-    .join('\n')
+  const body = unwrap(lines.slice(start + 1, end))
     .trim()
-    // The changelog is hard-wrapped, and the app's Markdown turns every newline into a line break:
-    // join each wrapped line onto the one before (not list items, blank lines or headings).
-    .replace(/(?<=\S[ \t]*)\n(?!\s*(?:[-*+] |\d+\. |#|\n))[ \t]*/g, ' ')
     // Relative links only work on GitHub: point them there.
     .replace(/\]\((?![a-z][a-z0-9+.-]*:|#|\/)([^)\s]+)\)/gi, (_m, path: string) => `](${REPO_BLOB}${path})`);
   return { version: heading[1]!, title: (heading[2] ?? '').trim(), body };
+}
+
+/** Starts its own line: a list item, heading, quote, table row or code fence. */
+const BLOCK_START = /^\s*(?:[-*+] |\d+\. |#|>|\||```)/;
+
+/**
+ * The changelog is hard-wrapped, and the app's Markdown turns every newline into a line break: join
+ * each wrapped line onto the one before, except after a blank line, before a line that starts a
+ * block, after a heading or table row, and inside code fences.
+ */
+function unwrap(lines: string[]): string {
+  const out: string[] = [];
+  let fenced = false;
+  for (const line of lines) {
+    const prev = out.at(-1);
+    const fence = line.trimStart().startsWith('```');
+    const join =
+      !fenced && !fence && prev !== undefined && prev.trim() !== '' && line.trim() !== '' && !BLOCK_START.test(line) && !/^\s*(?:#|\||```)/.test(prev);
+    if (join) out[out.length - 1] = `${prev.trimEnd()} ${line.trim()}`;
+    else out.push(line);
+    if (fence) fenced = !fenced;
+  }
+  return out.join('\n');
 }
