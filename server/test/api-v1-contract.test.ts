@@ -38,6 +38,7 @@ const TICKET_KEYS = [
   'severity',
   'source',
   'state',
+  'submitRef',
   'submitter',
   'ticketNo',
   'title',
@@ -188,6 +189,7 @@ describe('/api/v1 contract', () => {
       deletedAt: null,
       source: 'api',
       submitter: null,
+      submitRef: null,
     });
     expect(ticket.column).toEqual({ id: expect.any(Number), name: expect.any(String) });
     expect((await get(`/api/v1/cards/${id}`)).json()).toEqual(ticket);
@@ -219,23 +221,24 @@ describe('/api/v1 contract', () => {
         .filter((f) => f.required)
         .map((f) => [f.key, f.kind === 'choice' ? f.options[0]! : f.kind === 'multi' ? [f.options[0]!] : f.kind === 'yesno' ? true : f.kind === 'datetime' ? '2026-10-10T10:00' : 'x']),
     );
-    const file = (name: string) => submitTicket(t.ctx, key, { typeId: type.id, summary: 'No sound', description: 'Silent', answers, name, website: '' }, [], t.dir);
+    const file = (name: string, ref?: string) =>
+      submitTicket(t.ctx, key, { typeId: type.id, summary: 'No sound', description: 'Silent', answers, name, website: '', ...(ref ? { ref } : {}) }, [], t.dir);
     // Before any submit-page ticket is open, or the dedupeKey would join it.
     const lookalike = (await v1('/api/v1/cards', { title: 'Keyed', dedupeKey: 'submit' })).json().card.ticketNo;
-    const named = file('Mum (upstairs)').ticketNo!;
+    const named = file('Mum (upstairs)', 'bn1.123.0.1700000000.abc_-').ticketNo!;
     const anonymous = file('').ticketNo!;
     const api = (await v1('/api/v1/cards', { title: 'From a script' })).json().card.ticketNo;
     const manual = (await c('POST', '/api/cards', { title: 'By hand' })).json().ticketNo;
 
     const pick = async (ref: string) => {
-      const { source, submitter } = (await get(`/api/v1/cards/${encodeURIComponent(ref)}`)).json();
-      return { source, submitter };
+      const { source, submitter, submitRef } = (await get(`/api/v1/cards/${encodeURIComponent(ref)}`)).json();
+      return { source, submitter, submitRef };
     };
-    expect(await pick(named)).toEqual({ source: 'submit', submitter: 'Mum (upstairs)' });
-    expect(await pick(anonymous)).toEqual({ source: 'submit', submitter: null });
-    expect(await pick(api)).toEqual({ source: 'api', submitter: null });
-    expect(await pick(manual)).toEqual({ source: 'manual', submitter: null });
-    expect(await pick(lookalike)).toEqual({ source: 'api', submitter: null });
+    expect(await pick(named)).toEqual({ source: 'submit', submitter: 'Mum (upstairs)', submitRef: 'bn1.123.0.1700000000.abc_-' });
+    expect(await pick(anonymous)).toEqual({ source: 'submit', submitter: null, submitRef: null });
+    expect(await pick(api)).toEqual({ source: 'api', submitter: null, submitRef: null });
+    expect(await pick(manual)).toEqual({ source: 'manual', submitter: null, submitRef: null });
+    expect(await pick(lookalike)).toEqual({ source: 'api', submitter: null, submitRef: null });
     const list = (await get(`/api/v1/cards?updatedSince=${encodeURIComponent(T0)}`)).json();
     expect(list.cards.map((x: { source: string }) => x.source)).toEqual(['api', 'submit', 'submit', 'api', 'manual']);
   });

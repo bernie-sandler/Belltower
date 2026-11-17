@@ -724,6 +724,11 @@ export interface ApiTicket {
   source: ApiTicketSource;
   /** The name typed on the submit page, or null (always null unless source is 'submit'). Added in 1.6.0. */
   submitter: string | null;
+  /**
+   * The `?ref=` the submit page link carried, or null (always null unless source is 'submit').
+   * Added in 1.7.0.
+   */
+  submitRef: string | null;
 }
 
 export type ApiTicketSource = 'submit' | 'api' | 'recurring' | 'manual';

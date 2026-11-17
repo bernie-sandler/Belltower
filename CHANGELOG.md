@@ -4,6 +4,13 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.7.0: Unreleased
+
+- **Submit page links can carry a reference.** A link to the submit page can end in `?ref=…`; the page sends it with
+  the ticket and `/api/v1` hands it back as `submitRef`. A bot that gives each person their own link (a Discord bot,
+  say) can then tell who sent which ticket and let them know when it's done. Nobody sees it on the page or
+  the board. See [docs/SUBMIT-PAGE.md](docs/SUBMIT-PAGE.md#links-that-carry-a-reference).
+
 ## 1.6.0: Theme editor
 
 - **Theme Customizer.** A new **Theme Customizer** in the main menu sets how Belltower looks on each device. Pick

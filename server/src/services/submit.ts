@@ -184,6 +184,7 @@ export function submitTicket(
       via: `submit page${body.name ? ` (${body.name})` : ''}`,
       external: true,
       submitPage: true,
+      ...(body.ref ? { submitRef: body.ref } : {}),
     },
   );
   if (files.length) addAttachments(ctx, attachmentsDir, card.id, files);

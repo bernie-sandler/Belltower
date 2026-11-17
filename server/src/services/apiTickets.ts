@@ -49,22 +49,23 @@ const FROM = `FROM cards c JOIN columns col ON col.id = c.column_id`;
 const SUBMIT_VIA = /^submit page(?: \((.*)\))?$/s;
 
 /**
- * Submit-page tickets among `rows`, with the name the submitter typed (or null). The submit page,
+ * Submit-page tickets among `rows`, with the name the submitter typed and the link's `?ref=` (each
+ * or null). The submit page,
  * /api/v1 and card imports all store source 'api'. The submit page sets source_ref 'submit', which an
  * /api/v1 dedupeKey could also be, so the creation event's "via" has to agree as well.
  */
-function submitters(ctx: Ctx, rows: Row[]): Map<number, string | null> {
-  const out = new Map<number, string | null>();
+function submitters(ctx: Ctx, rows: Row[]): Map<number, { name: string | null; ref: string | null }> {
+  const out = new Map<number, { name: string | null; ref: string | null }>();
   const ids = rows.filter((r) => r.source === 'api' && r.source_ref === 'submit').map((r) => r.id);
   if (!ids.length) return out;
   const vias = stmt(
     ctx.db,
-    `SELECT card_id, json_extract(data, '$.via') AS via FROM activity
+    `SELECT card_id, json_extract(data, '$.via') AS via, json_extract(data, '$.ref') AS ref FROM activity
       WHERE type = 'created' AND card_id IN (SELECT value FROM json_each(?))`,
-  ).all(JSON.stringify(ids)) as { card_id: number; via: unknown }[];
+  ).all(JSON.stringify(ids)) as { card_id: number; via: unknown; ref: unknown }[];
   for (const v of vias) {
     const m = typeof v.via === 'string' ? SUBMIT_VIA.exec(v.via) : null;
-    if (m) out.set(v.card_id, m[1] || null);
+    if (m) out.set(v.card_id, { name: m[1] || null, ref: typeof v.ref === 'string' ? v.ref : null });
   }
   return out;
 }
@@ -104,7 +105,8 @@ function toTickets(ctx: Ctx, rows: Row[]): ApiTicket[] {
       archivedAt: r.archived_at,
       deletedAt: r.deleted_at,
       source: (submitted.has(r.id) ? 'submit' : r.source) satisfies ApiTicketSource,
-      submitter: submitted.get(r.id) ?? null,
+      submitter: submitted.get(r.id)?.name ?? null,
+      submitRef: submitted.get(r.id)?.ref ?? null,
     };
   });
 }
