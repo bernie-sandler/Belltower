@@ -21,6 +21,11 @@ with your name, and it stops working while your account is deactivated (deleting
 - **Copy it straight away.** It's shown once; the app only keeps a hash. It starts with `tt_`.
 - **Tick "Recoveries may mark the ticket done"** if this tool should close its own tickets when things recover.
   Without it, a recovery just adds a note and leaves closing to you.
+- **Tick "New tickets ring the bell"** (since 1.6, admins only) for a chat bot or anything else that files what *people* report.
+  Its new tickets then reach admins' bell (with its sound) like submit-page tickets, even with Teams off. Leave it off
+  for monitors, so a flapping service doesn't ring all night; their tickets still go to the Discord and ntfy channels
+  under Settings → Notifications. It's set when the token is made: for an existing token, make a new one and revoke
+  the old.
 - For a dashboard, choose **Only read ticket counts**. A read-only token can read the counts and nothing else.
 - To stop a tool, **revoke** its token in the same place. It stops working immediately.
 
