@@ -19,7 +19,9 @@ the container log on start, and in every backup export.
   `GET /api/v1/cards/<ticket number or id>` answers one ticket, and `GET /api/v1/cards?ids=…&updatedSince=…` answers
   several at once or everything that changed since a time. Each ticket comes with its state (received, in progress,
   waiting, done), resolution reason, column, priority, severity, tags and dates, but never its description or notes.
-  Full tokens only: read-only dashboard tokens still see counts and nothing else. See
+  Full tokens only: read-only dashboard tokens still see counts and nothing else. Each ticket also says where it
+  came from (`source`: the submit page, the API, a recurring template or by hand) and, for submit-page tickets, the
+  name typed there, so a bot can list what people sent through the submit page. See
   [docs/API-V1.md](docs/API-V1.md#get-apiv1cardsref).
 - **Tokens that ring the bell.** An admin can set a new token to **ring the bell**: its new tickets reach admins' bell, with
   its sound, like submit-page tickets, even with Teams off. Use it for a chat bot that files what people report. Other
