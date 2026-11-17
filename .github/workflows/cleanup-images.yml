@@ -1,0 +1,78 @@
+name: Clean up images
+
+# Prunes ghcr.io/<owner>/<repository> down to: every X.Y.Z and X.Y version, latest, :dev, :rc, and the image of the
+# pre-release currently listed on GitHub. Release candidates GitHub no longer lists, sha-* tags and untagged
+# leftovers (old :dev builds) are deleted. Runs after release.yml, prerelease.yml and dev-image.yml; start it by
+# hand from the Actions tab with "dry run" ticked to see what it would delete.
+#
+# dataaxiom/ghcr-cleanup-action understands multi-arch images: deleting one also deletes its platform and
+# attestation children, and children a kept image still uses are never touched. Deleted versions can be restored
+# for 30 days through the GitHub API (IDs are in the log).
+
+on:
+  workflow_call:
+    inputs:
+      dry-run:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only log what would be deleted
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Clean up GHCR images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    # Shared by every caller, so two cleanups never delete from the package at the same time.
+    concurrency:
+      group: ghcr-cleanup
+      cancel-in-progress: false
+    steps:
+      - id: keep
+        name: Find the package and the current pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName,isPrerelease,isDraft \
+            --jq '[.[] | select(.isPrerelease and (.isDraft | not))][0].tagName // ""')"
+          echo "Keeping release candidate image: ${tag:-none}"
+          echo "rc=${tag#v}" >> "$GITHUB_OUTPUT"
+          # The package is named after the repository, in lower case.
+          package="${GITHUB_REPOSITORY#*/}"
+          echo "package=${package,,}" >> "$GITHUB_OUTPUT"
+
+      # A tag on an image that has other tags (sha-* on a version image) is removed without deleting the image.
+      - name: Delete old release candidates and sha-* tags
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: ${{ github.repository_owner }}
+          package: ${{ steps.keep.outputs.package }}
+          delete-tags: "*-rc.*,sha-*"
+          exclude-tags: ${{ steps.keep.outputs.rc }}
+          validate: true
+          dry-run: ${{ inputs.dry-run == true }}
+
+      # Only images older than an hour, so the platform layers of a build that is still pushing (and so not yet
+      # tagged) are left alone.
+      - name: Delete untagged images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          owner: ${{ github.repository_owner }}
+          package: ${{ steps.keep.outputs.package }}
+          delete-untagged: true
+          older-than: 1 hour
+          validate: true
+          dry-run: ${{ inputs.dry-run == true }}
