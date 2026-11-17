@@ -431,6 +431,7 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
     passwordManagedByEnv: false,
     teams: teamsEnabled(ctx),
     submitPageEnabled: ctx.s.settings.submit.enabled,
+    bellTokens: false, // the demo has no API tokens
   })),
   'GET /api/board': ok(
     (ctx) => {

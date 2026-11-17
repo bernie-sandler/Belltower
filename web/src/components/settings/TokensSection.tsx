@@ -27,6 +27,7 @@ export function TokensSection({ mine = false }: { mine?: boolean }) {
   const [name, setName] = useState('');
   const [scope, setScope] = useState<TokenScope>('full');
   const [canComplete, setCanComplete] = useState(false);
+  const [ringsBell, setRingsBell] = useState(false);
   const [fresh, setFresh] = useState<{ token: string; info: ApiTokenInfo } | null>(null);
   const [revoking, setRevoking] = useState<ApiTokenInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +94,7 @@ export function TokensSection({ mine = false }: { mine?: boolean }) {
               <span className="muted small">
                 {t.scope === 'read' && 'read-only · '}
                 {t.canComplete && 'can complete · '}
+                {t.ringsBell && 'rings the bell · '}
                 {t.revokedAt
                   ? `revoked ${formatDateTime(t.revokedAt, now)}`
                   : t.lastUsedAt
@@ -115,13 +117,14 @@ export function TokensSection({ mine = false }: { mine?: boolean }) {
           e.preventDefault();
           setError(null);
           create.mutate(
-            { name, scope, canComplete: scope === 'full' && canComplete },
+            { name, scope, canComplete: scope === 'full' && canComplete, ringsBell: isAdmin && scope === 'full' && ringsBell },
             {
               onSuccess: (r) => {
                 setFresh(r);
                 setName('');
                 setScope('full');
                 setCanComplete(false);
+                setRingsBell(false);
               },
               onError: (err) => setError(errorMessage(err)),
             },
@@ -150,10 +153,19 @@ export function TokensSection({ mine = false }: { mine?: boolean }) {
           </label>
         </fieldset>
         {scope === 'full' && (
-          <label className="checkbox">
-            <input type="checkbox" checked={canComplete} onChange={(e) => setCanComplete(e.target.checked)} />
-            <span>Recoveries may mark the ticket done (otherwise they only add a note)</span>
-          </label>
+          <>
+            <label className="checkbox">
+              <input type="checkbox" checked={canComplete} onChange={(e) => setCanComplete(e.target.checked)} />
+              <span>Recoveries may mark the ticket done (otherwise they only add a note)</span>
+            </label>
+            {/* It reaches every admin, so only admins may set it (the server ignores it from members). */}
+            {isAdmin && (
+              <label className="checkbox">
+                <input type="checkbox" checked={ringsBell} onChange={(e) => setRingsBell(e.target.checked)} />
+                <span>New tickets ring the bell, like submit-page tickets (for chat bots, not monitors)</span>
+              </label>
+            )}
+          </>
         )}
         {error && (
           <p className="form-error" role="alert">

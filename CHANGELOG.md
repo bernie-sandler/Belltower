@@ -21,10 +21,16 @@ the container log on start, and in every backup export.
   waiting, done), resolution reason, column, priority, severity, tags and dates, but never its description or notes.
   Full tokens only: read-only dashboard tokens still see counts and nothing else. See
   [docs/API-V1.md](docs/API-V1.md#get-apiv1cardsref).
+- **Tokens that ring the bell.** An admin can set a new token to **ring the bell**: its new tickets reach admins' bell, with
+  its sound, like submit-page tickets, even with Teams off. Use it for a chat bot that files what people report. Other
+  tokens stay quiet as before, so a flapping monitor still can't ring all night. Existing tokens don't ring; to make
+  one ring, create a new token with the box ticked and revoke the old one.
 - **Moved.** Settings → Appearance is gone: light and dark are in the Theme Customizer, and the notification sound is
   under **Account → Notification sound**.
-- **Upgrading.** Nothing to do: no database or backup changes, and everything in the automation API works as
-  before (it only gained the two read routes). Custom colors are saved per device in the browser, not in backups.
+- **Upgrading.** Nothing to do. The database moves to layout 13 (one new column for tokens that ring the bell), so
+  going back to 1.5 means restoring the `pre-migrate-v12-to-v13-…db` copy. Backups from older versions restore as
+  before. Everything in the automation API works as before (it only gained the two read routes). Custom colors are
+  saved per device in the browser, not in backups.
 
 ## 1.5.1: Buttons that stay put
 

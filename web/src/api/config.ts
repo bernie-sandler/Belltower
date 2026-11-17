@@ -24,12 +24,13 @@ export function useTeams(): boolean {
 
 /**
  * Whether there's a bell (and a sound for it under Account → Notification sound). With Teams on, always.
- * With Teams off it only ever holds new submit-page tickets, which go to admins: so only for
- * admins, and only while the submit page is on.
+ * With Teams off it only ever holds new submit-page tickets and tickets from API tokens that ring
+ * the bell, which go to admins: so only for admins, and only while the submit page is on or such a
+ * token exists.
  */
 export function useBellShown(): boolean {
   const config = useConfig().data;
   const isAdmin = useIsAdmin();
   if (!config) return false;
-  return config.teams || (isAdmin && config.submitPageEnabled);
+  return config.teams || (isAdmin && (config.submitPageEnabled || config.bellTokens === true));
 }

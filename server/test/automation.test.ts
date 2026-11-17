@@ -6,7 +6,7 @@ import { createLink } from '../src/services/links';
 import { DIGEST_RETRY_MS, Notifier } from '../src/services/notify';
 import { lastDelivery, updateDiscordSettings, updateGeneralSettings } from '../src/services/settings';
 import { createToken, listTokens } from '../src/services/tokens';
-import { client, columnId, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
+import { addPerson, client, columnId, makeApp, makeCtx, setupAndLogin, type TestApp } from './helpers';
 
 describe('API tokens and /api/v1', () => {
   let app: TestApp;
@@ -35,6 +35,54 @@ describe('API tokens and /api/v1', () => {
     expect(JSON.stringify(list)).not.toContain(token);
     const stored = app.ctx.db.prepare('SELECT token_hash FROM api_tokens').pluck().get() as string;
     expect(stored).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('a token that rings the bell: its new tickets reach the admin’s bell (Teams off); other tokens’ don’t', async () => {
+    const { c, token: quiet, info: quietInfo } = await setup();
+    expect(quietInfo.ringsBell).toBe(false);
+    // With Teams off the bell shows for admins while the submit page is on or such a token exists.
+    const bellTokens = async () => (await c('GET', '/api/config')).json().bellTokens;
+    expect(await bellTokens()).toBe(false);
+    const bot = (await c('POST', '/api/tokens', { name: 'Bernard', ringsBell: true })).json();
+    expect(bot.info).toMatchObject({ scope: 'full', ringsBell: true });
+    expect(await bellTokens()).toBe(true);
+    // Read-only tokens never ring it.
+    expect((await c('POST', '/api/tokens', { name: 'Homepage', scope: 'read', ringsBell: true })).json().info.ringsBell).toBe(false);
+    expect((await c('GET', '/api/tokens')).json().map((t: { name: string; ringsBell: boolean }) => [t.name, t.ringsBell])).toEqual([
+      ['Homepage', false],
+      ['Bernard', true],
+      ['Uptime Kuma', false],
+    ]);
+
+    const bell = async () => (await c('GET', '/api/notifications')).json().items.map((n: { type: string; text: string }) => `${n.type}: ${n.text}`);
+    await v1(quiet, '/api/v1/cards', { title: 'NAS offline' });
+    expect(await bell()).toEqual([]);
+    expect((await v1(bot.token, '/api/v1/cards', { title: 'Plex keeps buffering', dedupeKey: 'discord:1' })).statusCode).toBe(201);
+    expect(await bell()).toEqual(['submitted: New ticket from API token “Bernard”']);
+    // A repeat with the same key only adds a note: no second ring.
+    expect((await v1(bot.token, '/api/v1/cards', { title: 'Plex keeps buffering', dedupeKey: 'discord:1' })).json().status).toBe('updated');
+    expect(await bell()).toHaveLength(1);
+    // A work card from the bot doesn't ring (the submit page never makes them).
+    expect((await v1(bot.token, '/api/v1/cards', { title: 'Plex migration', type: 'work' })).statusCode).toBe(201);
+    expect(await bell()).toHaveLength(1);
+    expect((await c('DELETE', `/api/tokens/${bot.info.id}`)).statusCode).toBeLessThan(300);
+    expect(await bellTokens()).toBe(false);
+  });
+
+  it('only admins make tokens that ring the bell; a deactivated owner’s token no longer shows the bell', async () => {
+    app = await makeApp();
+    const admin = await setupAndLogin(app);
+    const c = client(app.app, admin);
+    const sam = await addPerson(app, admin, 'sam');
+    const asSam = client(app.app, sam.cookie);
+    expect((await asSam('POST', '/api/tokens', { name: 'Sam bot', ringsBell: true })).json().info.ringsBell).toBe(false);
+    expect((await c('GET', '/api/config')).json().bellTokens).toBe(false);
+
+    const alex = await addPerson(app, admin, 'alex', 'admin');
+    expect((await client(app.app, alex.cookie)('POST', '/api/tokens', { name: 'Alex bot', ringsBell: true })).json().info.ringsBell).toBe(true);
+    expect((await c('GET', '/api/config')).json().bellTokens).toBe(true);
+    app.ctx.db.prepare('UPDATE users SET disabled_at = ? WHERE id = ?').run('2026-10-10T15:00:00.000Z', alex.id);
+    expect((await c('GET', '/api/config')).json().bellTokens).toBe(false);
   });
 
   it('needs a valid, unrevoked bearer token, and nothing else (no cookie, no CSRF header)', async () => {

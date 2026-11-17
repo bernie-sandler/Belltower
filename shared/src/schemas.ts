@@ -638,6 +638,11 @@ export const ApiTokenBody = z.object({
   /** Lets "event": "resolved" mark the matching ticket done. Ignored for read-only tokens. */
   canComplete: z.boolean().default(false),
   scope: z.enum(TOKEN_SCOPES).default('full'),
+  /**
+   * Its new tickets tell admins like submit-page tickets (`submitted`), with Teams on or off: for
+   * chat bots that file what people report. Ignored for read-only tokens.
+   */
+  ringsBell: z.boolean().default(false),
 });
 export type ApiTokenBody = z.infer<typeof ApiTokenBody>;
 
