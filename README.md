@@ -10,8 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/bernie-sandler/Belltower/releases"><img alt="Release" src="https://img.shields.io/github/v/release/bernie-sandler/Belltower?include_prereleases&sort=semver"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <img alt="Project status: In Development" src="https://img.shields.io/badge/Status-Released-green">
+  <img alt="Latest stable release" src="https://img.shields.io/github/v/release/bernie-sandler/Belltower?label=stable&color=green&sort=semver">
+  <img alt="Latest pre-release" src="https://img.shields.io/github/v/release/bernie-sandler/Belltower?include_prereleases&label=dev&color=orange&sort=semver">
 </p>
 
 <p align="center">
