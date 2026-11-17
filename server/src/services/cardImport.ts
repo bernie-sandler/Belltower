@@ -474,7 +474,7 @@ export function prepareImport(ctx: Ctx, input: unknown): ImportItemResult[] {
 export function createImported(
   ctx: Ctx,
   items: ImportItemResult[],
-  opts: { via: string; sourceRef?: string; external?: boolean },
+  opts: { via: string; sourceRef?: string; external?: boolean; submitPage?: boolean },
 ): number[] {
   return tx(ctx, () => {
     // Work cards first, so tickets can be filed under them; `created` keeps the batch order.
@@ -498,7 +498,14 @@ export function createImported(
           kind: c.kind,
           parentId,
         },
-        { source: 'api', via: opts.via, ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}), external: opts.external ?? false },
+        {
+          source: 'api',
+          via: opts.via,
+          ...(opts.sourceRef ? { sourceRef: opts.sourceRef } : {}),
+          external: opts.external ?? false,
+          // Only tickets ring the bell, as on the submit page (which never makes work cards).
+          ...(opts.submitPage && c.kind !== 'work' ? { submitPage: true } : {}),
+        },
       );
       // Imported notes are history: they notify nobody (old @mentions included) and don't make the importer watch.
       for (const w of c.worklog) addWorklog(ctx, detail.id, { bodyMd: w.bodyMd, ...(w.occurredAt ? { occurredAt: w.occurredAt } : {}) }, { quiet: true });

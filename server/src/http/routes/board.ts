@@ -36,6 +36,7 @@ import { createLabel, deleteLabel, reorderLabels, updateLabel } from '../../serv
 import { getSubmitSettings, teamsEnabled } from '../../services/settings';
 import { upgradedFrom } from '../../services/appVersion';
 import { statusLink } from '../../services/status';
+import { anyBellTokens } from '../../services/tokens';
 import { idParam, parse } from '../util';
 
 export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
@@ -62,6 +63,7 @@ export function registerBoardRoutes(app: FastifyInstance, deps: AppDeps): void {
     // What the app shell shows (the nav, the bell), without loading every setting.
     teams: teamsEnabled(req.ctx),
     submitPageEnabled: getSubmitSettings(req.ctx).enabled === true,
+    bellTokens: anyBellTokens(req.ctx),
   }));
 
   app.get('/api/board', async (req) => getBoard(req.ctx));

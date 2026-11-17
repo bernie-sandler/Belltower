@@ -131,7 +131,10 @@ describe('restore with people', () => {
       delete a.token_id;
     }
     for (const r of data.tables.activity_revisions) delete r.user_id;
-    for (const tk of data.tables.api_tokens) delete tk.user_id;
+    for (const tk of data.tables.api_tokens) {
+      delete tk.user_id;
+      delete tk.rings_bell; // 1.6
+    }
 
     const { dst, cookies } = await destination();
     expect(await restore(dst, cookies.admin, data)).toBe(200);

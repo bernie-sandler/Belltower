@@ -172,6 +172,10 @@ function oldDatabase(v: number): DB {
   if (v >= 7) {
     run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, scope, created_at) VALUES ('Homepage', ?, 'tt_efgh', 0, 'read', ?)`, 'c'.repeat(64), at(1));
   }
+  // Tokens that ring the bell (a chat bot).
+  if (v >= 13) {
+    run(`INSERT INTO api_tokens (name, token_hash, prefix, can_complete, rings_bell, created_at) VALUES ('Discord bot', ?, 'tt_ijkl', 0, 1, ?)`, 'e'.repeat(64), at(1));
+  }
   if (v >= 9) {
     // 1.5: tokens belong to the owner; the member is assigned the drive card and watches it (so does
     // the owner); the owner's assignment and the token's note say who did them; the member got a
@@ -284,8 +288,12 @@ function checkWorks(ctx: Ctx, marks: Record<string, ChecklistItemState>) {
 
   // Tokens from before read-only tokens existed keep doing everything they did. Homepage was made
   // read-only (schema 7 data on), Dashboard just now.
-  const scopes = (d: DB) => d.prepare('SELECT name, scope, can_complete FROM api_tokens ORDER BY id').all() as { name: string; scope: string }[];
+  // Only the bot (schema 13 data on) and Rings, made just now, ring the bell.
+  createToken(ctx, { name: 'Rings', canComplete: false, ringsBell: true });
+  const scopes = (d: DB) =>
+    d.prepare('SELECT name, scope, can_complete, rings_bell FROM api_tokens ORDER BY id').all() as { name: string; scope: string; rings_bell: number }[];
   for (const tk of scopes(db)) if (tk.name !== 'Dashboard' && tk.name !== 'Homepage') expect(tk.scope, tk.name).toBe('full');
+  for (const tk of scopes(db)) expect(tk.rings_bell, tk.name).toBe(tk.name === 'Discord bot' || tk.name === 'Rings' ? 1 : 0);
 
   // And it can be backed up and restored again, read-only tokens and checklist marks included.
   const data = exportData(ctx, 'test');
@@ -361,7 +369,8 @@ describe('upgrading a database left by an older version', () => {
       expect(db.prepare(`SELECT value FROM settings WHERE key = 'teams_settings'`).pluck().get()).toBe('{"enabled":false}');
     } else {
       // 1.5: people, who did what and the assignee stay; two active people keep Teams on.
-      expect(count(db, 'users')).toBe(3);
+      // (From schema 12 one more: someone deleted.)
+      expect(count(db, 'users')).toBe(v >= 12 ? 4 : 3);
       expect(db.prepare('SELECT count(*) FROM activity WHERE user_id IS NOT NULL OR token_id IS NOT NULL').pluck().get()).toBe(3);
       expect(db.prepare('SELECT count(*) FROM cards WHERE assignee_id IS NOT NULL').pluck().get()).toBe(1);
       expect(prepared.teams).toBe(true);
@@ -369,7 +378,7 @@ describe('upgrading a database left by an older version', () => {
       expect(db.prepare('SELECT count(*) FROM users WHERE tag_scoped <> 0').pluck().get()).toBe(v >= 11 ? 1 : 0);
       expect(count(db, 'user_labels')).toBe(v >= 11 ? 1 : 0);
       // Nobody was deleted before schema 12.
-      expect(db.prepare('SELECT count(*) FROM users WHERE deleted_at IS NOT NULL').pluck().get()).toBe(0);
+      expect(db.prepare('SELECT count(*) FROM users WHERE deleted_at IS NOT NULL').pluck().get()).toBe(v >= 12 ? 1 : 0);
     }
     checkWorks(ctx, marksAt(v));
   });
@@ -417,7 +426,11 @@ function asExportFrom(data: BackupData, v: number): BackupData {
     [11, 'users', ['tag_scoped']],
     // Deleted people (see oldDatabase; below)
     [12, 'users', ['deleted_at']],
+    // Tokens that ring the bell (see oldDatabase; below)
+    [13, 'api_tokens', ['rings_bell']],
   ];
+  // No token could ring the bell before schema 13.
+  if (v < 13) out.tables.api_tokens = (out.tables.api_tokens ?? []).filter((row) => !row.rings_bell);
   // Nobody could be deleted before schema 12.
   if (v < 12) out.tables.users = (out.tables.users ?? []).filter((row) => row.deleted_at == null);
   for (const [added, table, columns] of dropColumns) {
@@ -474,7 +487,8 @@ describe('restoring a backup exported by an older version', () => {
     const dropped = v < 9 ? 1 : 0; // the 1.5 'assigned' event
     for (const tbl of COUNTED) expect(count(restored, tbl), tbl).toBe(count(db, tbl) - (tbl === 'activity' ? dropped : 0));
     // A backup from before 1.5 has no people (confirmRestore adds the live install's accounts).
-    expect(count(restored, 'users')).toBe(v >= 9 ? 3 : 0);
+    // (From schema 12 the deleted person comes along too.)
+    expect(count(restored, 'users')).toBe(v >= 12 ? 4 : v >= 9 ? 3 : 0);
     // 1.5.0-rc.4: the "always add" label carries over, the tags submitters could pick don't.
     // (A schema-10 export already has request_type_labels, and no second type.)
     if (v >= 5) {

@@ -130,7 +130,12 @@ export function registerSettingsRoutes(app: FastifyInstance, deps: AppDeps): voi
   // ---- API tokens: admins see and revoke everyone's, members only their own ----
   const ownerScope = (req: FastifyRequest) => (req.user!.role === 'admin' ? {} : { ownerId: req.user!.id });
   app.get('/api/tokens', async (req) => listTokens(req.ctx, ownerScope(req)));
-  app.post('/api/tokens', async (req, reply) => reply.status(201).send(createToken(req.ctx, parse(ApiTokenBody, req.body))));
+  app.post('/api/tokens', async (req, reply) => {
+    const body = parse(ApiTokenBody, req.body);
+    // A token that rings the bell reaches every admin, so only admins may make one.
+    if (req.user!.role !== 'admin') body.ringsBell = false;
+    return reply.status(201).send(createToken(req.ctx, body));
+  });
   app.delete('/api/tokens/:id', async (req, reply) => {
     revokeToken(req.ctx, idParam(req), ownerScope(req));
     return reply.status(204).send();

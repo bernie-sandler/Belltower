@@ -395,7 +395,10 @@ export interface CreateCardOptions {
   via?: string;
   /** Filed by someone or something else (submit page, API token): may trigger a notification. */
   external?: boolean;
-  /** From the public submit page: tells admins (`submitted`), with Teams on or off. */
+  /**
+   * From the public submit page, or an API token that rings the bell: tells admins (`submitted`),
+   * with Teams on or off.
+   */
   submitPage?: boolean;
 }
 

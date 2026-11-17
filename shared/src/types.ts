@@ -166,8 +166,10 @@ export interface AppConfig {
    * Off by default; while off the app hides them (nothing is deleted).
    */
   teams: boolean;
-  /** Whether the submit page is on. With Teams off, the bell shows (to admins) only while it is. */
+  /** Whether the submit page is on. With Teams off, the bell shows (to admins) only while it is… */
   submitPageEnabled: boolean;
+  /** …or while an unrevoked API token rings the bell (1.6). */
+  bellTokens: boolean;
 }
 
 export interface Column {
@@ -654,6 +656,8 @@ export interface ApiTokenInfo {
   canComplete: boolean;
   /** 'read' tokens can only call GET routes (the dashboard summary). */
   scope: TokenScope;
+  /** Its new tickets ring admins' bell like submit-page tickets (1.6). */
+  ringsBell: boolean;
   createdAt: IsoTimestamp;
   lastUsedAt: IsoTimestamp | null;
   revokedAt: IsoTimestamp | null;

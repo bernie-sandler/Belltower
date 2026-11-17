@@ -172,7 +172,7 @@ describe('imports are history', () => {
   it('a new ticket through the automation API: its notes are quiet, but “Seen again” tells the watchers', () => {
     person('dave', 'Dave', { new_unassigned: { inApp: true, discord: false, ntfy: false } });
     const { info } = createToken(as('alice'), { name: 'Kuma', canComplete: false });
-    const token = { id: info.id, name: 'Kuma', canComplete: false, scope: 'full' as const, userId: people.alice! };
+    const token = { id: info.id, name: 'Kuma', canComplete: false, scope: 'full' as const, ringsBell: false, userId: people.alice! };
     const kuma = actorAs({ kind: 'token', tokenId: info.id, userId: people.alice! });
     const first = intakeCard(kuma, token, { title: 'NAS offline', dedupeKey: 'nas', worklog: [{ text: 'Paging @carol', at: '2026-10-09 20:15' }] });
     const id = first.card!.id;

@@ -235,7 +235,7 @@ describe('card import', () => {
 
 describe('v1 intake', () => {
   it('doesn’t update a hidden open card with the same dedupe key', () => {
-    const token = { id: 1, name: 'kuma', canComplete: true, scope: 'full' as const, userId: null };
+    const token = { id: 1, name: 'kuma', canComplete: true, scope: 'full' as const, ringsBell: false, userId: null };
     const first = intakeCard(t.ctx, token, { title: 'NAS down', labels: ['Hardware'], dedupeKey: 'nas' });
     expect(first.status).toBe('created');
     const rita = restricted('Docker');

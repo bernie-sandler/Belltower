@@ -5,8 +5,9 @@
 import { z } from 'zod';
 
 /**
- * What can notify a person. `submitted`: a new ticket from the public submit page (not API tokens
- * or monitors). It's the one event that still reaches admins while Teams is off.
+ * What can notify a person. `submitted`: a new ticket from the public submit page, or from an API
+ * token set to ring the bell (a chat bot; never monitors by default). It's the one event that still
+ * reaches admins while Teams is off.
  */
 export const NOTIFICATION_TYPES = ['assigned', 'mentioned', 'watching', 'new_unassigned', 'submitted'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

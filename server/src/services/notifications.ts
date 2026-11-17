@@ -11,7 +11,8 @@
 //  - watching: people watching the card, on a new note, a move (done and reopened included) or an
 //    assignee change;
 //  - new_unassigned: everyone who opted in, when an outside ticket arrives with no assignee;
-//  - submitted: a new ticket from the submit page; admins by default. Someone told about it isn't
+//  - submitted: a new ticket from the submit page, or from an API token set to ring the bell (a chat
+//    bot); admins by default. Someone told about it isn't
 //    also told new_unassigned for the same ticket, and is told on the channels of both (picksFor).
 // Never the person acting (a token acts for its owner, who *is* told), never deactivated people, and
 // once per person and change (a unique index). Someone told they were mentioned or assigned isn't

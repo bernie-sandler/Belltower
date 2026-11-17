@@ -85,7 +85,15 @@ function submit(name = 'Sam'): number {
 function fromMonitor(title: string): number {
   const { info } = createToken(as('owner'), { name: 'Kuma', canComplete: false });
   const kuma = withActor(t.ctx, { kind: 'token', tokenId: info.id, userId: people.owner! });
-  return intakeCard(kuma, { id: info.id, name: 'Kuma', canComplete: false, scope: 'full', userId: people.owner! }, { title }).card!.id;
+  return intakeCard(kuma, { id: info.id, name: 'Kuma', canComplete: false, scope: 'full', ringsBell: false, userId: people.owner! }, { title }).card!.id;
+}
+
+/** A ticket from a chat bot, through an owner's API token that rings the bell. */
+function fromBot(title: string): number {
+  const { info } = createToken(as('owner'), { name: 'Bernard', canComplete: false, ringsBell: true });
+  expect(info.ringsBell).toBe(true);
+  const bot = withActor(t.ctx, { kind: 'token', tokenId: info.id, userId: people.owner! });
+  return intakeCard(bot, { id: info.id, name: 'Bernard', canComplete: false, scope: 'full', ringsBell: true, userId: people.owner! }, { title }).card!.id;
 }
 
 beforeEach(() => {
@@ -188,6 +196,18 @@ describe('with Teams off', () => {
     expect(t.ctx.db.prepare('SELECT count(*) FROM notifications').pluck().get()).toBe(0);
   });
 
+  it('…unless the token rings the bell: then every active admin hears, its owner included, like the submit page', () => {
+    person('casey', 'admin', { submitted: nowhere });
+    const id = fromBot('Plex keeps buffering');
+    for (const admin of ['owner', 'alex', 'casey']) {
+      expect(rows(admin), admin).toEqual(['submitted']);
+      expect(bell(admin), admin).toEqual(['submitted: New ticket from API token “Bernard”']);
+    }
+    expect(rows('jordan')).toEqual([]);
+    expect(listNotifications(t.ctx, people.owner!, { limit: 5 }).items[0]).toMatchObject({ cardId: id, readAt: null });
+    expect(events.filter((e) => e.type === 'people_notified')).toEqual([]);
+  });
+
   it('the bell lists only `submitted`; marking read leaves the others for when Teams is back', () => {
     teams(true);
     const card = createCard(as('alex'), { title: 'Fans loud' });
@@ -271,6 +291,11 @@ describe('with Teams on', () => {
     fromMonitor('NAS offline');
     expect(rows('owner')).toEqual(['submitted', 'new_unassigned']);
     expect(rows('jordan')).toEqual(['new_unassigned', 'new_unassigned']);
+    // A bot whose token rings the bell is, once per person, as the submit page is.
+    fromBot('Plex keeps buffering');
+    expect(rows('owner')).toEqual(['submitted', 'new_unassigned', 'submitted']);
+    expect(rows('alex')).toEqual(['submitted', 'new_unassigned', 'submitted']);
+    expect(rows('jordan')).toEqual(['new_unassigned', 'new_unassigned', 'new_unassigned']);
   });
 
   it('stored prefs without `submitted` take the default, and saving without it keeps what’s saved', () => {

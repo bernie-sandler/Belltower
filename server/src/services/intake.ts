@@ -87,7 +87,8 @@ export function intakeCard(ctx: Ctx, token: TokenIdentity, body: unknown): Intak
     if (items.length !== 1) throw badRequest('validation', 'Send one card (nested "tickets" aren’t supported here)');
     const item = items[0]!;
     if (!item.ok) throw new AppError(400, 'validation', item.errors.join('; ') || 'Invalid card', { errors: item.errors });
-    const [id] = createImported(ctx, items, { via, ...(dedupeKey ? { sourceRef: dedupeKey } : {}), external: true });
+    // A token that rings the bell tells admins like the submit page does (chat bots, not monitors).
+    const [id] = createImported(ctx, items, { via, ...(dedupeKey ? { sourceRef: dedupeKey } : {}), external: true, submitPage: token.ringsBell });
     return { status: 'created' as const, card: brief(getCard(ctx, id!)) };
   });
 }
