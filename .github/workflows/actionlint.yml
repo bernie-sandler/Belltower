@@ -1,0 +1,28 @@
+name: Workflow lint
+
+# Checks the GitHub Actions workflows with actionlint (with shellcheck for run: scripts) whenever they change, so a
+# typo in release.yml shows up on the pull request rather than when a tag is pushed.
+
+on:
+  pull_request:
+    paths: [".github/workflows/**", ".github/scripts/**"]
+  push:
+    branches: [main, dev]
+    paths: [".github/workflows/**", ".github/scripts/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # The official image bundles shellcheck. SC2016 is off: release notes print Markdown code fences ('```')
+      # in single-quoted printf formats on purpose.
+      - name: Run actionlint
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo -e SHELLCHECK_OPTS='--exclude=SC2016'             rhysd/actionlint:1.7.12 -color
