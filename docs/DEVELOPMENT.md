@@ -69,7 +69,20 @@ npm run e2e              # end-to-end tests in your installed Chrome, desktop an
 npm run build:demo       # the browser-only demo, see DEMO.md
 ```
 
-GitHub Actions runs all of these, plus a Docker build and health check, on every push and pull request.
+GitHub Actions runs all of these, plus a Docker build and health check, on every pull request and every push to
+`dev` or `main` (`.github/workflows/ci.yml`). A final **CI passed** job sums them up, so a branch rule only has to
+require that one check. Three more checks run alongside but aren't required:
+
+- `pr-title.yml` checks that the title of a pull request into `dev` is a Conventional Commit (`feat: ...`,
+  `fix(api): ...`), because the squash merge turns the title into the commit message.
+- `codeql.yml` runs GitHub's CodeQL code scanning on the code and the workflows, on every pull request and push and
+  once a week. Findings show up under **Security → Code scanning**.
+- `actionlint.yml` lints the workflow files whenever they change.
+
+Dependabot opens weekly pull requests into `dev` (Mondays) for npm packages, GitHub Actions and the Docker base
+image. `dependabot-auto-merge.yml` queues patch and minor updates to squash-merge once CI passes and comments on
+major updates so they get a review. It needs **Settings → General → Allow auto-merge** and a rule on `dev` that
+requires **CI passed**; without a required check it only comments, since auto-merge would merge before CI ran.
 
 ### The browser-only demo
 
@@ -123,23 +136,62 @@ Only add optional fields; anything else needs `/api/v2/`.
 - The volume name in `docker-compose.local.yml`: it's where an existing desktop install keeps its data.
 - The `@tt/*` workspace names: internal, and never seen by anyone running the app.
 
+## Branches
+
+Work collects on `dev`: each change gets its own branch from `dev` and a pull request into `dev`. `main` holds what
+has been released and only moves at a release, so it stays the GitHub default branch that the README, the compose
+file and the Unraid template point at. A fix for a released version is the exception: it branches from `main`, goes
+into `main` by pull request, and `main` is then merged into `dev`.
+
 ## Releasing
 
-Releases are cut from `main` by pushing a tag. The release workflow runs the full CI, builds the image and publishes
-it to `ghcr.io/bernie-sandler/belltower`, then creates a GitHub Release from the matching CHANGELOG section. The
-image name comes from the repository name, so renaming the repository also means publishing under the new name and
-then updating `docker-compose.yml`, the docs and `unraid/belltower.xml`.
+Releases are cut from `main` by pushing a tag, after a pull request from `dev` brings the work over. Release
+candidates are published from `dev` by running a workflow, without a tag push. Both run the full CI, build the image
+and publish it to `ghcr.io/bernie-sandler/belltower`, then create a GitHub Release from the matching CHANGELOG
+section. The image name comes from the repository name, so renaming the repository also means publishing under the
+new name and then updating `docker-compose.yml`, the docs and `unraid/belltower.xml`.
 
-| Tag | Image tags | GitHub Release |
-|---|---|---|
-| `v1.3.0` | `:1.3.0`, `:1.3`, `:1`, `:latest` | release |
-| `v1.3.0-rc.1` | `:1.3.0-rc.1`, `:rc` | pre-release |
+| Published by | Git tag | Image tags | GitHub Release |
+|---|---|---|---|
+| `release.yml` (tag pushed on `main`) | `v1.3.0` | `:1.3.0`, `:1.3`, `:1`, `:latest` | release |
+| `prerelease.yml` (run on `dev`) | `v1.3.0-rc.1` | `:1.3.0-rc.1`, `:rc` | pre-release |
+| `dev-image.yml` (every push to `dev`) | none | `:dev` | none |
 
-Before tagging:
-1. Set the version (without any `-rc.N` suffix) in all four `package.json` files (root, `shared`, `server`, `web`)
-   and run `npm install --package-lock-only`. The workflow refuses a tag that doesn't match.
-2. Add a `## <version>: <title>` section to `CHANGELOG.md`. It becomes the release notes, and every RC of a version
-   shares it.
-3. Make sure CI is green on `main`.
+The `:dev` image is rebuilt on every push to `dev`, with no GitHub Release. Code reaches `dev` through pull requests
+that already passed CI, so it isn't run again. The image reports the version in `package.json`, so set the next
+version on `dev` when work on it starts. A database that ran a `:dev` image keeps that build's migrations, so a
+migration counts as shipped once it reaches `dev`.
+
+### Release candidates
+
+Run the **Prerelease** workflow on `dev` from the Actions tab, or:
+
+```bash
+gh workflow run prerelease.yml --ref dev
+```
+
+It picks the version in `package.json` (or the next patch version once that one is released) and the next `rc`
+number, runs CI, publishes the image, moves `:rc` to it, and creates the `vX.Y.Z-rc.N` tag and a pre-release whose
+notes are the version's CHANGELOG section. Pass `-f version=1.4.0` to pick another version. Pushing an rc tag by
+hand fails.
+
+### Releases
+
+1. On `dev`, the version (without any `-rc.N` suffix) is set in all four `package.json` files (root, `shared`,
+   `server`, `web`) and `npm install --package-lock-only` has run. The workflow refuses a tag that doesn't match.
+2. Also on `dev`, add a `## <version>: <title>` section to `CHANGELOG.md`. It becomes the release notes, and every RC
+   of a version shares it.
+3. Open a pull request from `dev` into `main` and merge it with a merge commit, not a squash. A squash would leave
+   `dev` looking unmerged, and the next release pull request would carry the old changes again.
+4. Make sure CI is green on `main`, then tag `main` and push the tag. `release.yml` checks that the tag is on `main`,
+   matches `package.json` and has a CHANGELOG section before it publishes anything.
+
+### Pruning
+
+The Releases page keeps at most one release and one pre-release: a release deletes every older Release page, a
+pre-release deletes older pre-releases. Git tags are never removed. `cleanup-images.yml` then prunes the registry to
+every version (`1.3.0`, `1.3`, `1`), `latest`, `dev`, `rc` and the current pre-release's image, deleting older
+release candidate tags and untagged leftovers of replaced builds. Run it from the Actions tab with **dry run** ticked
+to see what it would delete.
 
 The app shows its version in Settings, in the container log and in every backup.

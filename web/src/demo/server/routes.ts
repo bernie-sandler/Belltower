@@ -317,6 +317,8 @@ export interface DemoApi {
   'POST /api/tickets': CardDetail;
   // ---- automation API (routes/v1.ts): bearer tokens from other tools, never the web app ----
   'GET /api/v1/summary': never;
+  'GET /api/v1/cards': never;
+  'GET /api/v1/cards/:ref': never;
   'POST /api/v1/cards': never;
   'POST /api/v1/hooks/uptime-kuma': never;
 }
@@ -422,11 +424,14 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
 
   'GET /api/config': ok((ctx) => ({
     appVersion: `${APP_VERSION} (demo)`,
+    // Each visitor's demo starts fresh in their browser: never an upgrade.
+    upgradedFrom: null,
     timeZone: ctx.tz,
     maxUploadBytes: MAX_UPLOAD_BYTES,
     passwordManagedByEnv: false,
     teams: teamsEnabled(ctx),
     submitPageEnabled: ctx.s.settings.submit.enabled,
+    bellTokens: false, // the demo has no API tokens
   })),
   'GET /api/board': ok(
     (ctx) => {
@@ -714,6 +719,12 @@ export const routes: { [K in RouteKey]: RouteDef<DemoApi[K]> } = {
   }),
 
   'GET /api/v1/summary': ok(() => {
+    throw notInDemo(NO_AUTOMATION);
+  }),
+  'GET /api/v1/cards': ok(() => {
+    throw notInDemo(NO_AUTOMATION);
+  }),
+  'GET /api/v1/cards/:ref': ok(() => {
     throw notInDemo(NO_AUTOMATION);
   }),
   'POST /api/v1/cards': ok(() => {

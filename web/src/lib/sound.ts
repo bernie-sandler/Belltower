@@ -1,5 +1,5 @@
 // The bell's sound, per device (localStorage `tt:sound`): off, chime or ping (default chime). Set
-// under Settings → Appearance, next to the theme.
+// under Account → Notification sound.
 //
 // The sounds are synthesized with Web Audio: no audio file to load and no change to the CSP, and
 // it works over plain HTTP. Browsers only let a page make sound after you've interacted with it,

@@ -386,6 +386,13 @@ const v12 = `
 ALTER TABLE users ADD COLUMN ${tsNull('deleted_at')};
 `;
 
+// 1.6: a token can ring the bell. Its new tickets tell admins like a submit-page ticket does
+// (`submitted`, with Teams on or off): for chat bots that file what people report, not for monitors.
+// Existing tokens stay quiet.
+const v13 = `
+ALTER TABLE api_tokens ADD COLUMN rings_bell INTEGER NOT NULL DEFAULT 0 CHECK (rings_bell IN (0, 1));
+`;
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'initial schema', sql: v1 },
   { version: 2, name: 'card severity', sql: v2 },
@@ -399,6 +406,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 10, name: 'request type labels', sql: v10 },
   { version: 11, name: 'tag-restricted accounts', sql: v11 },
   { version: 12, name: 'deleted people', sql: v12 },
+  { version: 13, name: 'tokens that ring the bell', sql: v13 },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

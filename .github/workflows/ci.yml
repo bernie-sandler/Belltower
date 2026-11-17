@@ -1,17 +1,20 @@
-# Tests on every push and pull request; also run by release.yml before publishing an image.
+# Tests every pull request and every push to main and dev; also run by release.yml and prerelease.yml before
+# publishing an image.
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  push:
+    branches: [main, dev]
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# The workflow name keeps a run called by release.yml or prerelease.yml out of the group of a push to the same ref.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -60,9 +63,24 @@ jobs:
       - name: Container starts and reports healthy
         run: |
           docker run -d --name tt -p 18080:8080 -e APP_PASSWORD=ci-only-password belltower:ci
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fs http://127.0.0.1:18080/health; then echo; exit 0; fi
             sleep 1
           done
           docker logs tt
           exit 1
+
+  # One check that sums up the others, so branch rules can require "CI passed" instead of every job by name.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [test, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify all checks succeeded
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: |
+          echo "One or more required jobs did not succeed: ${{ toJSON(needs) }}"
+          exit 1
+      - run: echo "All checks passed."

@@ -4,6 +4,36 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.6.0: Theme editor
+
+- **Theme Customizer.** A new **Theme Customizer** in the main menu sets how Belltower looks on each device. Pick
+  System, Light or Dark, start from a preset (Belltower, Slate, Ember, Forest, Orchid, Glacier, Parchment or High
+  contrast), then fine-tune any of 14 colors (background, top bar, columns, cards, menus, borders, three text colors
+  and five accents) with a color picker, a hex code or `rgb()` values, plus sharp, default or round corners. Dark and
+  Light each keep their own colors, and the page shows the mode you're editing while the customizer is open. Hover
+  and text shades follow your accents and stay readable, the customizer warns when text gets hard to read, and every
+  color has its own reset.
+- **What's new after an update.** The first time a device opens Belltower after an upgrade, it shows that release's
+  notes, like these, once. Turn it off under **Settings → About**. A fresh install doesn't show it.
+- **Read tickets through the automation API.** A bot or script that opened a ticket can now check on it:
+  `GET /api/v1/cards/<ticket number or id>` answers one ticket, and `GET /api/v1/cards?ids=…&updatedSince=…` answers
+  several at once or everything that changed since a time. Each ticket comes with its state (received, in progress,
+  waiting, done), resolution reason, column, priority, severity, tags and dates, but never its description or notes.
+  Full tokens only: read-only dashboard tokens still see counts and nothing else. Each ticket also says where it
+  came from (`source`: the submit page, the API, a recurring template or by hand) and, for submit-page tickets, the
+  name typed there, so a bot can list what people sent through the submit page. See
+  [docs/API-V1.md](docs/API-V1.md#get-apiv1cardsref).
+- **Tokens that ring the bell.** An admin can set a new token to **ring the bell**: its new tickets reach admins' bell, with
+  its sound, like submit-page tickets, even with Teams off. Use it for a chat bot that files what people report. Other
+  tokens stay quiet as before, so a flapping monitor still can't ring all night. Existing tokens don't ring; to make
+  one ring, create a new token with the box ticked and revoke the old one.
+- **Moved.** Settings → Appearance is gone: light and dark are in the Theme Customizer, and the notification sound is
+  under **Account → Notification sound**.
+- **Upgrading.** Nothing to do. The database moves to layout 13 (one new column for tokens that ring the bell), so
+  going back to 1.5 means restoring the `pre-migrate-v12-to-v13-…db` copy. Backups from older versions restore as
+  before. Everything in the automation API works as before (it only gained the two read routes). Custom colors are
+  saved per device in the browser, not in backups.
+
 ## 1.5.1: Buttons that stay put
 
 - **Card buttons stay in view.** On a computer, a card's **Add to card** and **Actions** buttons now stay pinned just

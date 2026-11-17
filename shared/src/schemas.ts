@@ -638,8 +638,87 @@ export const ApiTokenBody = z.object({
   /** Lets "event": "resolved" mark the matching ticket done. Ignored for read-only tokens. */
   canComplete: z.boolean().default(false),
   scope: z.enum(TOKEN_SCOPES).default('full'),
+  /**
+   * Its new tickets tell admins like submit-page tickets (`submitted`), with Teams on or off: for
+   * chat bots that file what people report. Ignored for read-only tokens.
+   */
+  ringsBell: z.boolean().default(false),
 });
 export type ApiTokenBody = z.infer<typeof ApiTokenBody>;
+
+/** Most ids one GET /api/v1/cards call takes, and most tickets one updatedSince call returns. */
+export const API_TICKET_IDS_MAX = 100;
+export const API_TICKETS_PAGE = 200;
+
+/** An ISO 8601 time with a zone (Z or ±hh:mm): without one it would be read in the server's zone. */
+const ISO_WITH_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/i;
+/** The `next` cursor of a GET /api/v1/cards page: the last ticket's updatedAt and id. Opaque to clients. */
+const API_CURSOR = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)_([1-9]\d{0,11})$/;
+
+export function apiTicketsCursor(updatedAt: string, id: number): string {
+  return `${updatedAt}_${id}`;
+}
+
+/**
+ * GET /api/v1/cards (frozen v1 contract, docs/API-V1.md): `ids` is a comma-separated list of card
+ * ids, `updatedSince` an ISO 8601 time with a zone (normalized to UTC), `cursor` the `next` of the
+ * previous page (continues an updatedSince list after the last ticket it returned, ties included).
+ * At least one is required; updatedSince and cursor don't go together.
+ */
+export const ApiTicketsQuery = z
+  .object({
+    ids: z
+      .string()
+      .trim()
+      .max(2000)
+      .transform((s, ctx) => {
+        const parts = s.split(',').map((p) => p.trim()).filter(Boolean);
+        if (!parts.length || !parts.every((p) => /^[1-9]\d{0,11}$/.test(p))) {
+          ctx.addIssue({ code: 'custom', message: '"ids" must be card ids separated by commas' });
+          return z.NEVER;
+        }
+        const ids = [...new Set(parts.map(Number))];
+        if (ids.length > API_TICKET_IDS_MAX) {
+          ctx.addIssue({ code: 'custom', message: `At most ${API_TICKET_IDS_MAX} "ids"` });
+          return z.NEVER;
+        }
+        return ids;
+      })
+      .optional(),
+    updatedSince: z
+      .string()
+      .trim()
+      .max(40)
+      .transform((s, ctx) => {
+        const t = ISO_WITH_ZONE.test(s) ? Date.parse(s) : NaN;
+        if (Number.isNaN(t)) {
+          ctx.addIssue({ code: 'custom', message: '"updatedSince" must be an ISO 8601 time with a zone, e.g. 2026-11-17T09:00:00Z' });
+          return z.NEVER;
+        }
+        return new Date(t).toISOString();
+      })
+      .optional(),
+    cursor: z
+      .string()
+      .trim()
+      .max(60)
+      .transform((s, ctx) => {
+        const m = API_CURSOR.exec(s);
+        if (!m) {
+          ctx.addIssue({ code: 'custom', message: '"cursor" must be the "next" value of a previous answer, unchanged' });
+          return z.NEVER;
+        }
+        return { updatedAt: m[1]!, id: Number(m[2]) };
+      })
+      .optional(),
+  })
+  .refine((q) => q.ids !== undefined || q.updatedSince !== undefined || q.cursor !== undefined, {
+    message: 'Pass "ids", "updatedSince" or "cursor"',
+  })
+  .refine((q) => q.updatedSince === undefined || q.cursor === undefined, {
+    message: 'Pass "updatedSince" or "cursor", not both',
+  });
+export type ApiTicketsQuery = z.infer<typeof ApiTicketsQuery>;
 
 /** What the submit page sends (the "data" part of the multipart form). */
 export const SubmitBody = z.object({

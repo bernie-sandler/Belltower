@@ -152,6 +152,11 @@ export type Actor =
 
 export interface AppConfig {
   appVersion: string;
+  /**
+   * The version this install was last upgraded from ("before 1.6.0" for an older one), or null when
+   * it has never been upgraded. The "What's new" dialog uses it on a device with no version of its own.
+   */
+  upgradedFrom?: string | null;
   /** IANA zone all dates/times are displayed and entered in, e.g. 'America/Chicago'. */
   timeZone: string;
   maxUploadBytes: number;
@@ -161,8 +166,10 @@ export interface AppConfig {
    * Off by default; while off the app hides them (nothing is deleted).
    */
   teams: boolean;
-  /** Whether the submit page is on. With Teams off, the bell shows (to admins) only while it is. */
+  /** Whether the submit page is on. With Teams off, the bell shows (to admins) only while it is… */
   submitPageEnabled: boolean;
+  /** …or while an unrevoked API token rings the bell (1.6). */
+  bellTokens: boolean;
 }
 
 export interface Column {
@@ -649,6 +656,8 @@ export interface ApiTokenInfo {
   canComplete: boolean;
   /** 'read' tokens can only call GET routes (the dashboard summary). */
   scope: TokenScope;
+  /** Its new tickets ring admins' bell like submit-page tickets (1.6). */
+  ringsBell: boolean;
   createdAt: IsoTimestamp;
   lastUsedAt: IsoTimestamp | null;
   revokedAt: IsoTimestamp | null;
@@ -679,6 +688,54 @@ export interface ApiSummary {
   /** Open tickets by priority and severity code. */
   byPriority: { P0: number; P1: number; P2: number; P3: number; none: number };
   bySeverity: { S1: number; S2: number; S3: number; S4: number; none: number };
+  generatedAt: IsoTimestamp;
+}
+
+/**
+ * One ticket as GET /api/v1/cards and /api/v1/cards/:ref answer it. Part of the frozen v1 contract
+ * (docs/API-V1.md): fields may be added, never removed or redefined. Status fields only: no
+ * description, notes or people.
+ */
+export interface ApiTicket {
+  id: number;
+  ticketNo: string | null;
+  title: string;
+  /** The same state the status page and GET /api/v1/summary use. */
+  state: TicketState;
+  /** The resolution reason once done ("Fixed"), never the note; null while open. */
+  resolution: string | null;
+  column: { id: number; name: string };
+  priority: string | null;
+  severity: string | null;
+  /** Tag names, in tag order. */
+  labels: string[];
+  /** YYYY-MM-DD, or null. */
+  due: string | null;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+  completedAt: IsoTimestamp | null;
+  archivedAt: IsoTimestamp | null;
+  /** When it went to the Trash, or null. */
+  deletedAt: IsoTimestamp | null;
+  /**
+   * How it was opened: the submit page, /api/v1 or a card import, a recurring template, or by hand.
+   * Added in 1.6.0.
+   */
+  source: ApiTicketSource;
+  /** The name typed on the submit page, or null (always null unless source is 'submit'). Added in 1.6.0. */
+  submitter: string | null;
+}
+
+export type ApiTicketSource = 'submit' | 'api' | 'recurring' | 'manual';
+
+/**
+ * GET /api/v1/cards. `more` is true when an updatedSince/cursor list was cut off at its page size;
+ * `next` is then the cursor for the following page (null otherwise).
+ */
+export interface ApiTicketList {
+  cards: ApiTicket[];
+  more: boolean;
+  next: string | null;
   generatedAt: IsoTimestamp;
 }
 

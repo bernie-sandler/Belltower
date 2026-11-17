@@ -167,8 +167,9 @@ nothing personal is ever sent to the webhook, Gotify or the install's own ntfy t
   turns it on or off.
 - **New tickets nobody has:** a ticket arrives from the submit page or an API token with nobody assigned. Off unless
   you turn it on.
-- **New tickets from the submit page:** someone without an account filed a ticket on the [submit page](SUBMIT-PAGE.md)
-  (tickets from API tokens and monitors don't count). In the app for admins by default, off for members. A
+- **New tickets from the submit page:** someone without an account filed a ticket on the [submit page](SUBMIT-PAGE.md),
+  or a chat bot filed one through an API token set to **ring the bell** (see [AUTOMATION.md](AUTOMATION.md#1-create-a-token)).
+  Tickets from other API tokens and monitors don't count. In the app for admins by default, off for members. A
   submit-page ticket is also a new ticket nobody has: if you want both, you're told once, as a submit-page ticket, on
   every channel either one is ticked for (a Discord ping for "New tickets nobody has" still comes).
 
@@ -182,7 +183,7 @@ member); once saved, your choice stays.
 
 - **The bell** in the top bar shows how many you haven't read. Opening one opens its card and marks it read (so does
   opening the card any other way), and **Mark all read** clears the count. Screen readers announce what's new. It checks every 30 seconds, also in a background tab, and when you come back to
-  the tab. It can play a sound (chime, ping or off), chosen per device under **Settings → Appearance**; only one open
+  the tab. It can play a sound (chime, ping or off), chosen per device under **Account → Notification sound**; only one open
   tab plays it, and only for something new, not for what was there when the page loaded. Browsers allow sound only
   after you've clicked or typed on the page.
 - **Discord** posts in the install's Discord channel and mentions you there, and only you (a webhook can't send direct
@@ -219,12 +220,14 @@ Text from other people is escaped, so it can't add formatting, links or extra Di
 ## With Teams off
 
 Teams is off on a new install and after upgrading, so a solo install has no assignees, watching or mentions to hear
-about. One thing still reaches you: **a new ticket from the [submit page](SUBMIT-PAGE.md)**.
+about. One thing still reaches you: **a new ticket from the [submit page](SUBMIT-PAGE.md)**, or from an API token
+set to ring the bell (a chat bot).
 
 - Every active admin gets it in the bell, whatever they chose under Account → Notifications (which is hidden while
   Teams is off). Members get nothing.
-- The bell, and its sound under Settings → Appearance, show only while the submit page is on, and only to admins. It
-  lists only these; anything from before Teams was turned off waits, unread, for when it's back on.
+- The bell, and its sound under Account → Notification sound, show only to admins, and only while the submit page is
+  on or an unrevoked token rings the bell. It lists only these; anything from before Teams was turned off waits,
+  unread, for when it's back on.
 - Nothing personal goes to Discord or ntfy. The install's own channels above already announce new tickets from
   outside, exactly as they do with Teams on.
 - Nothing else is written while Teams is off, so turning it back on doesn't bring a pile of old news.

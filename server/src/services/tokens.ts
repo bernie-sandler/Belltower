@@ -15,6 +15,7 @@ interface Row {
   prefix: string;
   can_complete: 0 | 1;
   scope: TokenScope;
+  rings_bell: 0 | 1;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
@@ -42,6 +43,7 @@ const toInfo = (r: ListRow): ApiTokenInfo => ({
   prefix: r.prefix,
   canComplete: r.can_complete === 1,
   scope: r.scope,
+  ringsBell: r.rings_bell === 1,
   createdAt: r.created_at,
   lastUsedAt: r.last_used_at,
   revokedAt: r.revoked_at,
@@ -70,23 +72,40 @@ export function listTokens(ctx: Ctx, opts: { ownerId?: number } = {}): ApiTokenI
 
 /**
  * Creates a token for the acting person; the returned `token` is never retrievable again. A
- * read-only token can't complete tickets.
+ * read-only token can't complete tickets or ring the bell.
  */
-export function createToken(ctx: Ctx, body: Omit<ApiTokenBody, 'scope'> & { scope?: TokenScope }): { token: string; info: ApiTokenInfo } {
+export function createToken(ctx: Ctx, body: Omit<ApiTokenBody, 'scope' | 'ringsBell'> & { scope?: TokenScope; ringsBell?: boolean }): { token: string; info: ApiTokenInfo } {
   const scope = body.scope ?? 'full';
   const token = `tt_${randomBytes(24).toString('base64url')}`;
   const id = Number(
-    stmt(ctx.db, 'INSERT INTO api_tokens (name, token_hash, prefix, can_complete, scope, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    stmt(ctx.db, 'INSERT INTO api_tokens (name, token_hash, prefix, can_complete, scope, rings_bell, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
       body.name,
       hash(token),
       token.slice(0, 7),
       body.canComplete && scope === 'full' ? 1 : 0,
       scope,
+      body.ringsBell && scope === 'full' ? 1 : 0,
       nowIso(ctx),
       actorUserId(ctx),
     ).lastInsertRowid,
   );
   return { token, info: toInfo(stmt(ctx.db, `${SELECT_WITH_OWNER} WHERE t.id = ?`).get(id) as ListRow) };
+}
+
+/**
+ * Whether any working token rings the bell (unrevoked, owner active): with Teams off, the bell then
+ * shows for admins.
+ */
+export function anyBellTokens(ctx: Ctx): boolean {
+  return (
+    stmt(
+      ctx.db,
+      `SELECT EXISTS (SELECT 1 FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id
+        WHERE t.rings_bell = 1 AND t.revoked_at IS NULL AND u.disabled_at IS NULL)`,
+    )
+      .pluck()
+      .get() === 1
+  );
 }
 
 /** Revokes a token: any token (admins), or only one person's own (`ownerId`); anything else is a 404. */
@@ -103,6 +122,8 @@ export interface TokenIdentity {
   name: string;
   canComplete: boolean;
   scope: TokenScope;
+  /** Its new tickets ring admins' bell like submit-page tickets. */
+  ringsBell: boolean;
   /** Who the token acts for (null: made before 1.5 and not adopted yet). */
   userId: number | null;
 }
@@ -123,5 +144,5 @@ export function authenticateToken(ctx: Ctx, token: string): TokenIdentity | null
   if (!row.last_used_at || now - Date.parse(row.last_used_at) > 60_000) {
     stmt(ctx.db, 'UPDATE api_tokens SET last_used_at = ? WHERE id = ?').run(nowIso(ctx), row.id);
   }
-  return { id: row.id, name: row.name, canComplete: row.can_complete === 1, scope: row.scope, userId: row.user_id };
+  return { id: row.id, name: row.name, canComplete: row.can_complete === 1, scope: row.scope, ringsBell: row.rings_bell === 1, userId: row.user_id };
 }

@@ -16,7 +16,8 @@ import { TileView } from './board/Tile';
 import { ActivityList } from './card/ActivityList';
 import { CardFields } from './card/CardFields';
 import { PeopleSection } from './settings/PeopleSection';
-import { AppearanceSection, TeamsSwitch } from './settings/SettingsPage';
+import { TeamsSwitch } from './settings/SettingsPage';
+import { NotificationSoundSection } from './account/NotificationSoundSection';
 import { ShellContext, type ShellActions } from './shell/ShellContext';
 import { TopBar } from './shell/TopBar';
 
@@ -43,6 +44,7 @@ const shell: ShellActions = { openLabels: vi.fn(), openNewTicket: vi.fn(), openR
 interface Setup {
   teams: boolean;
   submitPageEnabled?: boolean;
+  bellTokens?: boolean;
   me?: UserInfo;
   /** null: not loaded (a test fetches it). */
   users?: UserInfo[] | null;
@@ -52,9 +54,9 @@ interface Setup {
 }
 
 /** Everything the components read, already in the cache (nothing is fetched). */
-function client({ teams, submitPageEnabled = false, me = ADMIN, users = [ADMIN, ALEX, JORDAN], activity = [], bellTeams = teams }: Setup): QueryClient {
+function client({ teams, submitPageEnabled = false, bellTokens = false, me = ADMIN, users = [ADMIN, ALEX, JORDAN], activity = [], bellTeams = teams }: Setup): QueryClient {
   const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-  const config: AppConfig = { appVersion: '1.5.0', timeZone: 'America/Chicago', maxUploadBytes: 1, passwordManagedByEnv: false, teams, submitPageEnabled };
+  const config: AppConfig = { appVersion: '1.5.0', timeZone: 'America/Chicago', maxUploadBytes: 1, passwordManagedByEnv: false, teams, submitPageEnabled, bellTokens };
   const meResponse: MeResponse = { ...me, passwordManagedByEnv: false, ssoLinked: false };
   const bell: NotificationsResponse = { items: [], unread: 0, latestId: 0, teams: bellTeams };
   qc.setQueryData(qk.config, config);
@@ -113,8 +115,13 @@ describe('the top bar', () => {
     expect(bell()).not.toBeNull();
     submitOn.unmount();
 
+    // An API token that rings the bell shows it too, with the submit page off.
+    const botOn = show({ teams: false, bellTokens: true }, <TopBar />);
+    expect(bell()).not.toBeNull();
+    botOn.unmount();
+
     // A member never gets submit-page notifications, so there's nothing for a bell to hold.
-    show({ teams: false, submitPageEnabled: true, me: JORDAN }, <TopBar />);
+    show({ teams: false, submitPageEnabled: true, bellTokens: true, me: JORDAN }, <TopBar />);
     expect(bell()).toBeNull();
   });
 });
@@ -127,7 +134,7 @@ describe('Teams switched somewhere else', () => {
       vi.fn(async (url: string) => {
         fetched.push(url);
         if (url !== '/api/config') throw new Error(`unexpected fetch ${url}`);
-        const config: AppConfig = { appVersion: '1.5.0', timeZone: 'America/Chicago', maxUploadBytes: 1, passwordManagedByEnv: false, teams: true, submitPageEnabled: true };
+        const config: AppConfig = { appVersion: '1.5.0', timeZone: 'America/Chicago', maxUploadBytes: 1, passwordManagedByEnv: false, teams: true, submitPageEnabled: true, bellTokens: false };
         return new Response(JSON.stringify(config), { status: 200, headers: { 'content-type': 'application/json' } });
       }),
     );
@@ -138,12 +145,11 @@ describe('Teams switched somewhere else', () => {
   });
 });
 
-describe('Settings → Appearance', () => {
+describe('Account → Notification sound', () => {
   it('offers the bell’s sound only where there’s a bell', () => {
     const hasSound = (teams: boolean, submitPageEnabled: boolean, me = JORDAN) => {
-      const r = show({ teams, submitPageEnabled, me }, <AppearanceSection />);
+      const r = show({ teams, submitPageEnabled, me }, <NotificationSoundSection />);
       const has = screen.queryByRole('radiogroup', { name: 'Sound for new notifications' }) !== null;
-      expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeTruthy();
       r.unmount();
       return has;
     };

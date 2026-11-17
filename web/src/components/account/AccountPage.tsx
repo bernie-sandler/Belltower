@@ -12,6 +12,7 @@ import { ErrorScreen, LoadingScreen } from '../common/Status';
 import { Section } from '../settings/SettingsPage';
 import { TokensSection } from '../settings/TokensSection';
 import { NotificationPrefsSection } from './NotificationPrefsSection';
+import { NotificationSoundSection } from './NotificationSoundSection';
 import { PasswordForm } from './PasswordForm';
 import { SignInSection } from './SignInSection';
 
@@ -29,6 +30,7 @@ export function AccountPage() {
       <SignInSection me={me.data} />
       <PasswordSection me={me.data} />
       {teams && <NotificationPrefsSection />}
+      <NotificationSoundSection />
       <TokensSection mine />
     </div>
   );

@@ -47,7 +47,7 @@ test('an admin adds a member on the People screen; the member signs in and sees 
   await signInThroughForm(page, username, MEMBER_PASSWORD);
 
   await page.goto('/settings');
-  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About' })).toBeVisible();
   for (const admin of ['People', 'Automation', 'General']) {
     await expect(page.getByRole('heading', { name: admin, exact: true })).toHaveCount(0);
   }

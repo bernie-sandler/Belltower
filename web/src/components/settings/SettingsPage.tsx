@@ -1,24 +1,24 @@
 // Settings (/settings): general options (Teams included), people, the submit page and its request
 // types, automation tokens, notifications, single sign-on, and the version. Members see only what's
-// theirs to change here (appearance); the install's settings are for admins. Your own password and
-// tokens are under Account.
+// theirs to change here (what's new after an update, in About); the install's settings are for
+// admins. Light/dark and colors are in the main menu's Theme Customizer; your own password, tokens
+// and notification sound are under Account.
 
 import { DEFAULT_TICKET_FORMAT, type SettingsResponse } from '@tt/shared';
-import { Bot, Copy, Globe, Info, Palette, RefreshCw, Settings as SettingsIcon, UserRound, Volume2 } from 'lucide-react';
+import { Bot, Copy, Globe, Info, RefreshCw, Settings as SettingsIcon, UserRound } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { sortedColumns, useBoard } from '../../api/board';
 import { useSetBlockedColumn } from '../../api/columns';
-import { useBellShown, useConfig } from '../../api/config';
+import { useConfig } from '../../api/config';
 import { errorMessage } from '../../api/errors';
 import { qk } from '../../api/keys';
 import { useIsAdmin, useMe, useUsers } from '../../api/me';
 import { useNewSubmitLink, useResetStatusLinks, useSaveGeneral, useSaveSubmit, useSaveTeams, useSettings } from '../../api/settings';
 import { copyText } from '../../lib/clipboard';
-import { playSound, setSound, useSound, type SoundChoice } from '../../lib/sound';
-import { setTheme, useTheme, type ThemeChoice } from '../../lib/theme';
 import { todayLocal } from '../../lib/time';
+import { setWhatsNewEnabled, useWhatsNewEnabled } from '../../lib/whatsNew';
 import { toast } from '../../lib/toast';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ErrorScreen, LoadingScreen } from '../common/Status';
@@ -51,7 +51,6 @@ export function SettingsPage() {
       <h2 className="list-page-title">
         <SettingsIcon size={20} aria-hidden /> Settings
       </h2>
-      <AppearanceSection />
       {isAdmin && <GeneralSection s={s} />}
       {isAdmin && <PeopleSection />}
       {isAdmin && <ResolutionReasonsSection s={s} />}
@@ -61,69 +60,6 @@ export function SettingsPage() {
       {isAdmin && <SsoSection />}
       <AboutSection />
     </div>
-  );
-}
-
-/**
- * Per device (this browser), so a phone can follow the system while the desktop stays dark, and
- * the work laptop can stay quiet while the desktop at home chimes. The sound only where there's a bell.
- */
-export function AppearanceSection() {
-  const theme = useTheme();
-  const sound = useSound();
-  const bell = useBellShown();
-  const sounds: [SoundChoice, string][] = [
-    ['off', 'Off'],
-    ['chime', 'Chime'],
-    ['ping', 'Ping'],
-  ];
-  const options: [ThemeChoice, string][] = [
-    ['system', 'System'],
-    ['light', 'Light'],
-    ['dark', 'Dark'],
-  ];
-  return (
-    <Section icon={<Palette size={16} aria-hidden />} title="Appearance">
-      <div className="segmented" role="radiogroup" aria-label="Theme">
-        {options.map(([value, label]) => (
-          <button key={value} type="button" role="radio" aria-checked={theme === value} className="segmented-item" onClick={() => setTheme(value)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      <p className="field-help">Saved on this device only. System follows your phone or computer’s light/dark setting.</p>
-      {bell && (
-        <>
-          <span className="field-label sound-label">Sound for new notifications</span>
-          <div className="sound-row">
-            <div className="segmented" role="radiogroup" aria-label="Sound for new notifications">
-              {sounds.map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={sound === value}
-                  className="segmented-item"
-                  onClick={() => {
-                    setSound(value);
-                    playSound(value, true);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <button type="button" className="btn btn-sm" disabled={sound === 'off'} onClick={() => playSound(sound, true)}>
-              <Volume2 size={14} aria-hidden /> Test
-            </button>
-          </div>
-          <p className="field-help">
-            Saved on this device only. It plays when the bell gets something new, in one open tab, once you’ve clicked or typed
-            on the page (browsers don’t allow sound before that).
-          </p>
-        </>
-      )}
-    </Section>
   );
 }
 
@@ -454,8 +390,13 @@ function SubmitSection({ s }: { s: SettingsResponse }) {
 function AboutSection() {
   const { data: config } = useConfig();
   const uploadMb = config ? Math.round(config.maxUploadBytes / (1024 * 1024)) : null;
+  const whatsNew = useWhatsNewEnabled();
   return (
     <Section icon={<Info size={16} aria-hidden />} title="About">
+      <label className="checkbox">
+        <input type="checkbox" checked={whatsNew} onChange={(e) => setWhatsNewEnabled(e.target.checked)} />
+        <span>Show what’s new after an update (this device)</span>
+      </label>
       <p className="muted small">
         <Bot size={12} aria-hidden /> Belltower {config?.appVersion ?? '…'} · time zone {config?.timeZone ?? '…'} · uploads up to{' '}
         {uploadMb ?? '…'} MB

@@ -53,6 +53,7 @@ Applied database migration(s): 6
 | `1` or `1.2` | The newest release within 1.x or 1.2.x. |
 | `1.2.3` | Exactly that version, until you change it. |
 | `rc` | The newest release candidate. It only moves when there's a new one, so it can fall behind `latest`. |
+| `dev` | The next version while it's being built, updated with every change. Less tested than `rc`: try it on a copy of your data. |
 
 Images are at `ghcr.io/bernie-sandler/belltower` and go back to 1.2.1. The image is public, so pulling it doesn't need
 a `docker login`.
@@ -87,6 +88,8 @@ For example, 1.3 upgrades the database to layout 7 (for read-only API tokens), s
 until you put the `pre-migrate-v6-to-v7-…db` copy back. Likewise 1.5 upgrades to layout 12 (people, request type labels,
 tag-restricted accounts and deleted people), and going back to 1.4 means putting the `pre-migrate-v8-to-v12-…db` copy back
 (from a 1.5.0 release candidate it's named after the layout you came from, such as `pre-migrate-v11-to-v12-…db`).
+1.6 upgrades to layout 13 (API tokens that ring the bell); going back to 1.5 means putting the
+`pre-migrate-v12-to-v13-…db` copy back.
 
 Anything you changed after the upgrade is lost this way. Export a backup first if that matters, then open an issue so
 it can be fixed. Rolling back from 1.5 also loses the accounts created since the upgrade (and who did what), and 1.4

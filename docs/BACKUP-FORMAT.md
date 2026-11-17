@@ -35,7 +35,7 @@ A JSON-only export restores fine too: the cards keep their attachment entries, a
 ```json
 {
   "format": "tower-tracker-backup",
-  "schemaVersion": 12,
+  "schemaVersion": 13,
   "appVersion": "1.5.0",
   "appTz": "America/Chicago",
   "exportedAt": "2026-10-28T05:18:00.239Z",
@@ -66,7 +66,7 @@ Rows are ordered by `id`, or by their key for tables without one.
 
 ## Tables
 
-Listed in the order restore loads them (parents first). Columns are those of the current schema (12); the full
+Listed in the order restore loads them (parents first). Columns are those of the current schema (13); the full
 definitions, with every constraint, are the migrations in
 [`server/src/db/schema.ts`](../server/src/db/schema.ts).
 
@@ -86,7 +86,7 @@ definitions, with every constraint, are the migrations in
 | `checklist_items` | Their items | `checklist_id`, `text`, `state` (`open`, `done`, `failed`, `unverified`), `checked` (`1` only when `done`), `checked_at` (when the current mark was set), `position` |
 | `attachments` | Attachment metadata (the file is in the ZIP) | `card_id`, `original_name`, `stored_name` (UUID), `mime_type`, `kind` (`image`, `text`, `file`), `size_bytes`, `sha256` |
 | `card_links` | Links between cards | `from_card_id`, `to_card_id`, `type`: `blocks` (from blocks to) or `relates` (stored once, lower id first) |
-| `api_tokens` | Automation tokens: **hashes only**, never the token itself | `name`, `token_hash`, `prefix`, `can_complete`, `scope` (`full` or `read`), `revoked_at`, `user_id` (who it acts for) |
+| `api_tokens` | Automation tokens: **hashes only**, never the token itself | `name`, `token_hash`, `prefix`, `can_complete`, `scope` (`full` or `read`), `revoked_at`, `user_id` (who it acts for), `rings_bell` |
 | `activity` | The history and work log | `card_id`, `kind` (`event`, `worklog`), `type`, `data` (JSON), `body_md` (work log text), `occurred_at`, `edited_at`, `retracted_at`, `user_id` (who did it; for a token, its owner), `token_id` (the token, if one was used) |
 | `activity_revisions` | Earlier versions of edited work-log entries | `activity_id`, `body_md`, `occurred_at`, `revised_at`, `user_id` (who made the edit) |
 | `template_runs` | What each recurring template created, and when | `template_id`, `occurrence_date`, `outcome`, `card_id` |
@@ -121,6 +121,8 @@ links), `app_tz_at_seed`, `seeded` and `request_types_seeded`.
   `oidc_issuer` or `oidc_subject` in a backup (say, a hand-edited one) is ignored on restore.
 - **Single sign-on settings** (`oidc_settings`, client secret included). They belong to the install: a restore keeps
   the live install's, and an `oidc_settings` row in a backup (say, a hand-edited one) is ignored.
+- **The install's version record** (`app_version`, `upgraded_from`, from 1.6.0). It's about the install, not its
+  data: a restore keeps the live install's, and rows in a backup are ignored.
 - **Personal notifications** (`notifications`). They're each person's inbox, pruned as they age, not data worth
   restoring.
 - **The search index** (`card_search`). It's rebuilt from the cards on restore.
@@ -144,3 +146,4 @@ tokens and API token hashes, keep exports somewhere private.
 | 10 | 1.5 | `request_type_labels` (the labels every ticket of a request type gets; from 1.5.0-rc.4). From older backups, a type's "always add" label (`type_label_id`) moves here; the tags submitters could pick (`tag_label_ids`) are dropped |
 | 11 | 1.5 | `users.tag_scoped`, `user_labels` (members restricted to some tags; from 1.5.0-rc.4) |
 | 12 | 1.5 | `users.deleted_at` (deleted people; from 1.5.0-rc.5) |
+| 13 | 1.6 | `api_tokens.rings_bell` (the token's new tickets ring admins' bell; from 1.6.0-rc.2). Tokens from older backups come back quiet (`0`) |

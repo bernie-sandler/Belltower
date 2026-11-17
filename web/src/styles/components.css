@@ -850,3 +850,18 @@ textarea.input {
   color: var(--text-strong);
   font-size: 13px;
 }
+
+/* ---------- What's new (after an update) ---------- */
+
+.whats-new-subtitle {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.whats-new-footer {
+  justify-content: space-between;
+  align-items: center;
+}

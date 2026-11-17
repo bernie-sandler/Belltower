@@ -1,0 +1,54 @@
+name: Dependabot auto-merge
+
+# Queues non-breaking (patch/minor) Dependabot PRs to squash-merge once every required check passes.
+# Major updates are left open for review. Needs "Allow auto-merge" turned on in the repository settings and
+# "CI passed" set as a required check on dev (Dependabot targets dev). Without a required check, auto-merge would
+# merge straight away, before CI, so this job then only comments.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge
+    # Not in forks.
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository_owner == 'bernie-sandler'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for patch and minor updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # Required checks from rulesets and from classic branch protection.
+          rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$BASE" \
+            --jq '[.[] | select(.type == "required_status_checks")] | length')"
+          classic="$(gh api "repos/$GITHUB_REPOSITORY/branches/$BASE" \
+            --jq '.protection.required_status_checks.contexts // [] | length')"
+          if [ "$rules" -eq 0 ] && [ "$classic" -eq 0 ]; then
+            echo "::warning::$BASE has no required status checks, so auto-merge would skip CI. Require 'CI passed' on $BASE."
+            gh pr comment "$PR_URL" --body "Not queued for auto-merge: \`$BASE\` has no required status checks. Merge it by hand once CI is green."
+            exit 0
+          fi
+          if ! gh pr merge --auto --squash "$PR_URL"; then
+            echo "::warning::Could not enable auto-merge. Turn on 'Allow auto-merge' in the repository settings."
+          fi
+
+      - name: Flag major updates for review
+        if: steps.meta.outputs.update-type == 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" --body "Major version update: review the changelog before merging. Auto-merge is not enabled for this PR."

@@ -1,10 +1,12 @@
 // Automation API (/api/v1/*): bearer tokens only, no cookies or CSRF header. The guard checks the
 // token, keeps read-only tokens to the routes marked readScope, and puts its identity on the request.
 
+import { ApiTicketsQuery } from '@tt/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AppDeps } from '../../app';
 import { AppError } from '../../errors';
 import { WindowLimiter } from '../../lib/windowLimiter';
+import { apiTicket, apiTickets } from '../../services/apiTickets';
 import { intakeCard, intakeUptimeKuma } from '../../services/intake';
 import { apiSummary } from '../../services/summary';
 import type { TokenIdentity } from '../../services/tokens';
@@ -37,6 +39,23 @@ export function registerV1Routes(app: FastifyInstance, deps: AppDeps): void {
   app.get('/api/v1/summary', { config: { readScope: true } }, async (req) => {
     token(req);
     return apiSummary(req.ctx);
+  });
+
+  /** Tickets by id and/or changed since a time (full tokens only: read-only ones never see ticket details). */
+  app.get('/api/v1/cards', async (req) => {
+    token(req);
+    const q = ApiTicketsQuery.safeParse(req.query ?? {});
+    if (!q.success) {
+      const errors = q.error.issues.map((i) => i.message);
+      throw new AppError(400, 'validation', errors[0]!, { errors });
+    }
+    return apiTickets(req.ctx, q.data);
+  });
+
+  /** One ticket by ticket number or id. */
+  app.get('/api/v1/cards/:ref', async (req) => {
+    token(req);
+    return apiTicket(req.ctx, (req.params as { ref: string }).ref);
   });
 
   app.post('/api/v1/cards', async (req, reply) => {

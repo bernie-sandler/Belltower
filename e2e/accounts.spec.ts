@@ -59,7 +59,7 @@ test('a member added by an admin signs in and sees no admin-only settings', asyn
   await page.keyboard.press('Escape');
 
   await page.goto('/settings');
-  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'About' })).toBeVisible();
   // Their own tokens are under Account; Settings → Automation lists everyone's, for admins.
   for (const admin of ['General', 'People', 'Submit page', 'Resolution reasons', 'Automation', 'Notifications']) {
     await expect(page.getByRole('heading', { name: admin, exact: true })).toHaveCount(0);

@@ -1,28 +1,55 @@
-# Weekly update PRs. CI runs on each one; nothing merges by itself.
 version: 2
+
+# Every update targets dev, so dependency bumps reach users through a release like any other change. Patch and minor
+# updates merge by themselves once CI passes (dependabot-auto-merge.yml); majors wait for review.
+
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+      prefix-development: deps-dev
     groups:
-      # Minor and patch updates in one PR per week; majors get their own.
-      minor-and-patch:
+      # One PR per week for all non-breaking dev tooling bumps.
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      # One PR per week for non-breaking runtime bumps.
+      production-dependencies:
+        dependency-type: production
         update-types: [minor, patch]
     ignore:
       # Node's type definitions follow the Node version the app runs on (24, the LTS release in the
       # Docker image and CI). Move all three together on purpose, not through a weekly PR.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # Base image in the Dockerfile.
   - package-ecosystem: docker
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
+      day: monday
+    commit-message:
+      prefix: docker
     ignore:
       # Same: stay on the Node LTS release the app is tested on (see @types/node above).
       - dependency-name: node
