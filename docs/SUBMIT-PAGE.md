@@ -46,6 +46,15 @@ the title follows the type's pattern (say "Plex – Interstellar – stutters"),
 "submit page (*their name*)". Each one rings the bell for admins, with [Teams](USING.md#teams) on or off, and with
 [notifications](NOTIFICATIONS.md) set up you also get a message for each one.
 
+### Links that carry a reference
+
+A link to the submit page can end in `?ref=…` (letters, digits and `. _ ~ -`, up to 200 characters). The page
+sends it along with the ticket, and [`/api/v1`](API-V1.md#get-apiv1cardsref) hands it back as `submitRef`. Nobody
+sees it on the page or the board. It's meant for a bot that gives each person their own link and wants to know which
+tickets they sent, say a Discord bot that messages people when their ticket is done. Belltower doesn't check it;
+whoever made the link has to (sign it, for example). A link without one, or with a malformed one, works as before.
+Added in 1.7.0.
+
 ## Request types
 
 You start with **General**, **Plex** and **Game servers**, based on the old Discord support templates. Each type has

@@ -720,6 +720,12 @@ export const ApiTicketsQuery = z
   });
 export type ApiTicketsQuery = z.infer<typeof ApiTicketsQuery>;
 
+/**
+ * An opaque reference a link to the submit page can carry (`?ref=`), handed back on the ticket in
+ * /api/v1 as `submitRef`. Lets a bot that gave someone the link tell which tickets they sent.
+ */
+export const SUBMIT_REF_PATTERN = /^[A-Za-z0-9._~-]{1,200}$/;
+
 /** What the submit page sends (the "data" part of the multipart form). */
 export const SubmitBody = z.object({
   typeId: id,
@@ -734,5 +740,7 @@ export const SubmitBody = z.object({
   name: z.string().trim().max(60).refine(noNul, NUL_MESSAGE).default(''),
   /** Honeypot: people never see it, bots fill it in. */
   website: z.string().max(200).optional(),
+  /** The page link's `?ref=`, if it had a valid one (added in 1.7.0). */
+  ref: z.string().regex(SUBMIT_REF_PATTERN).optional(),
 });
 export type SubmitBody = z.infer<typeof SubmitBody>;

@@ -222,6 +222,8 @@ export interface CreateCardOptions {
   templateId?: number | null;
   templateTitle?: string;
   via?: string;
+  /** The submit page link's `?ref=` (recorded on the 'created' event). */
+  submitRef?: string;
   /** From the submit page: may notify people who asked about new unassigned tickets. */
   external?: boolean;
   /** From the submit page: tells admins (`submitted`), with Teams on or off. */
@@ -354,6 +356,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
     source: opts.source ?? 'manual',
     ...(opts.templateId ? { templateId: opts.templateId, templateTitle: opts.templateTitle } : {}),
     ...(opts.via ? { via: opts.via } : {}),
+    ...(opts.submitRef ? { ref: opts.submitRef } : {}),
     ...(kind === 'work' ? { kind } : {}),
     ...(parent ? { parent: familyRef(parent) } : {}),
   });
