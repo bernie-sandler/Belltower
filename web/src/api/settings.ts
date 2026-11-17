@@ -110,7 +110,11 @@ export function useTokens() {
 
 export function useTokenActions() {
   const qc = useQueryClient();
-  const refresh = () => void qc.invalidateQueries({ queryKey: qk.tokens });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: qk.tokens });
+    // Whether a token rings the bell decides if the bell shows with Teams off.
+    void qc.invalidateQueries({ queryKey: qk.config });
+  };
   return {
     create: useMutation({
       mutationFn: (body: ApiTokenBody) => api.post<{ token: string; info: ApiTokenInfo }>('/api/tokens', body),

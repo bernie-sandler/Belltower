@@ -10,6 +10,7 @@ const token = (over: Partial<ApiTokenInfo>): ApiTokenInfo => ({
   prefix: 'tt_abcd',
   canComplete: false,
   scope: 'full',
+  ringsBell: false,
   createdAt: '2026-10-01T15:00:00.000Z',
   lastUsedAt: null,
   revokedAt: null,
@@ -49,18 +50,20 @@ describe('TokensSection', () => {
     fireEvent.change(screen.getByLabelText('New token for'), { target: { value: 'Uptime Kuma' } });
     fireEvent.click(screen.getByLabelText(/Recoveries may mark the ticket done/));
     fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
-    await waitFor(() => expect(posted()).toEqual({ name: 'Uptime Kuma', scope: 'full', canComplete: true }));
+    await waitFor(() => expect(posted()).toEqual({ name: 'Uptime Kuma', scope: 'full', canComplete: true, ringsBell: false }));
     expect(await screen.findByText(/Uptime Kuma: Notification type/)).toBeTruthy();
   });
 
   it('creates a read-only token with dashboard examples, and never asks it to complete tickets', async () => {
-    const { posted } = setup();
+    const { posted } = setup([], { me: { id: 1, role: 'admin' } });
     fireEvent.click(screen.getByLabelText(/Recoveries may mark the ticket done/));
+    fireEvent.click(await screen.findByLabelText(/New tickets ring the bell/));
     fireEvent.click(screen.getByLabelText(/Only read ticket counts/));
     expect(screen.queryByLabelText(/Recoveries may mark the ticket done/)).toBeNull();
+    expect(screen.queryByLabelText(/New tickets ring the bell/)).toBeNull();
     fireEvent.change(screen.getByLabelText('New token for'), { target: { value: 'Homepage' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
-    await waitFor(() => expect(posted()).toEqual({ name: 'Homepage', scope: 'read', canComplete: false }));
+    await waitFor(() => expect(posted()).toEqual({ name: 'Homepage', scope: 'read', canComplete: false, ringsBell: false }));
     expect(await screen.findByText(/Homepage: an environment variable/)).toBeTruthy();
     expect(screen.getByText(/^HOMEPAGE_VAR_BELLTOWER_TOKEN=tt_/)).toBeTruthy();
     const homepage = screen.getByText(/type: customapi/).textContent;
@@ -70,10 +73,25 @@ describe('TokensSection', () => {
     expect(screen.queryByText(/Uptime Kuma: Notification type/)).toBeNull();
   });
 
-  it('marks read-only tokens in the list', async () => {
-    setup([token({ id: 2, name: 'Homepage', scope: 'read' }), token({ id: 1, canComplete: true })]);
+  it('creates a token whose tickets ring the bell, for a chat bot (admins only)', async () => {
+    const { posted } = setup([], { me: { id: 1, role: 'admin' } });
+    fireEvent.change(screen.getByLabelText('New token for'), { target: { value: 'Bernard' } });
+    fireEvent.click(await screen.findByLabelText(/New tickets ring the bell/));
+    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    await waitFor(() => expect(posted()).toEqual({ name: 'Bernard', scope: 'full', canComplete: false, ringsBell: true }));
+  });
+
+  it('members aren’t offered the bell: it would reach every admin', async () => {
+    setup([], { mine: true, me: { id: 5, role: 'member' } });
+    expect(await screen.findByLabelText(/Recoveries may mark the ticket done/)).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText(/New tickets ring the bell/)).toBeNull());
+  });
+
+  it('marks read-only tokens and tokens that ring the bell in the list', async () => {
+    setup([token({ id: 3, name: 'Bernard', ringsBell: true }), token({ id: 2, name: 'Homepage', scope: 'read' }), token({ id: 1, canComplete: true })]);
     expect(await screen.findByText(/read-only · never used/)).toBeTruthy();
     expect(screen.getByText(/can complete · never used/)).toBeTruthy();
+    expect(screen.getByText(/rings the bell · never used/)).toBeTruthy();
   });
 
   it('shows whose each token is, and when a deactivated owner has stopped it', async () => {

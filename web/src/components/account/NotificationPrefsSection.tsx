@@ -35,7 +35,7 @@ const EVENT_HINTS: Record<NotificationType, string> = {
   mentioned: 'in a note',
   watching: 'a new note, a move, a new assignee',
   new_unassigned: 'from the submit page or a tool',
-  submitted: 'from people without an account',
+  submitted: 'from people without an account, or a chat bot whose token rings the bell',
 };
 
 const CHANNEL_LABELS: Record<PersonalChannel, string> = { inApp: 'In the app', discord: 'Discord', ntfy: 'ntfy' };
