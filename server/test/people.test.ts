@@ -339,6 +339,8 @@ describe('roles', () => {
     'GET /api/templates/:id',
     'GET /api/tokens',
     'GET /api/users',
+    'GET /api/v1/cards',
+    'GET /api/v1/cards/:ref',
     'GET /api/v1/summary',
     'PATCH /api/activity/:id',
     'PATCH /api/cards/:id',
