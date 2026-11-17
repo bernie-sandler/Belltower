@@ -4,6 +4,9 @@
 import { API_TICKETS_PAGE } from '@tt/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { V1_LIMIT } from '../src/http/routes/v1';
+import { listRequestTypes } from '../src/services/requestTypes';
+import { getSubmitSettings, updateSubmitSettings } from '../src/services/settings';
+import { submitTicket } from '../src/services/submit';
 import { client, makeApp, setupAndLogin, T0, type TestApp } from './helpers';
 
 let t: TestApp;
@@ -33,7 +36,9 @@ const TICKET_KEYS = [
   'priority',
   'resolution',
   'severity',
+  'source',
   'state',
+  'submitter',
   'ticketNo',
   'title',
   'updatedAt',
@@ -181,6 +186,8 @@ describe('/api/v1 contract', () => {
       completedAt: null,
       archivedAt: null,
       deletedAt: null,
+      source: 'api',
+      submitter: null,
     });
     expect(ticket.column).toEqual({ id: expect.any(Number), name: expect.any(String) });
     expect((await get(`/api/v1/cards/${id}`)).json()).toEqual(ticket);
@@ -200,6 +207,37 @@ describe('/api/v1 contract', () => {
     }
     const work = (await c('POST', '/api/cards', { title: 'Rebuild NAS', kind: 'work' })).json();
     expect((await get(`/api/v1/cards/${work.id}`)).statusCode).toBe(404);
+  });
+
+  it('reading tickets: source tells submit-page tickets apart, with the name typed there', async () => {
+    const { c, v1, get } = await setup();
+    updateSubmitSettings(t.ctx, { enabled: true, columnId: null, pageTitle: 'Report a problem', intro: '' });
+    const key = getSubmitSettings(t.ctx).key!;
+    const type = listRequestTypes(t.ctx).find((x) => x.name === 'General')!;
+    const answers = Object.fromEntries(
+      type.fields
+        .filter((f) => f.required)
+        .map((f) => [f.key, f.kind === 'choice' ? f.options[0]! : f.kind === 'multi' ? [f.options[0]!] : f.kind === 'yesno' ? true : f.kind === 'datetime' ? '2026-10-10T10:00' : 'x']),
+    );
+    const file = (name: string) => submitTicket(t.ctx, key, { typeId: type.id, summary: 'No sound', description: 'Silent', answers, name, website: '' }, [], t.dir);
+    // Before any submit-page ticket is open, or the dedupeKey would join it.
+    const lookalike = (await v1('/api/v1/cards', { title: 'Keyed', dedupeKey: 'submit' })).json().card.ticketNo;
+    const named = file('Mum (upstairs)').ticketNo!;
+    const anonymous = file('').ticketNo!;
+    const api = (await v1('/api/v1/cards', { title: 'From a script' })).json().card.ticketNo;
+    const manual = (await c('POST', '/api/cards', { title: 'By hand' })).json().ticketNo;
+
+    const pick = async (ref: string) => {
+      const { source, submitter } = (await get(`/api/v1/cards/${encodeURIComponent(ref)}`)).json();
+      return { source, submitter };
+    };
+    expect(await pick(named)).toEqual({ source: 'submit', submitter: 'Mum (upstairs)' });
+    expect(await pick(anonymous)).toEqual({ source: 'submit', submitter: null });
+    expect(await pick(api)).toEqual({ source: 'api', submitter: null });
+    expect(await pick(manual)).toEqual({ source: 'manual', submitter: null });
+    expect(await pick(lookalike)).toEqual({ source: 'api', submitter: null });
+    const list = (await get(`/api/v1/cards?updatedSince=${encodeURIComponent(T0)}`)).json();
+    expect(list.cards.map((x: { source: string }) => x.source)).toEqual(['api', 'submit', 'submit', 'api', 'manual']);
   });
 
   it('reading tickets: custom ticket numbers, URL-encoded, win over ids', async () => {

@@ -717,7 +717,16 @@ export interface ApiTicket {
   archivedAt: IsoTimestamp | null;
   /** When it went to the Trash, or null. */
   deletedAt: IsoTimestamp | null;
+  /**
+   * How it was opened: the submit page, /api/v1 or a card import, a recurring template, or by hand.
+   * Added in 1.6.0.
+   */
+  source: ApiTicketSource;
+  /** The name typed on the submit page, or null (always null unless source is 'submit'). Added in 1.6.0. */
+  submitter: string | null;
 }
+
+export type ApiTicketSource = 'submit' | 'api' | 'recurring' | 'manual';
 
 /**
  * GET /api/v1/cards. `more` is true when an updatedSince/cursor list was cut off at its page size;

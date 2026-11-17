@@ -10,6 +10,7 @@ import {
   SEVERITY_CODES,
   type ApiTicket,
   type ApiTicketList,
+  type ApiTicketSource,
   type ApiTicketsQuery,
   type Priority,
   type Severity,
@@ -35,16 +36,44 @@ interface Row {
   completed_at: string | null;
   archived_at: string | null;
   deleted_at: string | null;
+  source: 'manual' | 'recurring' | 'api';
+  source_ref: string | null;
 }
 
 const COLUMNS = `c.id, c.ticket_no, c.title, c.column_id, col.name AS column_name, c.priority, c.severity, c.due_date,
-  c.resolution, c.created_at, c.updated_at, c.completed_at, c.archived_at, c.deleted_at`;
+  c.resolution, c.created_at, c.updated_at, c.completed_at, c.archived_at, c.deleted_at, c.source,
+  c.source_ref`;
 const FROM = `FROM cards c JOIN columns col ON col.id = c.column_id`;
+
+/** The creation history's "via" of a submit-page ticket: "submit page" or "submit page (their name)". */
+const SUBMIT_VIA = /^submit page(?: \((.*)\))?$/s;
+
+/**
+ * Submit-page tickets among `rows`, with the name the submitter typed (or null). The submit page,
+ * /api/v1 and card imports all store source 'api'. The submit page sets source_ref 'submit', which an
+ * /api/v1 dedupeKey could also be, so the creation event's "via" has to agree as well.
+ */
+function submitters(ctx: Ctx, rows: Row[]): Map<number, string | null> {
+  const out = new Map<number, string | null>();
+  const ids = rows.filter((r) => r.source === 'api' && r.source_ref === 'submit').map((r) => r.id);
+  if (!ids.length) return out;
+  const vias = stmt(
+    ctx.db,
+    `SELECT card_id, json_extract(data, '$.via') AS via FROM activity
+      WHERE type = 'created' AND card_id IN (SELECT value FROM json_each(?))`,
+  ).all(JSON.stringify(ids)) as { card_id: number; via: unknown }[];
+  for (const v of vias) {
+    const m = typeof v.via === 'string' ? SUBMIT_VIA.exec(v.via) : null;
+    if (m) out.set(v.card_id, m[1] || null);
+  }
+  return out;
+}
 
 /** Rows → ApiTicket, with a fixed number of queries however many rows there are. */
 function toTickets(ctx: Ctx, rows: Row[]): ApiTicket[] {
   if (!rows.length) return [];
   const states = ticketStates(ctx, rows);
+  const submitted = submitters(ctx, rows);
   const labels = new Map<number, string[]>();
   const labelRows = stmt(
     ctx.db,
@@ -74,6 +103,8 @@ function toTickets(ctx: Ctx, rows: Row[]): ApiTicket[] {
       completedAt: r.completed_at,
       archivedAt: r.archived_at,
       deletedAt: r.deleted_at,
+      source: (submitted.has(r.id) ? 'submit' : r.source) satisfies ApiTicketSource,
+      submitter: submitted.get(r.id) ?? null,
     };
   });
 }

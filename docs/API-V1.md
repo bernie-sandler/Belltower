@@ -175,7 +175,9 @@ ticket the token's owner can't see (their account only sees some tags) answers `
   "updatedAt": "2026-10-28T09:41:12.004Z",
   "completedAt": "2026-10-28T09:41:12.004Z",
   "archivedAt": null,
-  "deletedAt": null
+  "deletedAt": null,
+  "source": "submit",
+  "submitter": "Mum"
 }
 ```
 
@@ -188,6 +190,8 @@ ticket the token's owner can't see (their account only sees some tags) answers `
 | `priority`, `severity` | `P0`–`P3` and `S1`–`S4`, or `null`. |
 | `labels` | Tag names, in tag order. |
 | `due` | Due date, `YYYY-MM-DD`, or `null`. |
+| `source` | How it was opened: `submit` (the [submit page](SUBMIT-PAGE.md)), `api` (`/api/v1` or a card import), `recurring` (a recurring template) or `manual` (on the board). Added in 1.6.0 (not in the 1.6.0 release candidates). No other values will appear in v1. |
+| `submitter` | The name typed on the submit page, or `null` when it was left empty or `source` isn't `submit`. Added in 1.6.0, like `source`. |
 | `createdAt`, `updatedAt`, `completedAt`, `archivedAt`, `deletedAt` | ISO 8601 UTC timestamps, or `null`. `deletedAt` is set while the ticket is in the Trash. |
 
 Descriptions, notes, checklists, attachments and people are never included.
@@ -228,6 +232,10 @@ without `updatedSince` or `cursor`. Treat `next` as opaque: its format may chang
 `?ids=…` every minute or so; announce and forget each one that comes back `done`, has `deletedAt` set, or is missing.
 A missing ticket was deleted for good, or (for a token whose owner only sees some tags) lost the owner's tags; the
 answer doesn't say which.
+
+**Following the submit page**, for a bot that lists what people sent through it: read every ticket once with an
+old `updatedSince` (say `1970-01-01T00:00:00Z`) and the `next` cursors, keep the ones whose `source` is `submit`,
+then ask again with each answer's `generatedAt` as `updatedSince`.
 
 ## `POST /api/v1/hooks/uptime-kuma`
 
