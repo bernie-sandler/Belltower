@@ -15,10 +15,16 @@ the container log on start, and in every backup export.
   color has its own reset.
 - **What's new after an update.** The first time a device opens Belltower after an upgrade, it shows that release's
   notes, like these, once. Turn it off under **Settings → About**. A fresh install doesn't show it.
+- **Read tickets through the automation API.** A bot or script that opened a ticket can now check on it:
+  `GET /api/v1/cards/<ticket number or id>` answers one ticket, and `GET /api/v1/cards?ids=…&updatedSince=…` answers
+  several at once or everything that changed since a time. Each ticket comes with its state (received, in progress,
+  waiting, done), resolution reason, column, priority, severity, tags and dates, but never its description or notes.
+  Full tokens only: read-only dashboard tokens still see counts and nothing else. See
+  [docs/API-V1.md](docs/API-V1.md#get-apiv1cardsref).
 - **Moved.** Settings → Appearance is gone: light and dark are in the Theme Customizer, and the notification sound is
   under **Account → Notification sound**.
-- **Upgrading.** Nothing to do: no database, backup or automation API changes. Custom colors are saved per device in
-  the browser, not in backups.
+- **Upgrading.** Nothing to do: no database or backup changes, and everything in the automation API works as
+  before (it only gained the two read routes). Custom colors are saved per device in the browser, not in backups.
 
 ## 1.5.1: Buttons that stay put
 

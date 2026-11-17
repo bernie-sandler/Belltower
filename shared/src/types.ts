@@ -687,6 +687,45 @@ export interface ApiSummary {
   generatedAt: IsoTimestamp;
 }
 
+/**
+ * One ticket as GET /api/v1/cards and /api/v1/cards/:ref answer it. Part of the frozen v1 contract
+ * (docs/API-V1.md): fields may be added, never removed or redefined. Status fields only: no
+ * description, notes or people.
+ */
+export interface ApiTicket {
+  id: number;
+  ticketNo: string | null;
+  title: string;
+  /** The same state the status page and GET /api/v1/summary use. */
+  state: TicketState;
+  /** The resolution reason once done ("Fixed"), never the note; null while open. */
+  resolution: string | null;
+  column: { id: number; name: string };
+  priority: string | null;
+  severity: string | null;
+  /** Tag names, in tag order. */
+  labels: string[];
+  /** YYYY-MM-DD, or null. */
+  due: string | null;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+  completedAt: IsoTimestamp | null;
+  archivedAt: IsoTimestamp | null;
+  /** When it went to the Trash, or null. */
+  deletedAt: IsoTimestamp | null;
+}
+
+/**
+ * GET /api/v1/cards. `more` is true when an updatedSince/cursor list was cut off at its page size;
+ * `next` is then the cursor for the following page (null otherwise).
+ */
+export interface ApiTicketList {
+  cards: ApiTicket[];
+  more: boolean;
+  next: string | null;
+  generatedAt: IsoTimestamp;
+}
+
 export interface SettingsResponse {
   general: { ticketFormat: string; appUrl: string; claudeModel: string; claudeModelFromEnv: string | null; claudeEnabled: boolean };
   submit: { enabled: boolean; columnId: number | null; pageTitle: string; intro: string; key: string | null };

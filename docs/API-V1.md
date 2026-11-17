@@ -1,7 +1,7 @@
 # Automation API, version 1
 
-This is the stable contract for tools and scripts that open tickets (Uptime Kuma, Unraid, Home Assistant, your own
-scripts) and for dashboards that show ticket counts (Homepage, Home Assistant). For recipes and a gentler introduction, see [AUTOMATION.md](AUTOMATION.md).
+This is the stable contract for tools and scripts that open tickets and check on them (Uptime Kuma, Unraid, Home
+Assistant, chat bots, your own scripts) and for dashboards that show ticket counts (Homepage, Home Assistant). For recipes and a gentler introduction, see [AUTOMATION.md](AUTOMATION.md).
 
 Everything under `/api/v1/` follows the rules on this page for the whole of Belltower 1.x. (The app's other
 routes, documented in [API.md](API.md), are internal to the web UI and may change between versions.)
@@ -39,7 +39,8 @@ Each token is one of two kinds:
 
 - **Full** tokens can use everything below. Their one switch, **may complete tickets** (`canComplete`), decides what a
   recovery does (see `event` below). Every token created before 1.3 is a full token.
-- **Read-only** tokens (since 1.3) can only call [`GET /api/v1/summary`](#get-apiv1summary). The other routes answer
+- **Read-only** tokens (since 1.3) can only call [`GET /api/v1/summary`](#get-apiv1summary). Reading tickets
+  (`GET /api/v1/cards`, since 1.6) needs a full token. The other routes answer
   them `403 forbidden`, and a route added later stays closed to them unless this page says otherwise. They never
   complete tickets. Use them for dashboards, so a token that sits in a dashboard's config file can't open or close
   tickets or read ticket details.
@@ -62,10 +63,10 @@ Errors are JSON with a stable machine-readable `error` code and a human-readable
 
 | HTTP | `error` | When |
 |---|---|---|
-| 400 | `validation` | The card doesn't validate. `errors` lists every problem. |
+| 400 | `validation` | The card or the query doesn't validate. `errors` lists every problem. |
 | 401 | `unauthenticated` | No valid token (missing, wrong, revoked, or its owner is deactivated or deleted). |
 | 403 | `forbidden` | A read-only token called something other than the summary. |
-| 404 | `not_found` | No such route under `/api/v1/`. |
+| 404 | `not_found` | No such route under `/api/v1/`, or no such ticket for `GET /api/v1/cards/:ref`. |
 | 413 | `too_large` | The body is over 2 MB. |
 | 429 | `rate_limited` | Over 120 requests a minute. `retryAfterSec` and the `Retry-After` header say when to retry. |
 | 500 | `internal` | A bug. Retrying later is reasonable. |
@@ -148,6 +149,85 @@ ticket numbers existed.
 
 **Matching keys.** A key only matches tickets opened through `/api/v1/` with that key that are still open: not
 completed, archived or in the Trash. Once a ticket is done, the next `problem` with the same key opens a new one.
+
+## `GET /api/v1/cards/:ref`
+
+One ticket, so a tool that opened it can check on it. Added in 1.6. Full tokens only (read-only tokens get `403`).
+
+`ref` is a ticket number (`261028-3`, any letter case) or a card id. A ticket number wins when both could match (a
+custom ticket format like `{N}` makes digits-only numbers); use [`?ids=`](#get-apiv1cards) to look up strictly by
+id. URL-encode it if your ticket format has `/`, `#` or spaces. A ticket that doesn't exist, a work card, or a
+ticket the token's owner can't see (their account only sees some tags) answers `404 not_found`.
+
+```json
+{
+  "id": 42,
+  "ticketNo": "261028-3",
+  "title": "Nightly backup failed",
+  "state": "done",
+  "resolution": "Fixed",
+  "column": { "id": 4, "name": "Done" },
+  "priority": "P1",
+  "severity": null,
+  "labels": ["Backups"],
+  "due": null,
+  "createdAt": "2026-10-28T02:10:00.000Z",
+  "updatedAt": "2026-10-28T09:41:12.004Z",
+  "completedAt": "2026-10-28T09:41:12.004Z",
+  "archivedAt": null,
+  "deletedAt": null
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `id`, `ticketNo`, `title` | As in `POST /api/v1/cards`. |
+| `state` | `received`, `in_progress`, `waiting` or `done`: the same rule as the [summary](#get-apiv1summary) and the submit page's status links. No other values will appear in v1. |
+| `resolution` | The resolution reason once `done` (such as "Fixed" or "Won't fix"), or `null`. Never the resolution note. |
+| `column` | The column it's in. |
+| `priority`, `severity` | `P0`–`P3` and `S1`–`S4`, or `null`. |
+| `labels` | Tag names, in tag order. |
+| `due` | Due date, `YYYY-MM-DD`, or `null`. |
+| `createdAt`, `updatedAt`, `completedAt`, `archivedAt`, `deletedAt` | ISO 8601 UTC timestamps, or `null`. `deletedAt` is set while the ticket is in the Trash. |
+
+Descriptions, notes, checklists, attachments and people are never included.
+
+**`updatedAt`** changes when the ticket itself changes: edits, moves, tags, completion, archive and Trash. Changes
+made elsewhere don't touch it: a blocker being closed (takes a ticket out of `waiting`), or a tag or column being
+renamed (changes `labels` or `column.name`). To follow `state` exactly, look tickets up by id.
+
+## `GET /api/v1/cards`
+
+Several tickets in one request. Added in 1.6. Full tokens only. Query parameters, at least one required:
+
+| Parameter | Meaning |
+|---|---|
+| `ids` | Up to 100 card ids, comma-separated: `?ids=42,57,63`. Ids that don't exist, aren't tickets or can't be seen are left out of the answer. |
+| `updatedSince` | An ISO 8601 time with a zone, e.g. `2026-10-28T09:00:00Z` or `2026-10-28T04:00:00-05:00` (URL-encode a `+`). Answers tickets whose `updatedAt` is at or after it. |
+| `cursor` | The `next` value of the previous answer, passed back unchanged, to get the next page. Not together with `updatedSince`. |
+
+`ids` can be combined with `updatedSince` or `cursor` to narrow them down.
+
+```json
+{
+  "cards": [ { "id": 42, "ticketNo": "261028-3", "state": "done", "…": "…" } ],
+  "more": false,
+  "next": null,
+  "generatedAt": "2026-10-28T09:42:00.000Z"
+}
+```
+
+Each entry in `cards` is a ticket as in [`GET /api/v1/cards/:ref`](#get-apiv1cardsref), archived and trashed ones
+included. With `ids` alone they come in id order. With `updatedSince` or `cursor` they come oldest change first, at
+most 200 at a time. When there are further ones, `more` is `true` and `next` holds a cursor: request
+`?cursor=<next>` (plus the same `ids`, if any) for the next page, until `more` is `false`. Then `next` is `null`, and
+a later check for new changes can use this answer's `generatedAt` as `updatedSince`. `more` is always `false`
+without `updatedSince` or `cursor`. Treat `next` as opaque: its format may change.
+
+**Watching for tickets to be done**, the usual use: keep the ids of the tickets you opened and call
+`?ids=…` every minute or so; announce and forget each one that comes back `done`, has `deletedAt` set, or is missing.
+A missing ticket was deleted for good, or (for a token whose owner only sees some tags) lost the owner's tags; the
+answer doesn't say which.
 
 ## `POST /api/v1/hooks/uptime-kuma`
 

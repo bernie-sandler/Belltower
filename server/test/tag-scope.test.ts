@@ -195,6 +195,22 @@ describe('a tag-restricted member', () => {
     expect(mine.open).toBeLessThan(all.open);
   });
 
+  it('their token reads only visible tickets: hidden ones answer 404 or are left out', async () => {
+    const s = await setup();
+    const token = (await s.as('POST', '/api/tokens', { name: 'Sam bot' })).json().token as string;
+    const get = (url: string) => s.t.app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+    const ticketNo = (id: number) => s.t.ctx.db.prepare('SELECT ticket_no FROM cards WHERE id = ?').pluck().get(id) as string;
+
+    expect((await get(`/api/v1/cards/${s.a.id}`)).json()).toMatchObject({ id: s.a.id, labels: ['Alpha'] });
+    for (const hidden of [s.b, s.untagged, s.trashed, s.archived]) {
+      expect((await get(`/api/v1/cards/${hidden.id}`)).statusCode).toBe(404);
+      expect((await get(`/api/v1/cards/${ticketNo(hidden.id)}`)).statusCode).toBe(404);
+    }
+    const all = [s.a, s.b, s.untagged, s.archived, s.trashed].map((c) => c.id).join(',');
+    expect(ids((await get(`/api/v1/cards?ids=${all}`)).json().cards)).toEqual([s.a.id]);
+    expect(ids((await get('/api/v1/cards?updatedSince=2000-01-01T00:00:00Z')).json().cards)).toEqual([s.a.id]);
+  });
+
   it('only hears about cards they can see, and the bell forgets a card that loses their tag', async () => {
     const s = await setup();
     await s.as('PUT', `/api/cards/${s.a.id}/watch`);

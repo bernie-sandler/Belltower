@@ -1,9 +1,10 @@
 // The /api/v1 contract (docs/API-V1.md) is frozen for 1.x. These tests pin the documented shapes:
 // if one fails, the change breaks scripts and monitors in the field. Add to the API instead.
 
+import { API_TICKETS_PAGE } from '@tt/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { V1_LIMIT } from '../src/http/routes/v1';
-import { client, makeApp, setupAndLogin, type TestApp } from './helpers';
+import { client, makeApp, setupAndLogin, T0, type TestApp } from './helpers';
 
 let t: TestApp;
 afterEach(() => t?.shutdown());
@@ -20,6 +21,23 @@ async function setup(canComplete = true) {
 }
 
 const CARD_KEYS = ['columnId', 'completedAt', 'id', 'ticketNo', 'title'];
+const TICKET_KEYS = [
+  'archivedAt',
+  'column',
+  'completedAt',
+  'createdAt',
+  'deletedAt',
+  'due',
+  'id',
+  'labels',
+  'priority',
+  'resolution',
+  'severity',
+  'state',
+  'ticketNo',
+  'title',
+  'updatedAt',
+];
 const SUMMARY_KEYS = [
   'byPriority',
   'bySeverity',
@@ -137,6 +155,144 @@ describe('/api/v1 contract', () => {
     ]);
     const head = await t.app.inject({ method: 'HEAD', url: '/api/v1/summary', headers: { authorization: `Bearer ${created.token}` } });
     expect(head.statusCode).toBe(200);
+  });
+
+  it('reading tickets: lookup by ticket number or id, with the documented shape', async () => {
+    const { c, v1, get } = await setup();
+    const created = (await v1('/api/v1/cards', { title: 'Plex buffering', priority: 'P2', severity: 'S3', labels: ['Media'], due: '2026-10-20' })).json();
+    const { id, ticketNo } = created.card;
+
+    const byNo = await get(`/api/v1/cards/${ticketNo}`);
+    expect(byNo.statusCode).toBe(200);
+    const ticket = byNo.json();
+    expect(Object.keys(ticket).sort()).toEqual(TICKET_KEYS);
+    expect(ticket).toMatchObject({
+      id,
+      ticketNo,
+      title: 'Plex buffering',
+      state: 'received',
+      resolution: null,
+      priority: 'P2',
+      severity: 'S3',
+      labels: ['Media'],
+      due: '2026-10-20',
+      createdAt: T0,
+      updatedAt: T0,
+      completedAt: null,
+      archivedAt: null,
+      deletedAt: null,
+    });
+    expect(ticket.column).toEqual({ id: expect.any(Number), name: expect.any(String) });
+    expect((await get(`/api/v1/cards/${id}`)).json()).toEqual(ticket);
+    expect((await get(`/api/v1/cards/${ticketNo.toLowerCase()}`)).json().id).toBe(id);
+
+    t.clock.advance(60_000);
+    await c('POST', `/api/cards/${id}/complete`, { resolution: { reason: 'Fixed', note: 'private note' } });
+    const done = (await get(`/api/v1/cards/${ticketNo}`)).json();
+    expect(done).toMatchObject({ state: 'done', resolution: 'Fixed', completedAt: expect.any(String) });
+    expect(done.updatedAt > T0).toBe(true);
+    expect(JSON.stringify(done)).not.toContain('private note');
+
+    for (const ref of ['999999', '000000-1', 'nope']) {
+      const missing = await get(`/api/v1/cards/${ref}`);
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json()).toMatchObject({ error: 'not_found' });
+    }
+    const work = (await c('POST', '/api/cards', { title: 'Rebuild NAS', kind: 'work' })).json();
+    expect((await get(`/api/v1/cards/${work.id}`)).statusCode).toBe(404);
+  });
+
+  it('reading tickets: custom ticket numbers, URL-encoded, win over ids', async () => {
+    const { c, v1, get } = await setup();
+    const general = (await c('GET', '/api/settings')).json().general;
+    expect((await c('PUT', '/api/settings/general', { ...general, ticketFormat: 'INC/#{N}' })).statusCode).toBe(200);
+    const slash = (await v1('/api/v1/cards', { title: 'Slash' })).json().card;
+    expect(slash.ticketNo).toBe('INC/#1');
+    expect((await get(`/api/v1/cards/${encodeURIComponent('inc/#1')}`)).json().id).toBe(slash.id);
+
+    // A digits-only number ("{N}") is looked up as a ticket number first.
+    await c('PUT', '/api/settings/general', { ...general, ticketFormat: '{N}' });
+    const other = (await v1('/api/v1/cards', { title: 'Other' })).json().card;
+    expect(other.ticketNo).toMatch(/^\d+$/);
+    expect(Number(other.ticketNo)).not.toBe(other.id); // else the lookup below proves nothing
+    const named = (await get(`/api/v1/cards/${other.ticketNo}`)).json();
+    expect(named.ticketNo).toBe(other.ticketNo);
+  });
+
+  it('reading tickets: by ids and updatedSince, oldest change first', async () => {
+    const { c, v1, get } = await setup();
+    const a = (await v1('/api/v1/cards', { title: 'A' })).json().card;
+    t.clock.advance(1000);
+    const b = (await v1('/api/v1/cards', { title: 'B' })).json().card;
+    t.clock.advance(1000);
+    await c('DELETE', `/api/cards/${a.id}`);
+
+    const list = await get(`/api/v1/cards?ids=${b.id},${a.id},987654`);
+    expect(list.statusCode).toBe(200);
+    const body = list.json();
+    expect(Object.keys(body).sort()).toEqual(['cards', 'generatedAt', 'more', 'next']);
+    expect(body.cards.map((x: { id: number }) => x.id)).toEqual([a.id, b.id]);
+    expect(body.cards[0].deletedAt).toEqual(expect.any(String));
+    expect(body).toMatchObject({ more: false, next: null });
+
+    const since = (q: string) => get(`/api/v1/cards?updatedSince=${encodeURIComponent(q)}`);
+    expect((await since('2026-10-10T15:00:01Z')).json().cards.map((x: { title: string }) => x.title)).toEqual(['B', 'A']);
+    // Offsets are normalized to UTC.
+    expect((await since('2026-10-10T10:00:01-05:00')).json().cards).toHaveLength(2);
+    expect((await since('2026-10-10T15:00:02.001Z')).json().cards).toEqual([]);
+    expect((await get(`/api/v1/cards?ids=${b.id}&updatedSince=2026-10-10T15:00:02Z`)).json().cards).toEqual([]);
+
+    for (const url of [
+      '/api/v1/cards',
+      '/api/v1/cards?ids=x',
+      '/api/v1/cards?ids=',
+      '/api/v1/cards?ids=,',
+      `/api/v1/cards?ids=${Array.from({ length: 101 }, (_, i) => i + 1).join(',')}`,
+      '/api/v1/cards?updatedSince=yesterday',
+      '/api/v1/cards?updatedSince=2026-10-10T15:00:00', // no zone
+      '/api/v1/cards?cursor=nope',
+      `/api/v1/cards?cursor=${T0}_1&updatedSince=${T0}`,
+    ]) {
+      const bad = await get(url);
+      expect(bad.statusCode).toBe(400);
+      expect(bad.json()).toMatchObject({ error: 'validation', message: expect.any(String), errors: expect.any(Array) });
+    }
+  });
+
+  it('reading tickets: pages of 200 with a next cursor, even when they all share one updatedAt', async () => {
+    const { v1, get } = await setup();
+    const total = API_TICKETS_PAGE * 2 + 5;
+    for (let i = 0; i < total; i++) {
+      if (i % 100 === 99) t.clock.advance(V1_LIMIT.windowMs); // stay under the rate limit
+      await v1('/api/v1/cards', { title: `T${i}` });
+    }
+    // Bulk actions (deleting a tag, archiving all done) give many tickets the same updatedAt.
+    t.ctx.db.prepare('UPDATE cards SET updated_at = ?').run(T0);
+
+    const seen: number[] = [];
+    let page = (await get(`/api/v1/cards?updatedSince=${T0}`)).json();
+    for (let n = 0; ; n++) {
+      expect(n).toBeLessThan(5);
+      seen.push(...page.cards.map((x: { id: number }) => x.id));
+      expect(page.more).toBe(page.next !== null);
+      if (!page.more) break;
+      expect(page.cards).toHaveLength(API_TICKETS_PAGE);
+      page = (await get(`/api/v1/cards?cursor=${encodeURIComponent(page.next)}`)).json();
+    }
+    expect(seen).toHaveLength(total);
+    expect(new Set(seen).size).toBe(total);
+  });
+
+  it('reading tickets is closed to read-only tokens', async () => {
+    const { c, v1, get } = await setup();
+    const { id } = (await v1('/api/v1/cards', { title: 'x' })).json().card;
+    const read = (await c('POST', '/api/tokens', { name: 'Homepage', scope: 'read' })).json().token;
+    for (const url of [`/api/v1/cards/${id}`, `/api/v1/cards?ids=${id}`]) {
+      const res = await get(url, `Bearer ${read}`);
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toMatchObject({ error: 'forbidden' });
+      expect((await get(url, '')).statusCode).toBe(401);
+    }
   });
 
   it('unknown /api/v1 paths need a token and answer a JSON 404, never a cookie or CSRF error', async () => {

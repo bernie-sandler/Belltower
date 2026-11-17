@@ -1,7 +1,8 @@
 # Automation: tickets from monitoring and scripts
 
 The best ticket is the one you didn't have to write. Belltower can open tickets for you when something breaks:
-from Uptime Kuma, Unraid's notifications, Home Assistant, or any script that can send an HTTP request.
+from Uptime Kuma, Unraid's notifications, Home Assistant, a chat bot, or any script that can send an HTTP request,
+and the same tool can [check on its tickets](#3-check-on-a-ticket) afterwards.
 
 It's built for noisy monitors. A flapping service updates one ticket instead of opening twenty, and when the
 problem goes away the ticket can close itself.
@@ -53,6 +54,34 @@ curl -X POST http://tower:8080/api/v1/cards \
 
 The reply tells you what happened (`created`, `updated`, `recovered`, `resolved` or `ignored`) and which ticket it
 touched. A card that doesn't validate gets a `400` listing every problem.
+
+## 3. Check on a ticket
+
+A chat bot or script that opened a ticket can ask how it's going (since 1.6). Keep the `id` or `ticketNo` from the
+reply above, then:
+
+```bash
+curl http://tower:8080/api/v1/cards/261028-3 -H "Authorization: Bearer tt_…"
+```
+
+The answer has the ticket's `state` (`received`, `in_progress`, `waiting` or `done`), its `resolution` reason once
+done ("Fixed"), the column, priority, tags and dates. Descriptions and notes are never included, so it's safe to
+post what comes back into a shared channel.
+
+**Telling people when their ticket is done.** Rather than asking about each ticket separately, a bot can check all
+the tickets it's waiting on in one request, once a minute or so:
+
+```bash
+curl "http://tower:8080/api/v1/cards?ids=42,57,63" -H "Authorization: Bearer tt_…"
+```
+
+Any ticket with `"state": "done"` can be announced and dropped from the list. Drop tickets that come back with
+`deletedAt` set (moved to the Trash) or that are missing from the answer too: missing means deleted for good, or, if
+the token's owner only sees some tags, no longer carrying one of them. To see everything that changed instead, use
+`?updatedSince=<time>` with the `generatedAt` of your previous call (and `?cursor=` when `more` is true). The details
+are in [API-V1.md](API-V1.md#get-apiv1cards).
+
+Reading tickets needs a full token: a read-only dashboard token gets `403`.
 
 ## Uptime Kuma
 
