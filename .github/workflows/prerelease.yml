@@ -1,0 +1,180 @@
+name: Prerelease
+
+# Publishes a release candidate from the tip of dev: runs CI, pushes the image as X.Y.Z-rc.N and moves the floating
+# :rc tag to it, then creates the vX.Y.Z-rc.N tag and a GitHub pre-release. Start it from the Actions tab
+# (Run workflow, branch dev) or with:
+#   gh workflow run prerelease.yml --ref dev [-f version=1.2.0]
+# No package.json bump is needed. The version defaults to package.json's version, or the next patch version once
+# that one has been released; N is one more than the highest existing rc tag for that version.
+# The notes are the version's CHANGELOG.md section, or the [Unreleased] section while the version has none.
+# Older pre-releases are deleted afterwards, so only one is ever listed (tags are kept).
+# Stable releases are published by release.yml from a tag on main.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to make a candidate for, like 1.2.0 (leave empty for the default)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# One at a time, so two runs can't pick the same rc number.
+concurrency:
+  group: prerelease
+  cancel-in-progress: false
+
+env:
+  APP_NAME: Belltower
+  IMAGE: ghcr.io/${{ github.repository }}
+  PLATFORMS: linux/amd64
+
+jobs:
+  prepare:
+    name: Pick version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      base: ${{ steps.pick.outputs.base }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - name: Runs on dev
+        if: github.ref != 'refs/heads/dev'
+        run: |
+          echo "::error::Prereleases are cut from dev; this run is on $GITHUB_REF_NAME"
+          exit 1
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: pick
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          base="${INPUT_VERSION#v}"
+          if [ -z "$base" ]; then
+            pkg="$(node -p "require('./package.json').version")"
+            base="${pkg%%-*}"
+            # package.json can still hold the last release until the next version is set on dev.
+            if git rev-parse -q --verify "refs/tags/v$base" > /dev/null; then
+              IFS=. read -r major minor patch <<< "$base"
+              base="$major.$minor.$((patch + 1))"
+            fi
+          fi
+          if ! [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like 1.2.3, got \"$base\""
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$base" > /dev/null; then
+            echo "::error::v$base is already released; pick a newer version"
+            exit 1
+          fi
+
+          last="$(git tag -l "v$base-rc.*" | sed -n "s/^v$base-rc\.\([0-9][0-9]*\)$/\1/p" | sort -n | tail -n1)"
+          version="$base-rc.$(( ${last:-0} + 1 ))"
+          echo "Next candidate: v$version"
+          {
+            echo "version=$version"
+            echo "base=$base"
+            echo "tag=v$version"
+          } >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Checks
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+
+  publish-image:
+    name: Publish Docker image
+    needs: [prepare, checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # Candidates never move "latest" or the major.minor tags. :rc always points at the newest candidate.
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.version }}
+            type=raw,value=rc
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+  github-release:
+    name: GitHub pre-release
+    needs: [prepare, publish-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Creating the tag with GITHUB_TOKEN doesn't trigger release.yml, so nothing is published twice.
+      - name: Create tag and pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          BASE: ${{ needs.prepare.outputs.base }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          image="${IMAGE,,}"
+          {
+            # A compare link in the changelog points at a moving HEAD or a tag that doesn't exist yet, so link to
+            # this candidate's tag instead.
+            if notes="$(bash .github/scripts/release-notes.sh "$BASE" 2> /dev/null)" \
+              || notes="$(bash .github/scripts/release-notes.sh Unreleased 2> /dev/null)"; then
+              printf '%s\n\n' "$notes" | sed '/^\*\*Full Changelog\*\*/d'
+            fi
+            if previous="$(git describe --tags --abbrev=0 --exclude '*-*' 2> /dev/null)"; then
+              printf '**Full Changelog**: https://github.com/%s/compare/%s...%s\n\n' "$GITHUB_REPOSITORY" "$previous" "$TAG"
+            fi
+            printf '### Docker image\n\n```\ndocker pull %s:%s\n```\n' "$image" "$VERSION"
+          } > notes.md
+
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$APP_NAME $VERSION" \
+            --notes-file notes.md \
+            --prerelease
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove superseded pre-releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: bash .github/scripts/prune-releases.sh "$TAG"
+
+  cleanup-images:
+    name: Clean up images
+    needs: github-release
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/cleanup-images.yml

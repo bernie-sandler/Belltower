@@ -1,108 +1,147 @@
-# Publishes the Docker image to GHCR and a GitHub Release when a version tag is pushed:
-#   v1.3.0-rc.1   → :1.3.0-rc.1, :rc                      (pre-release; older rc Release pages are deleted)
-#   v1.3.0        → :1.3.0, :1.3, :1, :latest             (release; every other Release page is deleted)
-# The tag must match the version in package.json.
 name: Release
+
+# Cut a release by setting "version" in package.json and adding the version's section to CHANGELOG.md on dev (it
+# becomes the release notes), merging dev into main, then pushing a matching tag on main:
+#   git tag v1.2.0 && git push origin v1.2.0
+# Release candidates (v1.2.0-rc.1) come from dev through prerelease.yml instead; pushing one by hand fails here.
+# Older GitHub releases and pre-releases are deleted afterwards (tags are kept): see "Remove superseded releases".
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*.*.*"]
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_NAME: Belltower
+  IMAGE: ghcr.io/${{ github.repository }}
+  PLATFORMS: linux/amd64
 
 jobs:
-  test:
-    uses: ./.github/workflows/ci.yml
-
-  publish:
-    needs: test
+  verify:
+    name: Verify tag
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-
-      - name: Work out the version and image tags
-        id: v
+        with:
+          fetch-depth: 0
+      - name: Stable version tag
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          case "$TAG" in
-            v*-rc.*)   VERSION="${TAG#v}";      CHANNEL=rc ;;
-            v*-*)      echo "Only vX.Y.Z and vX.Y.Z-rc.N tags are released, not $TAG"; exit 1 ;;
-            v*)        VERSION="${TAG#v}";      CHANNEL=stable ;;
-            *) echo "Unexpected tag $TAG"; exit 1 ;;
-          esac
-          PKG=$(node -p "require('./package.json').version")
-          BASE="${VERSION%%-*}"
-          if [ "$PKG" != "$BASE" ]; then
-            echo "Tag $TAG is version $BASE but package.json says $PKG"; exit 1
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$GITHUB_REF_NAME is not a vX.Y.Z tag. Publish release candidates with the Prerelease workflow."
+            exit 1
           fi
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
-          MAJOR="${BASE%%.*}"; MINOR="${BASE#*.}"; MINOR="${MINOR%%.*}"
-          TAGS="$IMAGE:$VERSION"
-          case "$CHANNEL" in
-            stable) TAGS="$TAGS,$IMAGE:$MAJOR.$MINOR,$IMAGE:$MAJOR,$IMAGE:latest" ;;
-            rc)     TAGS="$TAGS,$IMAGE:rc" ;;
-          esac
-          {
-            echo "version=$VERSION"
-            echo "base=$BASE"
-            echo "channel=$CHANNEL"
-            echo "tags=$TAGS"
-          } >> "$GITHUB_OUTPUT"
+      - name: Tag matches package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag v$tag does not match package.json version $pkg"
+            exit 1
+          fi
+      - name: Tagged commit is on main
+        run: |
+          if git fetch -q origin main 2>/dev/null && git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            exit 0
+          fi
+          echo "::error::Tag $GITHUB_REF_NAME points at a commit that is not on main"
+          exit 1
+      # Release notes come from CHANGELOG.md, so the version needs its section before anything is published.
+      - name: CHANGELOG has a section for this version
+        run: |
+          if ! bash .github/scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > /dev/null; then
+            echo "::error::CHANGELOG.md has no section for ${GITHUB_REF_NAME#v} to use as release notes"
+            exit 1
+          fi
 
+  checks:
+    name: Checks
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+
+  publish-image:
+    name: Publish Docker image
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0.') }}
       - uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ env.PLATFORMS }}
           push: true
-          tags: ${{ steps.v.outputs.tags }}
-          labels: |
-            org.opencontainers.image.title=Belltower
-            org.opencontainers.image.version=${{ steps.v.outputs.version }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
 
-      - name: Release notes from CHANGELOG.md
-        run: |
-          awk -v v="${{ steps.v.outputs.base }}" '
-            $0 ~ "^## " v "([^0-9.]|$)" { on = 1; next }
-            on && /^## / { exit }
-            on { print }
-          ' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then echo "No CHANGELOG.md section for ${{ steps.v.outputs.base }}"; exit 1; fi
-          cat release-notes.md
-
-      - uses: softprops/action-gh-release@v3
-        with:
-          name: Belltower ${{ steps.v.outputs.version }}
-          body_path: release-notes.md
-          prerelease: ${{ steps.v.outputs.channel != 'stable' }}
-
-      # The Releases page shows only the newest release: a final deletes every other Release page (older finals and
-      # all rcs), an rc deletes older rc pages and leaves the current final. Only the pages go: git tags and images
-      # stay (people pin image versions). A failure here doesn't fail the release.
-      - name: Delete older Release pages
-        continue-on-error: true
+  github-release:
+    name: GitHub release
+    needs: publish-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      # Notes are this version's CHANGELOG.md section rather than GitHub's generated notes, which list every PR
+      # merged since the last tag (chores included).
+      - name: Create release with CHANGELOG notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHANNEL: ${{ steps.v.outputs.channel }}
         run: |
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isPrerelease \
-            --jq '.[] | "\(.tagName) \(.isPrerelease)"' |
-          while read -r old pre; do
-            [ "$old" = "$GITHUB_REF_NAME" ] && continue
-            if [ "$CHANNEL" = stable ] || [ "$pre" = true ]; then
-              echo "Deleting Release $old"
-              gh release delete "$old" --repo "$GITHUB_REPOSITORY" --yes
-            fi
-          done
+          version="${GITHUB_REF_NAME#v}"
+          image="${IMAGE,,}"
+          docker_section="$(printf '### Docker image\n\n```\ndocker pull %s:%s\n```\n' "$image" "$version")"
+          bash .github/scripts/release-notes.sh "$version" > notes.md
+          printf '\n%s\n' "$docker_section" >> notes.md
+
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$APP_NAME $version" \
+            --notes-file notes.md
+          printf '%s\n' "$docker_section" >> "$GITHUB_STEP_SUMMARY"
+
+      # Deletes every older release and pre-release (git tags stay), so only this release is listed until the
+      # next release candidate.
+      - name: Remove superseded releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/prune-releases.sh "$GITHUB_REF_NAME"
+
+  cleanup-images:
+    name: Clean up images
+    needs: github-release
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/cleanup-images.yml
