@@ -10,6 +10,8 @@ the container log on start, and in every backup export.
   the ticket and `/api/v1` hands it back as `submitRef`. A bot that gives each person their own link (a Discord bot,
   say) can then tell who sent which ticket and let them know when it's done. Nobody sees it on the page or
   the board. See [docs/SUBMIT-PAGE.md](docs/SUBMIT-PAGE.md#links-that-carry-a-reference).
+- **Fix: a large paste into Import cards can no longer stall the server.** Text with an opening ```` ``` ```` and no
+  closing fence used to take minutes to check, holding up every other request meanwhile. It's now instant.
 
 ## 1.6.0: Theme editor
 

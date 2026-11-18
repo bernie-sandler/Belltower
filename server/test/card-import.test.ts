@@ -104,6 +104,22 @@ describe('card import', () => {
     expect(parseImportText('```\n[{"title":"x"}]\n```')).toEqual([{ title: 'x' }]);
   });
 
+  it('unwraps a fence with chatter around it and a json tag in any case', () => {
+    expect(parseImportText('Here you go:\n```json\n[{"title":"x"}]\n```\nEnjoy!')).toEqual([{ title: 'x' }]);
+    expect(parseImportText('```JSON [{"title":"y"}]```')).toEqual([{ title: 'y' }]);
+    expect(parseImportText('```{"title":"z"}```')).toEqual({ title: 'z' });
+  });
+
+  it('falls back to the outermost brackets when a fence never closes', () => {
+    expect(parseImportText('Sure! ``` [{"title":"x"}]')).toEqual([{ title: 'x' }]);
+  });
+
+  it('handles a huge unclosed fence quickly (no quadratic regex)', () => {
+    const started = Date.now();
+    expect(() => parseImportText('```' + ' '.repeat(1_999_000))).toThrow(AppError);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
   it('works over HTTP with a preview first', async () => {
     const app = await makeApp();
     try {

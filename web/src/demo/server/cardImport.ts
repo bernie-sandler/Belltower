@@ -45,11 +45,22 @@ const LINK_FIELDS: [LinkDirection, string, string[]][] = [
   ['relates', 'relatedTo', ['relatedTo', 'related_to', 'related', 'relates']],
 ];
 
+/** The text inside the first ``` fence pair, or null. indexOf, not a regex (see the server twin). */
+function fencedBlock(text: string): string | null {
+  const open = text.indexOf('```');
+  if (open < 0) return null;
+  const close = text.indexOf('```', open + 3);
+  if (close < 0) return null;
+  let inner = text.slice(open + 3, close);
+  if (inner.slice(0, 4).toLowerCase() === 'json') inner = inner.slice(4);
+  return inner.trim();
+}
+
 /** Strips Markdown code fences and surrounding chatter an AI may add, then parses JSON. */
 export function parseImportText(text: string): unknown {
   let t = text.trim();
-  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(t);
-  if (fence) t = fence[1]!.trim();
+  const fence = fencedBlock(t);
+  if (fence !== null) t = fence;
   else {
     const first = t.search(/[[{]/);
     const last = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
