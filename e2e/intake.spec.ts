@@ -12,7 +12,8 @@ test('someone without the password files a ticket through the submit page @mobil
   // A fresh browser with no session, sized like the page under test.
   const visitor = await browser.newContext({ viewport: page.viewportSize() ?? undefined, hasTouch: true });
   const v = await visitor.newPage();
-  await v.goto(`/submit/${s.submit.key}`);
+  // A link can carry a bot's reference; it rides along with the ticket.
+  await v.goto(`/submit/${s.submit.key}?ref=e2e.ref-1`);
   await expect(v.getByRole('heading', { name: 'Report a problem' })).toBeVisible();
   await v.getByRole('radio', { name: /Plex/ }).click();
   await v.getByLabel('Title *').fill(summary);
@@ -37,6 +38,8 @@ test('someone without the password files a ticket through the submit page @mobil
   const detail = await api.call<{ ticketNo: string; description: string }>('GET', `/api/cards/${card!.id}`);
   expect(detail.ticketNo).toBe(ticketNo);
   expect(detail.description).toContain('- **Device or app:** Roku');
+  const history = await api.call<{ type: string; data: { ref?: string } }[]>('GET', `/api/cards/${card!.id}/activity`);
+  expect(history.find((e) => e.type === 'created')?.data.ref).toBe('e2e.ref-1');
 
   // A wrong key shows nothing.
   const stranger = await browser.newContext();

@@ -294,6 +294,22 @@ describe('submit page over HTTP', () => {
     expect(getCard(app.ctx, id).labelIds).toEqual([]);
   });
 
+  it('records the link’s ref on the ticket’s history, and refuses a malformed one', async () => {
+    const key = await openPage();
+    const typeId = listRequestTypes(app.ctx)[1]!.id;
+    const post = (over: Record<string, unknown>) =>
+      app.app.inject({ method: 'POST', url: `/api/public/submit/${key}`, ...multipart(submission(typeId, over)) });
+
+    const res = await post({ ref: 'bn1.42.0.1700000000.Ab-_~' });
+    expect(res.statusCode).toBe(201);
+    const id = app.ctx.db.prepare('SELECT id FROM cards WHERE ticket_no = ?').pluck().get(res.json().ticketNo) as number;
+    expect(listActivity(app.ctx, id).find((e) => e.type === 'created')!.data).toMatchObject({ ref: 'bn1.42.0.1700000000.Ab-_~' });
+
+    for (const ref of ['', 'has space', 'x'.repeat(201), '<script>']) {
+      expect((await post({ ref })).statusCode).toBe(400);
+    }
+  });
+
   it('accepts only image screenshots, and pretends to accept bots', async () => {
     const key = await openPage();
     const typeId = listRequestTypes(app.ctx)[1]!.id;

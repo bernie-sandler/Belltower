@@ -3,7 +3,7 @@
 // a link to the new ticket's status page (StatusPage.tsx). The type's labels are added by the server.
 
 import { useQuery } from '@tanstack/react-query';
-import { CSRF_HEADER, CSRF_VALUE, LIMITS, type PublicSubmitConfig, type RequestFieldDef, type SubmitResult } from '@tt/shared';
+import { CSRF_HEADER, CSRF_VALUE, LIMITS, SUBMIT_REF_PATTERN, type PublicSubmitConfig, type RequestFieldDef, type SubmitResult } from '@tt/shared';
 import { CircleCheck, Copy, ImagePlus, X } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 import { useHref, useParams } from 'react-router';
@@ -17,6 +17,12 @@ import { AuthLayout } from '../auth/AuthLayout';
 import { Spinner } from '../common/Status';
 
 type Answers = Record<string, string | string[] | boolean>;
+
+/** The page link's `?ref=` (a bot's own reference, handed back by /api/v1), if it's a valid one. */
+function linkRef(): string | null {
+  const ref = new URLSearchParams(window.location.search).get('ref');
+  return ref && SUBMIT_REF_PATTERN.test(ref) ? ref : null;
+}
 
 async function send(key: string, data: unknown, files: File[]): Promise<SubmitResult> {
   const form = new FormData();
@@ -77,6 +83,7 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState('');
   const [website, setWebsite] = useState('');
+  const [ref] = useState(linkRef);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState<SubmitResult | null>(null);
@@ -116,7 +123,7 @@ function SubmitForm({ submitKey, config }: { submitKey: string; config: PublicSu
     try {
       const result = await send(
         submitKey,
-        { typeId: type.id, summary: summary.trim(), description: description.trim(), answers, name: name.trim(), website },
+        { typeId: type.id, summary: summary.trim(), description: description.trim(), answers, name: name.trim(), website, ...(ref ? { ref } : {}) },
         files,
       );
       setDone(result);

@@ -393,6 +393,8 @@ export interface CreateCardOptions {
   templateTitle?: string;
   /** How a card from outside arrived, e.g. 'card import' (recorded on the 'created' event). */
   via?: string;
+  /** The submit page link's `?ref=` (recorded on the 'created' event, read back by /api/v1). */
+  submitRef?: string;
   /** Filed by someone or something else (submit page, API token): may trigger a notification. */
   external?: boolean;
   /**
@@ -524,6 +526,7 @@ export function createCard(ctx: Ctx, input: CreateCardInput, opts: CreateCardOpt
       source: opts.source ?? 'manual',
       ...(opts.templateId ? { templateId: opts.templateId, templateTitle: opts.templateTitle } : {}),
       ...(opts.via ? { via: opts.via } : {}),
+      ...(opts.submitRef ? { ref: opts.submitRef } : {}),
       ...(kind === 'work' ? { kind } : {}),
       ...(parent ? { parent: familyRef(parent) } : {}),
     });

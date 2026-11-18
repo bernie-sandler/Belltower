@@ -177,7 +177,8 @@ ticket the token's owner can't see (their account only sees some tags) answers `
   "archivedAt": null,
   "deletedAt": null,
   "source": "submit",
-  "submitter": "Mum"
+  "submitter": "Mum",
+  "submitRef": null
 }
 ```
 
@@ -192,6 +193,7 @@ ticket the token's owner can't see (their account only sees some tags) answers `
 | `due` | Due date, `YYYY-MM-DD`, or `null`. |
 | `source` | How it was opened: `submit` (the [submit page](SUBMIT-PAGE.md)), `api` (`/api/v1` or a card import), `recurring` (a recurring template) or `manual` (on the board). Added in 1.6.0 (not in the 1.6.0 release candidates). No other values will appear in v1. |
 | `submitter` | The name typed on the submit page, or `null` when it was left empty or `source` isn't `submit`. Added in 1.6.0, like `source`. |
+| `submitRef` | The `?ref=` the [submit page link](SUBMIT-PAGE.md#links-that-carry-a-reference) carried, or `null` when it had none or `source` isn't `submit`. Belltower stores it as sent and doesn't check it. Added in 1.7.0. |
 | `createdAt`, `updatedAt`, `completedAt`, `archivedAt`, `deletedAt` | ISO 8601 UTC timestamps, or `null`. `deletedAt` is set while the ticket is in the Trash. |
 
 Descriptions, notes, checklists, attachments and people are never included.

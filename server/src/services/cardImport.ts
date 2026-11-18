@@ -96,11 +96,26 @@ const SEVERITY_ALIASES: Record<string, Severity> = {
   s4: 'trivial', trivial: 'trivial', cosmetic: 'trivial', '4': 'trivial',
 };
 
+/**
+ * The text inside the first ``` fence pair (without a leading "json" tag), or null when there's no
+ * closing fence. indexOf, not a regex: /```(?:json)?\s*([\s\S]*?)```/ takes quadratic time on a long
+ * unclosed fence, and the import accepts 2 MB.
+ */
+function fencedBlock(text: string): string | null {
+  const open = text.indexOf('```');
+  if (open < 0) return null;
+  const close = text.indexOf('```', open + 3);
+  if (close < 0) return null;
+  let inner = text.slice(open + 3, close);
+  if (inner.slice(0, 4).toLowerCase() === 'json') inner = inner.slice(4);
+  return inner.trim();
+}
+
 /** Strips Markdown code fences and surrounding chatter an AI may add, then parses JSON. */
 export function parseImportText(text: string): unknown {
   let t = text.trim();
-  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(t);
-  if (fence) t = fence[1]!.trim();
+  const fence = fencedBlock(t);
+  if (fence !== null) t = fence;
   else {
     // Prose around the JSON: take the outermost {...} or [...].
     const first = t.search(/[[{]/);
