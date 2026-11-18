@@ -230,6 +230,7 @@ describe('@mentions', () => {
     ['once each, in order', '@kim @sam @kim', ['kim', 'sam']],
     ['punctuation after the name', 'ask @sam, then @kim. Or (@al)!', ['sam', 'kim', 'al']],
     ['a dotted name, and a trailing dot dropped', 'cc @sam.smith. and @sam.', ['sam.smith', 'sam']],
+    ['several trailing dots, dashes and underscores dropped', 'ping @kim.-_ now', ['kim']],
     ['email addresses are not mentions', 'mail sam@example.com or kim+x@kim.dev', []],
     ['URLs and handles elsewhere are not mentions', 'see https://mastodon.social/@sam and @kim@other.host', []],
     ['an escaped @ is not a mention', 'literally \\@sam here', []],

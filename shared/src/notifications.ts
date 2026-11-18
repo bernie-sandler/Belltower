@@ -187,7 +187,10 @@ export function findMentions(md: string, known?: ReadonlySet<string>): string[] 
 /** "sam." → "sam" when only that is known; null when `known` is given and neither is in it. */
 export function resolveMention(raw: string, known?: ReadonlySet<string>): string | null {
   const full = raw.toLowerCase();
-  const trimmed = full.replace(/[._-]+$/, '');
+  // A loop, not /[._-]+$/, which is quadratic on long runs of dots.
+  let end = full.length;
+  while (end > 0 && '._-'.includes(full[end - 1]!)) end--;
+  const trimmed = full.slice(0, end);
   if (!known) return trimmed.length >= 2 ? trimmed : null;
   if (known.has(full)) return full;
   return trimmed.length >= 2 && known.has(trimmed) ? trimmed : null;
