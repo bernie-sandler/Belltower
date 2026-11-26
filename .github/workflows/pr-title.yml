@@ -43,3 +43,7 @@ jobs:
           requireScope: false
           # "feat: Add X" is fine; only the type has to match.
           subjectPattern: ^.+$
+          # The default header pattern only allows \w in the type, so "deps-dev" never matched. This one also
+          # allows hyphens; scope, "!" for breaking changes and subject are parsed as before.
+          headerPattern: '^([\w-]+)(?:\(([\w$.\-*/ ]*)\))?!?: (.*)$'
+          headerPatternCorrespondence: type, scope, subject
