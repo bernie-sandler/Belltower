@@ -4,6 +4,14 @@ Versions follow [semver](https://semver.org). From 1.0 on, upgrades within 1.x n
 automation (see [docs/UPGRADING.md](docs/UPGRADING.md#what-10-promises)). The version is shown in **Settings**, in
 the container log on start, and in every backup export.
 
+## 1.7.1: Faster address checks
+
+- **Fix: an address with a long run of slashes can no longer slow the server down.** Trailing slashes on the
+  single sign-on issuer, This app's address and a Gotify server address are now trimmed without a pattern that slowed
+  down sharply on long runs of slashes. Only an admin can set these, and their length is capped, so it was never
+  reachable from outside.
+- Dependency updates.
+
 ## 1.7.0: Submit page references
 
 - **Submit page links can carry a reference.** A link to the submit page can end in `?ref=…`; the page sends it with

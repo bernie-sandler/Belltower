@@ -1,6 +1,6 @@
 {
   "name": "@tt/server",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,12 +11,12 @@
     "seed:perf": "tsx scripts/seed-perf.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.8.0",
+    "@anthropic-ai/sdk": "^1.11.0",
     "@fastify/cookie": "^11.1.5",
-    "@fastify/multipart": "^10.1.8",
-    "@fastify/static": "^10.1.11",
+    "@fastify/multipart": "^10.1.9",
+    "@fastify/static": "^10.1.12",
     "better-sqlite3": "^13.2.0",
-    "content-disposition": "^3.0.0",
+    "content-disposition": "^3.1.0",
     "fastify": "^5.12.8",
     "openid-client": "^6.9.0",
     "yauzl": "^3.4.0",
@@ -32,6 +32,6 @@
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   }
 }

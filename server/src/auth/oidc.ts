@@ -5,7 +5,7 @@
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import * as client from 'openid-client';
-import type { OidcPreset, SsoErrorCode } from '@tt/shared';
+import { trimTrailingSlashes, type OidcPreset, type SsoErrorCode } from '@tt/shared';
 import { safeEqual } from '../lib/safeEqual';
 import type { OidcIdentity } from '../services/oidc';
 
@@ -53,7 +53,7 @@ const FLOW_AAD = Buffer.from('tt_oidc:v1');
 
 /** The slash at the end of the issuer, flipped: discovery's issuer check compares it exactly. */
 function flipSlash(issuer: string): string {
-  return issuer.endsWith('/') ? issuer.replace(/\/+$/, '') : `${issuer}/`;
+  return issuer.endsWith('/') ? trimTrailingSlashes(issuer) : `${issuer}/`;
 }
 
 function errorCode(err: unknown): string | undefined {
@@ -143,7 +143,7 @@ function hostOf(url: string): string {
 }
 
 function discoveryUrl(issuer: string): string {
-  return `${issuer.replace(/\/+$/, '')}/.well-known/openid-configuration`;
+  return `${trimTrailingSlashes(issuer)}/.well-known/openid-configuration`;
 }
 
 /** The login page's `sso_error` for a failed sign-in. Details go to the log, not the address bar. */

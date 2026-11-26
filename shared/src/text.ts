@@ -146,3 +146,13 @@ export function similarEnough(terms: readonly string[], titleTerms: readonly str
   if (matchedTerms(terms, candidateText).length < Math.min(2, terms.length)) return false;
   return !titleTerms.length || matchedTerms(titleTerms, candidateText).length > 0;
 }
+
+/**
+ * `s` without its trailing slashes. A loop, not `/\/+$/`: that regex retries from every slash in a
+ * long run of them, so it takes quadratic time on input like `a////…//b`.
+ */
+export function trimTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47) end--;
+  return end === s.length ? s : s.slice(0, end);
+}

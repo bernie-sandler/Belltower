@@ -16,6 +16,7 @@
 // Teams (Settings → General) is on.
 
 import {
+  trimTrailingSlashes,
   PRIORITIES,
   PRIORITY_CODES,
   PRIORITY_LABELS,
@@ -629,7 +630,7 @@ const toNtfy: Format = (t, m, link) => {
  */
 const toGotify: Format = (t, m, link) => {
   const u = new URL(t.url);
-  const path = u.pathname.replace(/\/+$/, '').replace(/\/message$/, '');
+  const path = trimTrailingSlashes(u.pathname).replace(/\/message$/, '');
   const url = m.card ? link(m.card) : null;
   const text = markdownText(m, link);
   return {
