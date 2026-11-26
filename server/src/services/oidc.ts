@@ -8,6 +8,7 @@ import {
   OIDC_PRESETS,
   OWNER_ALIAS,
   PASSWORD_LOGIN_MODES,
+  trimTrailingSlashes,
   type OidcPreset,
   type OidcSettingsBody,
   type OidcSettingsInfo,
@@ -100,7 +101,7 @@ export function normalizeIssuer(preset: OidcPreset, issuer: string): string {
   const s = issuer.trim();
   if (!s) return s;
   if (preset === 'authentik') return s.endsWith('/') ? s : `${s}/`;
-  if (preset === 'authelia') return s.replace(/\/+$/, '');
+  if (preset === 'authelia') return trimTrailingSlashes(s);
   return s;
 }
 
@@ -116,7 +117,7 @@ export function buttonLabel(s: Pick<OidcSettings, 'preset' | 'buttonLabel'>): st
 
 /** Where the provider sends people back to, or null without General → This app's address. */
 export function redirectUriFor(appUrl: string): string | null {
-  return appUrl ? `${appUrl.replace(/\/+$/, '')}/api/auth/oidc/callback` : null;
+  return appUrl ? `${trimTrailingSlashes(appUrl)}/api/auth/oidc/callback` : null;
 }
 
 /** The client secret in use: the environment's wins over the saved one. */

@@ -3,7 +3,7 @@
 // provider's login page is simulated: the test reads the authorize address /start redirects to and
 // builds the callback the provider would send back.
 
-import { CSRF_VALUE, DEFAULT_TICKET_FORMAT } from '@tt/shared';
+import { CSRF_VALUE, DEFAULT_TICKET_FORMAT, trimTrailingSlashes } from '@tt/shared';
 import type { LightMyRequestResponse } from 'fastify';
 import { SignJWT, exportJWK, generateKeyPair, type CryptoKey } from 'jose';
 import { createHash, randomBytes } from 'node:crypto';
@@ -11,7 +11,7 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { withGroupsScope } from '../src/auth/oidc';
-import { describeGroupMiss, type OidcSettings } from '../src/services/oidc';
+import { describeGroupMiss, normalizeIssuer, redirectUriFor, type OidcSettings } from '../src/services/oidc';
 import { PASSWORD, addPerson, client, loginAs, makeApp, setupAndLogin, type TestApp } from './helpers';
 
 const APP_HOST = 'belltower.test';
@@ -1080,5 +1080,24 @@ describe('password sign-in while single sign-on is on', () => {
 
     await setMode(t, admin, i, { passwordLogin: 'hidden' });
     expect((await client(t.app, sam.cookie)('DELETE', '/api/auth/oidc/link')).statusCode).toBe(204);
+  });
+});
+
+describe('trailing slashes', () => {
+  it('trims every trailing slash and nothing else', () => {
+    expect(trimTrailingSlashes('https://id.example/')).toBe('https://id.example');
+    expect(trimTrailingSlashes('https://id.example///')).toBe('https://id.example');
+    expect(trimTrailingSlashes('https://id.example/a/b')).toBe('https://id.example/a/b');
+    expect(trimTrailingSlashes('///')).toBe('');
+    expect(trimTrailingSlashes('')).toBe('');
+    expect(normalizeIssuer('authelia', ' https://auth.example// ')).toBe('https://auth.example');
+    expect(redirectUriFor('https://bt.example/')).toBe('https://bt.example/api/auth/oidc/callback');
+  });
+
+  it('stays fast on a long run of slashes that does not end the string', () => {
+    const s = `https://id.example/${'/'.repeat(200_000)}x`;
+    const start = performance.now();
+    expect(trimTrailingSlashes(s)).toBe(s);
+    expect(performance.now() - start).toBeLessThan(50);
   });
 });
