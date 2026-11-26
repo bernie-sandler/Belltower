@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CARD_KINDS, CHECKLIST_ITEM_STATES, LIMITS, OWNER_ALIAS, PASSWORD_MIN_LENGTH, PRIORITIES, REQUEST_FIELD_KINDS, SEVERITIES, USER_ROLES } from './constants';
+import { trimTrailingSlashes } from './text';
 
 const id = z.number().int().positive();
 
@@ -546,7 +547,7 @@ export const GeneralSettingsBody = z.object({
     .trim()
     .max(200)
     .refine((s) => s === '' || /^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(s), 'Start with http:// or https://')
-    .transform((s) => s.replace(/\/+$/, '')),
+    .transform(trimTrailingSlashes),
   /** Overrides ANTHROPIC_MODEL ('' = use that). */
   claudeModel: z.string().trim().max(80).regex(/^[a-z0-9.\-]*$/, 'A model id like claude-opus-5-5'),
 });
